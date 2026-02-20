@@ -287,20 +287,19 @@ async function generateAIResponse(userMessage: string, userName: string, config:
     websiteSection = `\n\n--- WEBSITE CONTENT (from ${config.websiteUrl || "website"}) ---\n${config.websiteContent.slice(0, 3000)}`;
   }
 
-  const systemPrompt = `${config.personality}
+  const systemPrompt = `You are "${config.botName}", a bot assistant in the Telegram group "${groupName}".
 
-You are a bot assistant in the Telegram group "${groupName}".
-Your name is "${config.botName}".
+${config.personality}
+${globalContextSection}${websiteSection}${knowledgeContext}
 
-Important rules:
+--- BEHAVIOR RULES ---
+- Always use the context provided above to answer questions. You have detailed knowledge about this project/community — use it confidently.
 - Keep responses concise (under ${config.maxResponseLength} characters)
 - Be helpful but not spammy
 - If someone is reporting an issue, acknowledge it and note what they reported
-- If you don't know something, say so honestly
-- Use the context information below to answer questions when relevant
+- Only say you don't know if the question is truly unrelated to any of the context above
 - Don't repeat information unnecessarily
-- Match the tone of the conversation
-${globalContextSection}${websiteSection}${knowledgeContext}`;
+- Match the tone of the conversation`;
 
   const messages: { role: "system" | "assistant" | "user"; content: string }[] = [
     { role: "system", content: systemPrompt },
