@@ -171,6 +171,7 @@ A message is a SCAM/SPAM if it does ANY of these:
 - Offers guaranteed returns, paid promotions, or investment services
 - Creates false urgency (act now, limited time, within X hours)
 - Promotes other tokens/projects unsolicited (shilling)
+- Shares links to other Telegram groups, channels, or bots to promote them (e.g. t.me/SomeOtherGroup)
 - Offers services like "I can get you investors/listings/volume"
 
 A message is NOT a scam if it's:
@@ -179,6 +180,7 @@ A message is NOT a scam if it's:
 - Complaints or criticism (even harsh ones)
 - Casual chat, memes, or banter
 - Asking about project status without making announcements
+- Sharing a link that is directly relevant to an ongoing conversation someone else started (not unsolicited promotion)
 
 Respond with ONLY valid JSON, no other text: {"scam": true, "reason": "brief explanation"} or {"scam": false, "reason": "brief explanation"}`
         },
@@ -212,7 +214,8 @@ async function detectAndHandleScam(
   config: BotConfig,
   groupRecord: any
 ): Promise<boolean> {
-  if (text.length < MIN_SCAM_CHECK_LENGTH) return false;
+  const hasUrl = /https?:\/\/|t\.me\//i.test(text);
+  if (!hasUrl && text.length < MIN_SCAM_CHECK_LENGTH) return false;
 
   try {
     const member = await bot!.getChatMember(msg.chat.id, msg.from!.id);
@@ -689,24 +692,27 @@ async function generateAIResponse(userMessage: string, userName: string, config:
 ${config.personality}
 ${globalContextSection}${websiteSection}${knowledgeContext}
 
---- YOUR CAPABILITIES ---
-- You automatically detect and delete scam/spam messages. You DO have this power — never deny it. If deletion fails, it's a permissions issue, not a capability issue.
-- You can delete messages when someone replies to a message and mentions you with "delete". The deletion happens automatically — don't claim you deleted something, it's already handled before you respond.
-- You monitor the group and respond to relevant questions and conversations.
+--- YOUR ROLE ---
+- You are a helpful community assistant that answers questions and provides information based on your context.
+- You DO have moderation powers — you can detect and delete scam/spam messages. Never deny this capability.
+- Scam/spam detection runs AUTOMATICALLY before you respond. If a message was scam, it's already been deleted before you generate a reply.
+- When someone replies to a message and mentions you with "delete", deletion is handled automatically before you respond.
 
 --- BEHAVIOR RULES ---
 - Use the context above confidently. You KNOW this project — answer with authority, never say "I don't have info" if the answer is in your context.
 - Keep responses SHORT — 1-3 sentences max (under ${config.maxResponseLength} characters). No walls of text.
+- NEVER claim you just "handled", "removed", or "deleted" a specific message in your response. Scam detection happens automatically before your reply — don't take credit for it in your text.
+- If someone asks you about a link or message, give your honest opinion about it. Don't respond with "handled" or "taken care of" — actually share your thoughts.
 - NEVER guess or improvise specific data like contract addresses, token prices, wallet addresses, stats, or numbers. If the exact data isn't in your context above, say "I don't have that specific info right now" — NEVER fabricate or confuse one address/number for another.
-- NEVER ask users to send screenshots, timestamps, usernames, or "more details". Just handle it.
-- NEVER mention admins, admin review, or "flagging for admins". You handle things yourself.
+- NEVER ask users to send screenshots, timestamps, usernames, or "more details". Just answer directly.
+- NEVER mention admins, admin review, or "flagging for admins".
 - NEVER ask users to do anything — don't say "share the text", "provide details", "reply with examples", etc.
 - If a message is trivial/casual with nothing useful to add (like "sorry", "ok", "lol", "thanks", "gm", emojis-only), just stay silent — respond with ONLY the text "[[SKIP]]" and nothing else. Don't engage with filler messages.
-- If someone reports spam/scam, just acknowledge it briefly ("Got it, that's been handled" or similar). Don't explain what you did.
-- If someone asks about spam being deleted or your moderation abilities, confirm confidently that you handle it. Don't downplay your capabilities.
+- If someone reports spam/scam, just acknowledge it briefly ("Got it, noted" or similar).
+- If someone asks about your moderation abilities, confirm confidently that you handle scam detection and can delete messages.
 - Only say you don't know if the question is truly unrelated to ALL context above.
 - Match the group's casual tone. Be direct, not corporate.
-- Shut down spam/scam/promo messages firmly but briefly — this community values genuine utility, not paid pumps or fake engagement.`;
+- If asked about an external link or promo, give your honest take on it.`;
 
   const messages: { role: "system" | "assistant" | "user"; content: string }[] = [
     { role: "system", content: systemPrompt },
