@@ -336,9 +336,13 @@ async function handleMessage(msg: TelegramBot.Message) {
       log(`Response sent to ${userName}`, "telegram");
     } else {
       log(`AI returned empty response for ${userName}`, "telegram");
+      await sendBotMessage(msg.chat.id, "Sorry, I couldn't process that. Try asking again.", msg.message_id);
     }
   } catch (err: any) {
     log(`Error generating response for ${userName}: ${err.message}`, "telegram");
+    try {
+      await sendBotMessage(msg.chat.id, "Something went wrong processing your message. Try again in a moment.", msg.message_id);
+    } catch (_) {}
   }
   } catch (outerErr: any) {
     log(`CRITICAL: Unhandled error processing message from ${msg.from?.first_name || "unknown"}: ${outerErr.message}`, "telegram");
@@ -672,10 +676,17 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
     const response = await openai.chat.completions.create({
       model: "gpt-5-mini",
       messages,
-      max_completion_tokens: 500,
+      max_completion_tokens: 1000,
     }, { signal: controller.signal as any });
 
-    return response.choices[0]?.message?.content?.trim() || "";
+    const choice = response.choices[0];
+    const content = choice?.message?.content?.trim() || "";
+
+    if (!content) {
+      log(`Empty AI response — finish_reason: ${choice?.finish_reason}, refusal: ${(choice?.message as any)?.refusal || "none"}, choices: ${JSON.stringify(response.choices).substring(0, 300)}`, "telegram");
+    }
+
+    return content;
   } finally {
     clearTimeout(timeout);
   }
