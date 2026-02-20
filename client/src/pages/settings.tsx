@@ -131,7 +131,7 @@ export default function SettingsPage() {
         </div>
 
         <Form {...form}>
-          <form className="space-y-6" onSubmit={form.handleSubmit((d) => mutation.mutate(d))}>
+          <form className="space-y-6" onSubmit={form.handleSubmit((d) => { if (config) mutation.mutate(d); })}>
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
