@@ -193,7 +193,12 @@ async function handleMessage(msg: TelegramBot.Message) {
   if (now - lastResponse < config.cooldownSeconds * 1000) return;
 
   try {
-    const response = await generateAIResponse(messageText, userName, config, groupRecord?.name || "Unknown");
+    let replyContext: string | null = null;
+    if (msg.reply_to_message?.from?.id === (await bot!.getMe()).id && msg.reply_to_message.text) {
+      replyContext = msg.reply_to_message.text;
+    }
+
+    const response = await generateAIResponse(messageText, userName, config, groupRecord?.name || "Unknown", replyContext);
     if (response && response.trim()) {
       await bot!.sendMessage(msg.chat.id, response, {
         reply_to_message_id: msg.message_id,
@@ -259,7 +264,7 @@ async function shouldBotRespond(msg: TelegramBot.Message, config: BotConfig): Pr
   return false;
 }
 
-async function generateAIResponse(userMessage: string, userName: string, config: BotConfig, groupName: string): Promise<string> {
+async function generateAIResponse(userMessage: string, userName: string, config: BotConfig, groupName: string, replyContext?: string | null): Promise<string> {
   const knowledgeEntries = await storage.getActiveKnowledgeEntries();
 
   let knowledgeContext = "";
@@ -297,12 +302,19 @@ Important rules:
 - Match the tone of the conversation
 ${globalContextSection}${websiteSection}${knowledgeContext}`;
 
+  const messages: { role: "system" | "assistant" | "user"; content: string }[] = [
+    { role: "system", content: systemPrompt },
+  ];
+
+  if (replyContext) {
+    messages.push({ role: "assistant", content: replyContext });
+  }
+
+  messages.push({ role: "user", content: `${userName} says: ${userMessage}` });
+
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: `${userName} says: ${userMessage}` },
-    ],
+    messages,
     max_completion_tokens: 500,
   });
 
