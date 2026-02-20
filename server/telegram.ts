@@ -455,7 +455,7 @@ async function handleCommand(msg: TelegramBot.Message, config: BotConfig, groupR
 *Other ways to interact:*
 • Mention me with @${botUsername} to ask a question
 • Reply to my messages to continue a conversation
-• Ask a question (messages with ?) and I may respond in smart mode`;
+• In smart mode, I only respond when mentioned or replied to`;
     await sendBotMessage(chatId, helpText, msg.message_id);
     await storage.createActivityLog({
       groupId: groupRecord?.id || null,
@@ -640,7 +640,7 @@ async function shouldBotRespond(msg: TelegramBot.Message, config: BotConfig): Pr
   }
 
   if (config.responseMode === "smart") {
-    return isMentioned || isReplyToBot || msg.text.includes("?") || /^(what|how|why|when|where|who|can|is|are|do|does|help)\b/i.test(msg.text);
+    return isMentioned || isReplyToBot;
   }
 
   return false;
