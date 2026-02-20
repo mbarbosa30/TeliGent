@@ -3,6 +3,8 @@ import OpenAI from "openai";
 import { storage } from "./storage";
 import { log } from "./index";
 import type { BotConfig } from "@shared/schema";
+import type { Express } from "express";
+import crypto from "crypto";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -17,7 +19,26 @@ export function getBot(): TelegramBot | null {
   return bot;
 }
 
-export async function startTelegramBot() {
+function getWebhookPath(token: string): string {
+  const hash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
+  return `/api/telegram-webhook/${hash}`;
+}
+
+function getWebhookSecret(token: string): string {
+  return crypto.createHash("sha256").update(`webhook-secret-${token}`).digest("hex").slice(0, 32);
+}
+
+function getAppUrl(): string | null {
+  if (process.env.APP_URL) return process.env.APP_URL;
+  if (process.env.REPLIT_DOMAINS) {
+    const domain = process.env.REPLIT_DOMAINS.split(",")[0].trim();
+    if (domain) return `https://${domain}`;
+  }
+  if (process.env.REPLIT_DEPLOYMENT_URL) return `https://${process.env.REPLIT_DEPLOYMENT_URL}`;
+  return null;
+}
+
+export async function startTelegramBot(app?: Express) {
   if (botStarted) {
     log("Bot already started, skipping", "telegram");
     return;
@@ -30,23 +51,56 @@ export async function startTelegramBot() {
   }
 
   botStarted = true;
+  const isProduction = process.env.NODE_ENV === "production";
 
   try {
-    bot = new TelegramBot(token, { polling: true });
+    const appUrl = isProduction ? getAppUrl() : null;
+    const useWebhook = isProduction && app && appUrl;
+
+    if (useWebhook) {
+      bot = new TelegramBot(token);
+
+      const webhookPath = getWebhookPath(token);
+      const secret = getWebhookSecret(token);
+
+      app.post(webhookPath, (req, res) => {
+        const headerSecret = req.headers["x-telegram-bot-api-secret-token"];
+        if (headerSecret !== secret) {
+          res.sendStatus(403);
+          return;
+        }
+        if (bot) {
+          bot.processUpdate(req.body);
+        }
+        res.sendStatus(200);
+      });
+
+      const webhookUrl = `${appUrl}${webhookPath}`;
+      await bot.setWebHook(webhookUrl, { secret_token: secret });
+      log(`Webhook set: ${webhookUrl}`, "telegram");
+    } else {
+      if (isProduction && !appUrl) {
+        log("No APP_URL or REPLIT_DOMAINS found in production, falling back to polling", "telegram");
+      }
+
+      bot = new TelegramBot(token, { polling: true });
+
+      bot.on("polling_error", (err) => {
+        log(`Polling error: ${err.message}`, "telegram");
+      });
+    }
+
     const me = await bot.getMe();
-    log(`Telegram bot started: @${me.username}`, "telegram");
+    log(`Telegram bot started (${useWebhook ? "webhook" : "polling"} mode): @${me.username}`, "telegram");
 
     await storage.upsertConfig({ botName: me.first_name || "Bot" });
 
     bot.on("message", handleMessage);
     bot.on("new_chat_members", handleNewMembers);
     bot.on("left_chat_member", handleLeftMember);
-
-    bot.on("polling_error", (err) => {
-      log(`Polling error: ${err.message}`, "telegram");
-    });
   } catch (err: any) {
     log(`Failed to start Telegram bot: ${err.message}`, "telegram");
+    botStarted = false;
   }
 }
 

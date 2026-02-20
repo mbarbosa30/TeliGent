@@ -100,7 +100,7 @@ export async function registerRoutes(
     console.error("Failed to seed database:", err);
   });
 
-  startTelegramBot().catch((err) => {
+  startTelegramBot(app).catch((err) => {
     console.error("Failed to start Telegram bot:", err);
   });
 
