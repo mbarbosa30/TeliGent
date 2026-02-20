@@ -173,6 +173,9 @@ A message is a SCAM/SPAM if it does ANY of these:
 - Promotes other tokens/projects unsolicited (shilling)
 - Shares links to other Telegram groups, channels, or bots to promote them (e.g. t.me/SomeOtherGroup)
 - Offers services like "I can get you investors/listings/volume"
+- Claims to own/run a "community", "group", or "channel" and offers promotion, engagement, or marketing services — this is unsolicited self-promotion
+- Pitches any kind of paid service (promotion, marketing, listing, volume boosting, community building) to the group
+- Uses flattery + DM solicitation pattern (e.g. "Hello sir, DM me for...")
 
 A message is NOT a scam if it's:
 - A normal question or discussion about the project
@@ -196,6 +199,7 @@ Respond with ONLY valid JSON, no other text: {"scam": true, "reason": "brief exp
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[0]);
+        log(`AI scam verdict: ${parsed.scam ? "SCAM" : "OK"} — ${parsed.reason || "no reason"} — msg: "${text.substring(0, 60)}"`, "telegram");
         return { isScam: !!parsed.scam, reason: parsed.reason || "" };
       } catch {}
     }
@@ -207,29 +211,14 @@ Respond with ONLY valid JSON, no other text: {"scam": true, "reason": "brief exp
   }
 }
 
-async function detectAndHandleScam(
+async function executeScamAction(
   msg: TelegramBot.Message,
   text: string,
   userName: string,
-  config: BotConfig,
-  groupRecord: any
+  groupRecord: any,
+  reason: string
 ): Promise<boolean> {
-  const hasUrl = /https?:\/\/|t\.me\//i.test(text);
-  if (!hasUrl && text.length < MIN_SCAM_CHECK_LENGTH) return false;
-
-  try {
-    const member = await bot!.getChatMember(msg.chat.id, msg.from!.id);
-    if (["creator", "administrator"].includes(member.status)) {
-      return false;
-    }
-  } catch (e: any) {
-    log(`Could not check sender role: ${e.message}`, "telegram");
-  }
-
-  const { isScam, reason } = await aiScamCheck(text, "regular_user");
-  if (!isScam) return false;
-
-  log(`SCAM DETECTED from ${userName} (AI reason: ${reason}): ${text.substring(0, 100)}`, "telegram");
+  log(`SCAM DETECTED from ${userName} (${reason}): ${text.substring(0, 100)}`, "telegram");
 
   let deleted = false;
   try {
@@ -241,25 +230,61 @@ async function detectAndHandleScam(
   }
 
   if (!deleted) {
-    const warningText = `⚠️ Warning: The message above from ${userName} looks like a scam/spam. Do NOT click links, send crypto, or DM anyone offering tokens.`;
     try {
-      await sendBotMessage(msg.chat.id, warningText);
+      await sendBotMessage(msg.chat.id, `⚠️ Warning: The message above from ${userName} looks like a scam/spam. Do NOT click links, send crypto, or DM anyone offering tokens.`);
     } catch (e: any) {
       log(`Could not send scam warning: ${e.message}`, "telegram");
     }
   }
 
-  await storage.createActivityLog({
-    groupId: groupRecord?.id || null,
-    type: "report",
-    userName,
-    userMessage: text,
-    botResponse: deleted ? "(silently deleted)" : "(warned — could not delete)",
-    isReport: true,
-    metadata: JSON.stringify({ autoDetected: true, aiReason: reason }),
-  });
+  if (groupRecord) {
+    await storage.createActivityLog({
+      groupId: groupRecord.id,
+      type: "report",
+      userName,
+      userMessage: text,
+      botResponse: deleted ? "(silently deleted)" : "(warned — could not delete)",
+      isReport: true,
+      metadata: { autoDetected: true, reason },
+    });
+  }
 
   return true;
+}
+
+async function detectAndHandleScam(
+  msg: TelegramBot.Message,
+  text: string,
+  userName: string,
+  config: BotConfig,
+  groupRecord: any
+): Promise<boolean> {
+  try {
+    const member = await bot!.getChatMember(msg.chat.id, msg.from!.id);
+    if (["creator", "administrator"].includes(member.status)) {
+      return false;
+    }
+  } catch (e: any) {
+    log(`Could not check sender role: ${e.message}`, "telegram");
+  }
+
+  const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b/i.test(text);
+  const hasScamOffer = /\b(promot|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(text);
+  if (hasDmSolicitation && hasScamOffer) {
+    log(`Deterministic scam match from ${userName}: "${text.substring(0, 80)}"`, "telegram");
+    return await executeScamAction(msg, text, userName, groupRecord, "DM solicitation with scam/promo offer");
+  }
+
+  const hasUrl = /https?:\/\/|t\.me\//i.test(text);
+  if (!hasUrl && text.length < MIN_SCAM_CHECK_LENGTH) {
+    log(`Scam check skipped (short msg, no URL): "${text.substring(0, 40)}"`, "telegram");
+    return false;
+  }
+
+  const { isScam, reason } = await aiScamCheck(text, "regular_user");
+  if (!isScam) return false;
+
+  return await executeScamAction(msg, text, userName, groupRecord, `AI: ${reason}`);
 }
 
 async function handleMessage(msg: TelegramBot.Message) {

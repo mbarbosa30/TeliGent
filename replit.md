@@ -4,6 +4,9 @@
 A web dashboard for configuring and managing an AI-powered Telegram group bot. The bot uses OpenAI (via Replit AI Integrations) to understand group context, answer questions from a knowledge base, detect reports, and respond intelligently without being spammy.
 
 ## Recent Changes
+- 2026-02-20: Deterministic pre-check catches DM solicitation scams (e.g. "send me a DM", "DM me for promotion") before AI even runs — works on short messages too
+- 2026-02-20: AI scam detection prompt strengthened with more patterns (community promo, paid services, flattery+DM)
+- 2026-02-20: Bot AI prompt fixed — no longer falsely claims "handled" in responses; gives honest opinions on links instead
 - 2026-02-20: Fixed "smart" mode to ONLY respond when bot is mentioned or replied to — no more false triggers on question words
 - 2026-02-20: Proactive scam detection — auto-deletes and warns on scam messages (contract migration, PM-for-tokens, wallet phishing, etc.) with admin bypass
 - 2026-02-20: Per-user cooldowns (instead of per-chat) so multiple users get responses simultaneously
