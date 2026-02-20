@@ -157,6 +157,101 @@ async function handleLeftMember(msg: TelegramBot.Message) {
   }
 }
 
+const SCAM_PATTERNS: { pattern: RegExp; weight: number; label: string }[] = [
+  { pattern: /\b(contract\s*(address|upgrade|migration))\b/i, weight: 3, label: "contract migration" },
+  { pattern: /\b(v2\s*(airdrop|contract|token|upgrade|migration))\b/i, weight: 3, label: "v2 migration scam" },
+  { pattern: /\b(PM\s*me|DM\s*me|message\s*me)\b.*\b(token|airdrop|register|secure|claim)\b/i, weight: 4, label: "PM-for-tokens" },
+  { pattern: /\b(register\s*now|claim\s*now|act\s*now|hurry)\b.*\b(token|airdrop|reward)\b/i, weight: 3, label: "urgency scam" },
+  { pattern: /\b(no\s*registration.*no\s*airdrop)\b/i, weight: 4, label: "conditional airdrop threat" },
+  { pattern: /\b(send|transfer)\s*\d+\s*(ETH|BTC|SOL|BNB|USDT|USDC)\b/i, weight: 5, label: "send-crypto scam" },
+  { pattern: /\b(validate|verify|sync)\s*(your\s*)?(wallet|metamask)\b/i, weight: 5, label: "wallet phishing" },
+  { pattern: /\b(connect\s*wallet)\b.*\b(claim|airdrop|reward|token)\b/i, weight: 4, label: "connect-wallet scam" },
+  { pattern: /\b(guaranteed\s*(return|profit|gain)|100x|1000x|moonshot)\b/i, weight: 3, label: "guaranteed returns" },
+  { pattern: /\b(market\s*cap|mcap)\b.*\b(\d+[kmb]|\d{5,})\b/i, weight: 2, label: "market cap promise" },
+  { pattern: /\b(DM\s*(me|us)|PM\s*(me|us))\b.*\b(invest|market|promot|listing|shill)\b/i, weight: 4, label: "paid promotion DM" },
+  { pattern: /\b(fake|free)\s*(investor|investment)\b/i, weight: 3, label: "fake investors" },
+  { pattern: /\b(I\s*can\s*(get|help)\s*(you|your))\b.*\b(investor|listing|exchange|volume|pump)\b/i, weight: 4, label: "service scam" },
+  { pattern: /\b(earn\s*\$?\d+\s*(daily|hourly|weekly))\b/i, weight: 4, label: "earnings promise" },
+  { pattern: /\b(private\s*sale|pre-?sale)\b.*\b(token|coin|join|register)\b/i, weight: 3, label: "presale scam" },
+  { pattern: /\b(snapshot|migrate|swap)\b.*\b(within\s*\d+\s*(hour|day|minute))\b/i, weight: 3, label: "time-pressure migration" },
+];
+
+const SCAM_THRESHOLD = 5;
+
+function detectScamPatterns(text: string): { isScam: boolean; score: number; matches: string[] } {
+  let score = 0;
+  const matches: string[] = [];
+
+  for (const { pattern, weight, label } of SCAM_PATTERNS) {
+    if (pattern.test(text)) {
+      score += weight;
+      matches.push(label);
+    }
+  }
+
+  const warningEmojis = (text.match(/🚨|⚠️|🔥|🚀|💰|💎|⚡|💸|🤑/g) || []).length;
+  if (warningEmojis >= 3) {
+    score += 1;
+    matches.push("alarm emojis");
+  }
+
+  return { isScam: score >= SCAM_THRESHOLD, score, matches };
+}
+
+async function detectAndHandleScam(
+  msg: TelegramBot.Message,
+  text: string,
+  userName: string,
+  config: BotConfig,
+  groupRecord: any
+): Promise<boolean> {
+  const { isScam, score, matches } = detectScamPatterns(text);
+  if (!isScam) return false;
+
+  try {
+    const member = await bot!.getChatMember(msg.chat.id, msg.from!.id);
+    if (["creator", "administrator"].includes(member.status)) {
+      log(`Scam patterns matched but sender ${userName} is ${member.status} — skipping`, "telegram");
+      return false;
+    }
+  } catch (e: any) {
+    log(`Could not check sender role: ${e.message}`, "telegram");
+  }
+
+  log(`SCAM DETECTED from ${userName} (score: ${score}, flags: ${matches.join(", ")}): ${text.substring(0, 100)}`, "telegram");
+
+  let deleted = false;
+  try {
+    await bot!.deleteMessage(msg.chat.id, msg.message_id);
+    deleted = true;
+    log(`Deleted scam message from ${userName}`, "telegram");
+  } catch (e: any) {
+    log(`Could not delete scam message (bot may not be admin): ${e.message}`, "telegram");
+  }
+
+  const warningText = deleted
+    ? `⚠️ A message from ${userName} was automatically removed — it matched scam/spam patterns (${matches.slice(0, 3).join(", ")}). Stay safe: never share wallet keys or send crypto to strangers.`
+    : `⚠️ Warning: The message above from ${userName} looks like a scam/spam (${matches.slice(0, 3).join(", ")}). Do NOT click links, send crypto, or DM anyone offering tokens. Admins, please review.`;
+
+  try {
+    await sendBotMessage(msg.chat.id, warningText);
+  } catch (e: any) {
+    log(`Could not send scam warning: ${e.message}`, "telegram");
+  }
+
+  await storage.createActivityLog({
+    groupId: groupRecord?.id || null,
+    type: "report",
+    userName,
+    userMessage: text,
+    botResponse: warningText,
+    isReport: true,
+    metadata: JSON.stringify({ autoDetected: true, scamScore: score, flags: matches }),
+  });
+
+  return true;
+}
+
 async function handleMessage(msg: TelegramBot.Message) {
   try {
   if (!msg.text || !msg.chat || msg.chat.type === "private") return;
@@ -186,6 +281,9 @@ async function handleMessage(msg: TelegramBot.Message) {
     const handled = await handleCommand(msg, config, groupRecord);
     if (handled) return;
   }
+
+  const scamDetected = await detectAndHandleScam(msg, messageText, userName, config, groupRecord);
+  if (scamDetected) return;
 
   const isReport = checkIfReport(messageText, config);
   if (isReport && config.trackReports) {
