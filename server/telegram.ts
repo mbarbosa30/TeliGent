@@ -194,11 +194,17 @@ async function handleMessage(msg: TelegramBot.Message) {
 
   try {
     let replyContext: string | null = null;
-    if (msg.reply_to_message?.from?.id === (await bot!.getMe()).id && msg.reply_to_message.text) {
-      replyContext = msg.reply_to_message.text;
+    let replyIsFromBot = false;
+    if (msg.reply_to_message?.text) {
+      const botInfo = await bot!.getMe();
+      replyIsFromBot = msg.reply_to_message.from?.id === botInfo.id;
+      const replyAuthor = replyIsFromBot
+        ? config.botName
+        : (msg.reply_to_message.from?.first_name || msg.reply_to_message.from?.username || "Someone");
+      replyContext = `${replyAuthor} said: ${msg.reply_to_message.text}`;
     }
 
-    const response = await generateAIResponse(messageText, userName, config, groupRecord?.name || "Unknown", replyContext);
+    const response = await generateAIResponse(messageText, userName, config, groupRecord?.name || "Unknown", replyContext, replyIsFromBot);
     if (response && response.trim()) {
       await bot!.sendMessage(msg.chat.id, response, {
         reply_to_message_id: msg.message_id,
@@ -264,7 +270,7 @@ async function shouldBotRespond(msg: TelegramBot.Message, config: BotConfig): Pr
   return false;
 }
 
-async function generateAIResponse(userMessage: string, userName: string, config: BotConfig, groupName: string, replyContext?: string | null): Promise<string> {
+async function generateAIResponse(userMessage: string, userName: string, config: BotConfig, groupName: string, replyContext?: string | null, replyIsFromBot?: boolean): Promise<string> {
   const knowledgeEntries = await storage.getActiveKnowledgeEntries();
 
   let knowledgeContext = "";
@@ -306,7 +312,12 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
   ];
 
   if (replyContext) {
-    messages.push({ role: "assistant", content: replyContext });
+    if (replyIsFromBot) {
+      const botContent = replyContext.replace(/^.*? said: /, "");
+      messages.push({ role: "assistant", content: botContent });
+    } else {
+      messages.push({ role: "user", content: `[Replying to this message] ${replyContext}` });
+    }
   }
 
   messages.push({ role: "user", content: `${userName} says: ${userMessage}` });
