@@ -66,6 +66,7 @@ export async function startTelegramBot(app?: Express) {
       app.post(webhookPath, (req, res) => {
         const headerSecret = req.headers["x-telegram-bot-api-secret-token"];
         if (headerSecret !== secret) {
+          log(`Webhook request rejected: invalid secret`, "telegram");
           res.sendStatus(403);
           return;
         }
@@ -81,6 +82,14 @@ export async function startTelegramBot(app?: Express) {
     } else {
       if (isProduction && !appUrl) {
         log("No APP_URL or REPLIT_DOMAINS found in production, falling back to polling", "telegram");
+      }
+
+      const tempBot = new TelegramBot(token);
+      try {
+        await tempBot.deleteWebHook();
+        log("Cleared existing webhook before starting polling", "telegram");
+      } catch (e: any) {
+        log(`Warning: could not clear webhook: ${e.message}`, "telegram");
       }
 
       bot = new TelegramBot(token, { polling: true });
@@ -149,6 +158,7 @@ async function handleLeftMember(msg: TelegramBot.Message) {
 }
 
 async function handleMessage(msg: TelegramBot.Message) {
+  try {
   if (!msg.text || !msg.chat || msg.chat.type === "private") return;
   if (msg.from?.is_bot) return;
 
@@ -158,6 +168,7 @@ async function handleMessage(msg: TelegramBot.Message) {
   const chatId = msg.chat.id.toString();
   const userName = msg.from?.first_name || msg.from?.username || "Unknown";
   const messageText = msg.text;
+  log(`Message from ${userName}: ${messageText.substring(0, 80)}`, "telegram");
 
   const group = await storage.getGroupByChatId(chatId);
   if (!group) {
@@ -231,6 +242,9 @@ async function handleMessage(msg: TelegramBot.Message) {
     }
   } catch (err: any) {
     log(`Error generating response: ${err.message}`, "telegram");
+  }
+  } catch (outerErr: any) {
+    log(`CRITICAL: Unhandled error processing message from ${msg.from?.first_name || "unknown"}: ${outerErr.message}`, "telegram");
   }
 }
 
