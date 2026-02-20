@@ -53,9 +53,14 @@ export async function startTelegramBot(app?: Express) {
   botStarted = true;
   const isProduction = process.env.NODE_ENV === "production";
 
+  if (!isProduction) {
+    log("Dev mode: skipping Telegram bot to avoid conflicts with production webhook. The published version handles all Telegram messages.", "telegram");
+    return;
+  }
+
   try {
-    const appUrl = isProduction ? getAppUrl() : null;
-    const useWebhook = isProduction && app && appUrl;
+    const appUrl = getAppUrl();
+    const useWebhook = app && appUrl;
 
     if (useWebhook) {
       bot = new TelegramBot(token);
@@ -80,23 +85,9 @@ export async function startTelegramBot(app?: Express) {
       await bot.setWebHook(webhookUrl, { secret_token: secret });
       log(`Webhook set: ${webhookUrl}`, "telegram");
     } else {
-      if (isProduction && !appUrl) {
-        log("No APP_URL or REPLIT_DOMAINS found in production, falling back to polling", "telegram");
-      }
-
-      const tempBot = new TelegramBot(token);
-      try {
-        await tempBot.deleteWebHook();
-        log("Cleared existing webhook before starting polling", "telegram");
-      } catch (e: any) {
-        log(`Warning: could not clear webhook: ${e.message}`, "telegram");
-      }
-
-      bot = new TelegramBot(token, { polling: true });
-
-      bot.on("polling_error", (err) => {
-        log(`Polling error: ${err.message}`, "telegram");
-      });
+      log("No APP_URL or REPLIT_DOMAINS found in production, cannot set webhook", "telegram");
+      botStarted = false;
+      return;
     }
 
     const me = await bot.getMe();
