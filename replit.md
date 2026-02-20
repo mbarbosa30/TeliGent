@@ -4,6 +4,8 @@
 A web dashboard for configuring and managing an AI-powered Telegram group bot. The bot uses OpenAI (via Replit AI Integrations) to understand group context, answer questions from a knowledge base, detect reports, and respond intelligently without being spammy.
 
 ## Recent Changes
+- 2026-02-20: Bot now understands reply context (includes its previous message in AI conversation)
+- 2026-02-20: Knowledge base auto-scrapes URLs when sourceUrl is provided
 - 2026-02-20: Added Global Context, Website Import, and Paste Content features for richer bot context
 - 2026-02-20: Switched to webhook mode in production, polling in development to avoid 409 conflicts
 - 2026-02-20: Initial MVP built with dashboard, knowledge base, activity log, reports, and settings pages
