@@ -268,11 +268,18 @@ async function detectAndHandleScam(
     log(`Could not check sender role: ${e.message}`, "telegram");
   }
 
-  const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b/i.test(text);
+  const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b|\b(inbox|dm|pm)\b.*\b(for|me)\b/i.test(text);
   const hasScamOffer = /\b(promot|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(text);
+  const sexualEmojis = ['🍆', '🍑', '💦', '🔥', '🥵', '😈', '💋'];
+  const hasSexualSpam = sexualEmojis.some(e => text.includes(e)) && /\b(inbox|dm|pm|message|contact|send)\b/i.test(text);
+  const hasSolicitationSpam = /\b(inbox|dm|pm)\b/i.test(text) && /\b(fun|service|interest|offer|available)\b/i.test(text);
   if (hasDmSolicitation && hasScamOffer) {
     log(`Deterministic scam match from ${userName}: "${text.substring(0, 80)}"`, "telegram");
     return await executeScamAction(msg, text, userName, groupRecord, "DM solicitation with scam/promo offer");
+  }
+  if (hasSexualSpam || hasSolicitationSpam) {
+    log(`Deterministic spam match (solicitation) from ${userName}: "${text.substring(0, 80)}"`, "telegram");
+    return await executeScamAction(msg, text, userName, groupRecord, "Solicitation/adult spam");
   }
 
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
