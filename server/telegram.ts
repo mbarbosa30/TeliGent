@@ -334,11 +334,17 @@ async function detectAndHandleScam(
   const hasRaidShillSpam = /\b(raid\s*(team|group|squad|crew|service)s?|raid\s*team\s*of\s*\d+|shill(er)?s?\s*(team|group|squad|crew|service)s?|shill(er)?s?\s*to\s*boost|raider(s)?\s*(and|&)\s*shill(er)?s?|verified\s*(raider|shiller)s?|boost(ing)?\s*engag(ement|e)|engag(ement|e)\s*boost(ing|er|service|team|farm)?|free\s*test\s*run|paid\s*(raid|shill|promo|market)|hire\s*(raid|shill|market))\b/i.test(normalized);
   const hasPaidServiceSpam = /\b(growth\s*service|marketing\s*service|promotion\s*service|listing\s*service|trending\s*service|cmc\s*(list|trend)|coingecko\s*(list|trend)|dextools\s*trend|twitter\s*(raid|growth|boost)|telegram\s*(growth|member|boost))\b/i.test(normalized);
 
+  const hasDmWithUsername = /\b(dm|pm)\s*.{0,5}@\w+/i.test(normalized) && /\b(call|signal|insider|profit|trade|print|miss|join|part)\b/i.test(normalized);
+  const hasInsiderCallSpam = /\b(insider|my\s*(call|signal)|vip\s*(call|group|channel|access)|paid\s*(call|group|signal)|fading\s*me)\b/i.test(normalized) && /\b(dm|pm)\s*.{0,10}@\w+/i.test(normalized);
   const hasAggressiveDmSpam = /\b(dm\s*now|dm\s*me\s*now|send\s*(a\s*)?dm|kindly\s*(send|dm)|holders?\s*dm|dm\s*if\s*you)\b/i.test(normalized);
 
-  if (hasAggressiveDmSpam) {
+  if (hasAggressiveDmSpam || hasDmWithUsername) {
     log(`Deterministic spam match (aggressive DM solicitation) from ${userName}: "${text.substring(0, 80)}"`, "telegram");
     return await executeScamAction(msg, text, userName, groupRecord, "Aggressive DM solicitation spam");
+  }
+  if (hasInsiderCallSpam) {
+    log(`Deterministic spam match (insider/call scam) from ${userName}: "${text.substring(0, 80)}"`, "telegram");
+    return await executeScamAction(msg, text, userName, groupRecord, "Insider trading / paid call scam");
   }
   if (hasDmSolicitation && hasScamOffer) {
     log(`Deterministic scam match from ${userName}: "${text.substring(0, 80)}"`, "telegram");
