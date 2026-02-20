@@ -290,7 +290,10 @@ async function handleMessage(msg: TelegramBot.Message) {
   }
 
   const shouldRespond = await shouldBotRespond(msg, config);
-  if (!shouldRespond) return;
+  if (!shouldRespond) {
+    log(`Not responding to ${userName} (shouldRespond=false, mode=${config.responseMode})`, "telegram");
+    return;
+  }
 
   const userId = msg.from?.id?.toString() || "unknown";
   const cooldownKey = `${chatId}:${userId}`;
@@ -301,6 +304,7 @@ async function handleMessage(msg: TelegramBot.Message) {
     return;
   }
 
+  log(`Generating AI response for ${userName}...`, "telegram");
   try {
     let replyContext: string | null = null;
     let replyIsFromBot = false;
@@ -315,6 +319,7 @@ async function handleMessage(msg: TelegramBot.Message) {
 
     const response = await generateAIResponse(messageText, userName, config, groupRecord?.name || "Unknown", replyContext, replyIsFromBot);
     if (response && response.trim()) {
+      log(`AI response ready for ${userName} (${response.length} chars), sending...`, "telegram");
       await sendBotMessage(msg.chat.id, response, msg.message_id);
 
       cooldowns.set(cooldownKey, now);
@@ -328,9 +333,12 @@ async function handleMessage(msg: TelegramBot.Message) {
         isReport: false,
         metadata: null,
       });
+      log(`Response sent to ${userName}`, "telegram");
+    } else {
+      log(`AI returned empty response for ${userName}`, "telegram");
     }
   } catch (err: any) {
-    log(`Error generating response: ${err.message}`, "telegram");
+    log(`Error generating response for ${userName}: ${err.message}`, "telegram");
   }
   } catch (outerErr: any) {
     log(`CRITICAL: Unhandled error processing message from ${msg.from?.first_name || "unknown"}: ${outerErr.message}`, "telegram");
@@ -657,11 +665,18 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 
   messages.push({ role: "user", content: `${userName} says: ${userMessage}` });
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-5-mini",
-    messages,
-    max_completion_tokens: 500,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
-  return response.choices[0]?.message?.content?.trim() || "";
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5-mini",
+      messages,
+      max_completion_tokens: 500,
+    }, { signal: controller.signal as any });
+
+    return response.choices[0]?.message?.content?.trim() || "";
+  } finally {
+    clearTimeout(timeout);
+  }
 }
