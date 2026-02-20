@@ -78,7 +78,10 @@ export default function SettingsPage() {
   }, [config, form]);
 
   const mutation = useMutation({
-    mutationFn: (data: SettingsForm) => apiRequest("PATCH", "/api/config", data),
+    mutationFn: (data: SettingsForm) => {
+      if (!config) throw new Error("Config not loaded yet");
+      return apiRequest("PATCH", "/api/config", data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/config"] });
       toast({ title: "Settings saved", description: "Your bot configuration has been updated." });
@@ -121,7 +124,7 @@ export default function SettingsPage() {
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Settings</h1>
             <p className="text-muted-foreground mt-1">Configure how your bot behaves</p>
           </div>
-          <Button onClick={form.handleSubmit((d) => mutation.mutate(d))} disabled={mutation.isPending} data-testid="button-save-settings">
+          <Button onClick={form.handleSubmit((d) => mutation.mutate(d))} disabled={mutation.isPending || isLoading || !config} data-testid="button-save-settings">
             <Save className="h-4 w-4 mr-2" />
             {mutation.isPending ? "Saving..." : "Save Changes"}
           </Button>
