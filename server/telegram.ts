@@ -171,6 +171,11 @@ async function handleMessage(msg: TelegramBot.Message) {
   }
   const groupRecord = await storage.getGroupByChatId(chatId);
 
+  if (messageText.startsWith("/")) {
+    const handled = await handleCommand(msg, config, groupRecord);
+    if (handled) return;
+  }
+
   const isReport = checkIfReport(messageText, config);
   if (isReport && config.trackReports) {
     await storage.createActivityLog({
@@ -206,14 +211,7 @@ async function handleMessage(msg: TelegramBot.Message) {
 
     const response = await generateAIResponse(messageText, userName, config, groupRecord?.name || "Unknown", replyContext, replyIsFromBot);
     if (response && response.trim()) {
-      await bot!.sendMessage(msg.chat.id, response, {
-        reply_to_message_id: msg.message_id,
-        parse_mode: "Markdown",
-      }).catch(async () => {
-        await bot!.sendMessage(msg.chat.id, response, {
-          reply_to_message_id: msg.message_id,
-        });
-      });
+      await sendBotMessage(msg.chat.id, response, msg.message_id);
 
       cooldowns.set(cooldownKey, now);
 
@@ -230,6 +228,210 @@ async function handleMessage(msg: TelegramBot.Message) {
   } catch (err: any) {
     log(`Error generating response: ${err.message}`, "telegram");
   }
+}
+
+async function sendBotMessage(chatId: number | string, text: string, replyToMessageId?: number) {
+  const opts: TelegramBot.SendMessageOptions = {};
+  if (replyToMessageId) opts.reply_to_message_id = replyToMessageId;
+  opts.parse_mode = "Markdown";
+  try {
+    await bot!.sendMessage(chatId, text, opts);
+  } catch {
+    delete opts.parse_mode;
+    await bot!.sendMessage(chatId, text, opts);
+  }
+}
+
+async function handleCommand(msg: TelegramBot.Message, config: BotConfig, groupRecord: any): Promise<boolean> {
+  const text = msg.text || "";
+  const chatId = msg.chat.id;
+  const userName = msg.from?.first_name || msg.from?.username || "Unknown";
+  const botInfo = await bot!.getMe();
+  const botUsername = botInfo.username || "";
+
+  const cmdMatch = text.match(/^\/(\w+)(?:@(\w+))?(?:\s+([\s\S]*))?$/);
+  if (!cmdMatch) return false;
+
+  const command = cmdMatch[1].toLowerCase();
+  const targetBot = cmdMatch[2];
+  const args = cmdMatch[3]?.trim() || "";
+
+  if (targetBot && targetBot.toLowerCase() !== botUsername.toLowerCase()) return false;
+
+  if (command === "start") {
+    let intro = `Hi! I'm *${config.botName}*, the assistant bot for this group.`;
+    if (config.globalContext?.trim()) {
+      const summary = config.globalContext.slice(0, 300);
+      const ellipsis = config.globalContext.length > 300 ? "..." : "";
+      intro += `\n\n${summary}${ellipsis}`;
+    }
+    intro += `\n\nType /help to see what I can do.`;
+    await sendBotMessage(chatId, intro, msg.message_id);
+    await storage.createActivityLog({
+      groupId: groupRecord?.id || null,
+      type: "command",
+      userName,
+      userMessage: "/start",
+      botResponse: intro,
+      isReport: false,
+      metadata: null,
+    });
+    return true;
+  }
+
+  if (command === "help") {
+    const helpText = `*Available Commands:*
+
+/start — Introduction and project overview
+/help — Show this list of commands
+/report — Reply to a message with /report to flag it for review
+
+*Other ways to interact:*
+• Mention me with @${botUsername} to ask a question
+• Reply to my messages to continue a conversation
+• Ask a question (messages with ?) and I may respond in smart mode`;
+    await sendBotMessage(chatId, helpText, msg.message_id);
+    await storage.createActivityLog({
+      groupId: groupRecord?.id || null,
+      type: "command",
+      userName,
+      userMessage: "/help",
+      botResponse: helpText,
+      isReport: false,
+      metadata: null,
+    });
+    return true;
+  }
+
+  if (command === "report") {
+    await handleReportCommand(msg, config, groupRecord, userName, args);
+    return true;
+  }
+
+  return false;
+}
+
+async function handleReportCommand(msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userName: string, args: string) {
+  const chatId = msg.chat.id;
+  const reportedMsg = msg.reply_to_message;
+
+  if (!reportedMsg) {
+    await sendBotMessage(chatId, "To report a message, reply to the message you want to report with /report", msg.message_id);
+    return;
+  }
+
+  const botInfo = await bot!.getMe();
+  if (reportedMsg.from?.id === botInfo.id) {
+    await sendBotMessage(chatId, "You can't report the bot's own messages.", msg.message_id);
+    return;
+  }
+
+  const reportedAuthor = reportedMsg.from?.first_name || reportedMsg.from?.username || "Unknown";
+  const reportedText = reportedMsg.text || reportedMsg.caption || "[media/non-text content]";
+  const reportReason = args || "No reason provided";
+
+  try {
+    const assessment = await evaluateReportedMessage(reportedText, reportedAuthor, config, groupRecord?.name || "Unknown", reportReason);
+
+    let actionTaken = "flagged";
+    if (assessment.shouldDelete) {
+      try {
+        await bot!.deleteMessage(chatId, reportedMsg.message_id);
+        actionTaken = "deleted";
+      } catch (deleteErr: any) {
+        log(`Failed to delete reported message: ${deleteErr.message}`, "telegram");
+        actionTaken = "flagged (could not delete — bot may need admin rights)";
+      }
+    }
+
+    let responseText: string;
+    if (actionTaken === "deleted") {
+      responseText = `Report received. The message from ${reportedAuthor} was removed — ${assessment.reason}`;
+    } else if (actionTaken.includes("could not delete")) {
+      responseText = `Report received. The message should be removed but I don't have admin rights to delete messages. An admin should review this. ${assessment.reason}`;
+    } else {
+      responseText = `Report received and logged for admin review. ${assessment.reason}`;
+    }
+
+    await sendBotMessage(chatId, responseText, msg.message_id);
+
+    await storage.createActivityLog({
+      groupId: groupRecord?.id || null,
+      type: "report",
+      userName,
+      userMessage: `[/report by ${userName}] Reported message from ${reportedAuthor}: "${reportedText.slice(0, 200)}"${reportReason !== "No reason provided" ? ` | Reason: ${reportReason}` : ""}`,
+      botResponse: `Action: ${actionTaken}. ${assessment.reason}`,
+      isReport: true,
+      metadata: JSON.stringify({ reportedAuthor, actionTaken, assessment: assessment.category }),
+    });
+  } catch (err: any) {
+    log(`Error processing /report: ${err.message}`, "telegram");
+    await sendBotMessage(chatId, "Report logged. An admin will review this.", msg.message_id);
+    await storage.createActivityLog({
+      groupId: groupRecord?.id || null,
+      type: "report",
+      userName,
+      userMessage: `[/report by ${userName}] Reported message from ${reportedAuthor}: "${reportedText.slice(0, 200)}"`,
+      botResponse: "Report logged (AI evaluation failed)",
+      isReport: true,
+      metadata: null,
+    });
+  }
+}
+
+async function evaluateReportedMessage(
+  messageText: string,
+  author: string,
+  config: BotConfig,
+  groupName: string,
+  reportReason: string
+): Promise<{ shouldDelete: boolean; reason: string; category: string }> {
+  let contextInfo = "";
+  if (config.globalContext?.trim()) {
+    contextInfo = `\nGroup/Project context: ${config.globalContext.slice(0, 500)}`;
+  }
+
+  const sanitize = (s: string) => s.replace(/"/g, "'").replace(/\\/g, "");
+
+  const prompt = `You are a content moderator for the Telegram group "${sanitize(groupName)}".${contextInfo}
+
+A user has reported the following message. Evaluate whether it should be deleted.
+
+Reported message by "${sanitize(author)}": "${sanitize(messageText)}"
+Report reason: "${sanitize(reportReason)}"
+
+Evaluate the message against these criteria:
+1. SPAM — unsolicited promotion, ads, scam links, repeated self-promotion
+2. INAPPROPRIATE — offensive, hateful, harassing, or NSFW content
+3. OFF_TOPIC — completely unrelated to the group's purpose (only if clearly irrelevant)
+4. LEGITIMATE — the message is acceptable and doesn't violate guidelines
+
+Respond in this exact JSON format only:
+{"shouldDelete": true/false, "reason": "brief 1-sentence explanation", "category": "SPAM|INAPPROPRIATE|OFF_TOPIC|LEGITIMATE"}
+
+Only recommend deletion for SPAM, INAPPROPRIATE, or clearly OFF_TOPIC messages. When in doubt, keep the message and flag for admin review.`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-5-mini",
+    messages: [{ role: "user", content: prompt }],
+    max_completion_tokens: 150,
+  });
+
+  const content = response.choices[0]?.message?.content?.trim() || "";
+
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        shouldDelete: Boolean(parsed.shouldDelete),
+        reason: String(parsed.reason || "Evaluated by AI"),
+        category: String(parsed.category || "UNKNOWN"),
+      };
+    }
+  } catch {}
+
+  return { shouldDelete: false, reason: "Could not evaluate — flagged for admin review.", category: "UNKNOWN" };
 }
 
 function checkIfReport(text: string, config: BotConfig): boolean {
