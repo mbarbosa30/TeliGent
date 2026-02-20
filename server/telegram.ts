@@ -148,57 +148,61 @@ async function handleLeftMember(msg: TelegramBot.Message) {
   }
 }
 
-const SCAM_PATTERNS: { pattern: RegExp; weight: number; label: string }[] = [
-  { pattern: /\b(contract\s*(address|upgrade|migration))\b/i, weight: 3, label: "contract migration" },
-  { pattern: /\b(v2\s*(airdrop|contract|token|upgrade|migration))\b/i, weight: 3, label: "v2 migration scam" },
-  { pattern: /\b(redeploy|relaunch)(ing)?\s*(CA|contract|token)?\b/i, weight: 4, label: "redeploy/relaunch scam" },
-  { pattern: /\b(PM\s*me|DM\s*me|message\s*me|inbox\s*me)\b/i, weight: 3, label: "PM/inbox solicitation" },
-  { pattern: /\b(send|contact|reach)\s*(me|us)\s*(a\s*)?(PM|DM|message|privately)\b/i, weight: 3, label: "reversed PM request" },
-  { pattern: /\b(kindly|please)?\s*send\s*(me|us)\s*(a\s*)?(PM|DM)\b/i, weight: 3, label: "polite PM solicitation" },
-  { pattern: /\btransaction\s*hash\b/i, weight: 4, label: "transaction hash request" },
-  { pattern: /\b(register|sign\s*up)\s*(for|to)\s*(the\s*)?(airdrop|drop|claim)\b/i, weight: 4, label: "airdrop registration scam" },
-  { pattern: /\baird?r?op(p?ed|p?ing|s)?\s*(to\s*)?(our\s*)?holders?\b/i, weight: 3, label: "fake holder airdrop" },
-  { pattern: /\b(inbox|dm|pm)\s*me\s*(for|with)\s*(refund|your|a)\b/i, weight: 5, label: "inbox-for-refund scam" },
-  { pattern: /\btokens?\s*(will\s*be|are|get)\s*burnt\b/i, weight: 3, label: "token burn manipulation" },
-  { pattern: /\bold\s*tokens?\s*(will|are|get)\b/i, weight: 2, label: "old token replacement" },
-  { pattern: /\bkill\s*dead\s*wallets?\b/i, weight: 4, label: "dead wallet manipulation" },
-  { pattern: /\breduce\s*supply\b/i, weight: 2, label: "supply manipulation" },
-  { pattern: /\b(register\s*now|claim\s*now|act\s*now|hurry)\b.*\b(token|airdrop|reward)\b/i, weight: 3, label: "urgency scam" },
-  { pattern: /\b(no\s*registration.*no\s*airdrop)\b/i, weight: 4, label: "conditional airdrop threat" },
-  { pattern: /\b(send|transfer)\s*\d+\s*(ETH|BTC|SOL|BNB|USDT|USDC|CELO)\b/i, weight: 5, label: "send-crypto scam" },
-  { pattern: /\b(validate|verify|sync)\s*(your\s*)?(wallet|metamask)\b/i, weight: 5, label: "wallet phishing" },
-  { pattern: /\b(connect\s*wallet)\b.*\b(claim|airdrop|reward|token)\b/i, weight: 4, label: "connect-wallet scam" },
-  { pattern: /\b(guaranteed\s*(return|profit|gain)|100x|1000x|moonshot)\b/i, weight: 3, label: "guaranteed returns" },
-  { pattern: /\b(market\s*cap|mcap)\b.*\b(\d+[kmb]|\d{5,})\b/i, weight: 2, label: "market cap promise" },
-  { pattern: /\b(DM\s*(me|us)|PM\s*(me|us))\b.*\b(invest|market|promot|listing|shill)\b/i, weight: 4, label: "paid promotion DM" },
-  { pattern: /\b(fake|free)\s*(investor|investment)\b/i, weight: 3, label: "fake investors" },
-  { pattern: /\b(I\s*can\s*(get|help)\s*(you|your))\b.*\b(investor|listing|exchange|volume|pump)\b/i, weight: 4, label: "service scam" },
-  { pattern: /\b(earn\s*\$?\d+\s*(daily|hourly|weekly))\b/i, weight: 4, label: "earnings promise" },
-  { pattern: /\b(private\s*sale|pre-?sale)\b.*\b(token|coin|join|register)\b/i, weight: 3, label: "presale scam" },
-  { pattern: /\b(snapshot|migrate|swap)\b.*\b(within\s*\d+\s*(hour|day|minute))\b/i, weight: 3, label: "time-pressure migration" },
-  { pattern: /\bin\s*\d+\s*(hour|day|minute)s?\b.*\b(airdrop|migrate|redeploy|swap)\b/i, weight: 3, label: "timed action pressure" },
-];
+const MIN_SCAM_CHECK_LENGTH = 50;
 
-const SCAM_THRESHOLD = 5;
+async function aiScamCheck(text: string, senderRole: string): Promise<{ isScam: boolean; reason: string }> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-function detectScamPatterns(text: string): { isScam: boolean; score: number; matches: string[] } {
-  let score = 0;
-  const matches: string[] = [];
+    const response = await openai.chat.completions.create({
+      model: "gpt-5-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a scam detection system for a crypto/Web3 Telegram group. The sender is a REGULAR USER (not an admin or owner). Analyze their message and determine if it is a SCAM or SPAM.
 
-  for (const { pattern, weight, label } of SCAM_PATTERNS) {
-    if (pattern.test(text)) {
-      score += weight;
-      matches.push(label);
+A message is a SCAM/SPAM if it does ANY of these:
+- Poses as project leadership or makes official-sounding announcements (migrations, relaunches, contract changes, new CAs, etc.) — a regular user has no authority to do this
+- Asks people to DM/PM/inbox/contact them for refunds, airdrops, tokens, or anything
+- Asks for transaction hashes, wallet addresses, private keys, or seed phrases
+- Promotes fake airdrops, token swaps, or contract migrations
+- Asks people to connect wallets or click suspicious links
+- Offers guaranteed returns, paid promotions, or investment services
+- Creates false urgency (act now, limited time, within X hours)
+- Promotes other tokens/projects unsolicited (shilling)
+- Offers services like "I can get you investors/listings/volume"
+
+A message is NOT a scam if it's:
+- A normal question or discussion about the project
+- General crypto discussion without solicitation
+- Complaints or criticism (even harsh ones)
+- Casual chat, memes, or banter
+- Asking about project status without making announcements
+
+Respond with ONLY valid JSON, no other text: {"scam": true, "reason": "brief explanation"} or {"scam": false, "reason": "brief explanation"}`
+        },
+        { role: "user", content: text }
+      ],
+      max_completion_tokens: 100,
+    }, { signal: controller.signal as any });
+
+    clearTimeout(timeout);
+
+    const content = response.choices[0]?.message?.content?.trim() || "";
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return { isScam: !!parsed.scam, reason: parsed.reason || "" };
+      } catch {}
     }
+    log(`AI scam check returned unparseable response: ${content.substring(0, 100)}`, "telegram");
+    return { isScam: false, reason: "" };
+  } catch (e: any) {
+    log(`AI scam check failed: ${e.message}`, "telegram");
+    return { isScam: false, reason: "" };
   }
-
-  const warningEmojis = (text.match(/🚨|⚠️|🔥|🚀|💰|💎|⚡|💸|🤑/g) || []).length;
-  if (warningEmojis >= 3) {
-    score += 1;
-    matches.push("alarm emojis");
-  }
-
-  return { isScam: score >= SCAM_THRESHOLD, score, matches };
 }
 
 async function detectAndHandleScam(
@@ -208,20 +212,21 @@ async function detectAndHandleScam(
   config: BotConfig,
   groupRecord: any
 ): Promise<boolean> {
-  const { isScam, score, matches } = detectScamPatterns(text);
-  if (!isScam) return false;
+  if (text.length < MIN_SCAM_CHECK_LENGTH) return false;
 
   try {
     const member = await bot!.getChatMember(msg.chat.id, msg.from!.id);
     if (["creator", "administrator"].includes(member.status)) {
-      log(`Scam patterns matched but sender ${userName} is ${member.status} — skipping`, "telegram");
       return false;
     }
   } catch (e: any) {
     log(`Could not check sender role: ${e.message}`, "telegram");
   }
 
-  log(`SCAM DETECTED from ${userName} (score: ${score}, flags: ${matches.join(", ")}): ${text.substring(0, 100)}`, "telegram");
+  const { isScam, reason } = await aiScamCheck(text, "regular_user");
+  if (!isScam) return false;
+
+  log(`SCAM DETECTED from ${userName} (AI reason: ${reason}): ${text.substring(0, 100)}`, "telegram");
 
   let deleted = false;
   try {
@@ -248,7 +253,7 @@ async function detectAndHandleScam(
     userMessage: text,
     botResponse: deleted ? "(silently deleted)" : "(warned — could not delete)",
     isReport: true,
-    metadata: JSON.stringify({ autoDetected: true, scamScore: score, flags: matches }),
+    metadata: JSON.stringify({ autoDetected: true, aiReason: reason }),
   });
 
   return true;
