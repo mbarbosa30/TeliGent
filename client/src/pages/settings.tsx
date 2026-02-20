@@ -16,12 +16,14 @@ import { Separator } from "@/components/ui/separator";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Settings, Bot, MessageSquare, Shield, Zap, Save } from "lucide-react";
+import { Settings, Bot, MessageSquare, Shield, Zap, Save, Globe, FileText, Loader2 } from "lucide-react";
 import type { BotConfig } from "@shared/schema";
 
 const settingsSchema = z.object({
   botName: z.string().min(1, "Bot name is required"),
   personality: z.string().min(10, "Personality prompt should be at least 10 characters"),
+  globalContext: z.string(),
+  websiteUrl: z.string(),
   responseMode: z.string(),
   cooldownSeconds: z.number().min(0).max(3600),
   maxResponseLength: z.number().min(50).max(4000),
@@ -43,6 +45,8 @@ export default function SettingsPage() {
     defaultValues: {
       botName: "",
       personality: "",
+      globalContext: "",
+      websiteUrl: "",
       responseMode: "smart",
       cooldownSeconds: 30,
       maxResponseLength: 500,
@@ -59,6 +63,8 @@ export default function SettingsPage() {
       form.reset({
         botName: config.botName,
         personality: config.personality,
+        globalContext: config.globalContext || "",
+        websiteUrl: config.websiteUrl || "",
         responseMode: config.responseMode,
         cooldownSeconds: config.cooldownSeconds,
         maxResponseLength: config.maxResponseLength,
@@ -79,6 +85,20 @@ export default function SettingsPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+    },
+  });
+
+  const scrapeMutation = useMutation({
+    mutationFn: async (url: string) => {
+      const res = await apiRequest("POST", "/api/scrape-website", { url });
+      return res.json();
+    },
+    onSuccess: (data: { content: string; length: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      toast({ title: "Website imported", description: `Extracted ${data.length.toLocaleString()} characters of content from your website.` });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to fetch website content. Make sure the URL is correct and accessible.", variant: "destructive" });
     },
   });
 
@@ -135,6 +155,61 @@ export default function SettingsPage() {
                     </FormControl>
                   </FormItem>
                 )} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-base">Context & Knowledge</CardTitle>
+                </div>
+                <CardDescription>Give the bot background information about your project or community</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField control={form.control} name="globalContext" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Global Context</FormLabel>
+                    <FormControl><Textarea {...field} placeholder="Describe your project, community, or organization here. For example: 'We are SelfClaw, a web3 gaming community focused on...' This text is included in every AI response as background knowledge." className="min-h-[120px]" data-testid="input-global-context" /></FormControl>
+                    <FormDescription>This description is included in every AI response as background knowledge</FormDescription>
+                  </FormItem>
+                )} />
+                <Separator />
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-sm font-medium">Website Import</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">Paste your website URL and the bot will extract its content as context</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <FormField control={form.control} name="websiteUrl" render={({ field }) => (
+                      <FormItem className="flex-1">
+                        <FormControl><Input {...field} placeholder="https://your-website.com" data-testid="input-website-url" /></FormControl>
+                      </FormItem>
+                    )} />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={!form.watch("websiteUrl")?.trim() || scrapeMutation.isPending}
+                      onClick={() => {
+                        const url = form.getValues("websiteUrl");
+                        if (url) scrapeMutation.mutate(url);
+                      }}
+                      data-testid="button-import-website"
+                    >
+                      {scrapeMutation.isPending ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</>
+                      ) : (
+                        <><Globe className="h-4 w-4 mr-2" />Import</>
+                      )}
+                    </Button>
+                  </div>
+                  {config?.websiteContent && (
+                    <div className="rounded-md bg-muted/50 p-3 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Imported website content ({config.websiteContent.length.toLocaleString()} characters)</p>
+                      <p className="text-xs text-muted-foreground line-clamp-3">{config.websiteContent.slice(0, 300)}...</p>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
 

@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, BookOpen, Link as LinkIcon, Trash2, Search, ExternalLink, Pencil } from "lucide-react";
+import { Plus, BookOpen, Link as LinkIcon, Trash2, Search, ExternalLink, Pencil, FileText } from "lucide-react";
 import type { KnowledgeBaseEntry } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -116,6 +116,78 @@ function AddKnowledgeDialog({ editEntry, onClose }: { editEntry?: KnowledgeBaseE
   );
 }
 
+function PasteContentDialog() {
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [category, setCategory] = useState("general");
+  const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/knowledge", { title: title || "Imported Content", content, category }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/knowledge"] });
+      toast({ title: "Content imported", description: "Your text has been added to the knowledge base." });
+      setTitle(""); setContent(""); setCategory("general");
+      setOpen(false);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to import content.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" data-testid="button-paste-content">
+          <FileText className="h-4 w-4 mr-2" />
+          Paste Content
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Paste Content</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">Paste a large block of text — like documentation, descriptions, or FAQs — and it will be saved as a knowledge base entry the bot can reference.</p>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="paste-title">Title</Label>
+            <Input id="paste-title" placeholder="e.g. Product Overview, Company Info..." value={title} onChange={(e) => setTitle(e.target.value)} data-testid="input-paste-title" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="paste-content">Content</Label>
+            <Textarea id="paste-content" placeholder="Paste your text here..." value={content} onChange={(e) => setContent(e.target.value)} className="min-h-[200px]" data-testid="input-paste-content" />
+            {content && <p className="text-xs text-muted-foreground">{content.length.toLocaleString()} characters</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="paste-category">Category</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger data-testid="select-paste-category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="general">General</SelectItem>
+                <SelectItem value="faq">FAQ</SelectItem>
+                <SelectItem value="documentation">Documentation</SelectItem>
+                <SelectItem value="rules">Rules</SelectItem>
+                <SelectItem value="links">Links</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary">Cancel</Button>
+          </DialogClose>
+          <Button onClick={() => mutation.mutate()} disabled={!content.trim() || mutation.isPending} data-testid="button-save-paste">
+            {mutation.isPending ? "Importing..." : "Import Content"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function KnowledgeBase() {
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
@@ -145,7 +217,7 @@ export default function KnowledgeBase() {
     return matchSearch && matchCategory;
   });
 
-  const categories = [...new Set(entries.map(e => e.category))];
+  const categories = Array.from(new Set(entries.map(e => e.category)));
 
   return (
     <ScrollArea className="h-full">
@@ -155,7 +227,10 @@ export default function KnowledgeBase() {
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Knowledge Base</h1>
             <p className="text-muted-foreground mt-1">Content the bot uses to answer questions</p>
           </div>
-          <AddKnowledgeDialog />
+          <div className="flex gap-2">
+            <PasteContentDialog />
+            <AddKnowledgeDialog />
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">

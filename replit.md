@@ -4,28 +4,37 @@
 A web dashboard for configuring and managing an AI-powered Telegram group bot. The bot uses OpenAI (via Replit AI Integrations) to understand group context, answer questions from a knowledge base, detect reports, and respond intelligently without being spammy.
 
 ## Recent Changes
+- 2026-02-20: Added Global Context, Website Import, and Paste Content features for richer bot context
+- 2026-02-20: Switched to webhook mode in production, polling in development to avoid 409 conflicts
 - 2026-02-20: Initial MVP built with dashboard, knowledge base, activity log, reports, and settings pages
-- Telegram bot connected via polling with AI-powered responses
+- Telegram bot connected via polling (dev) / webhook (production) with AI-powered responses
 - Database seeded with sample knowledge base entries
 
 ## Architecture
 - **Frontend**: React + TypeScript with Vite, Shadcn UI, TanStack Query, Wouter routing
 - **Backend**: Express.js with Drizzle ORM on PostgreSQL
-- **Telegram Bot**: node-telegram-bot-api with polling
+- **Telegram Bot**: node-telegram-bot-api with polling (dev) / webhook (production)
 - **AI**: OpenAI via Replit AI Integrations (gpt-5-mini for cost-effective responses)
 
 ## Key Files
 - `shared/schema.ts` - Database schema (botConfigs, knowledgeBase, groups, activityLogs)
-- `server/routes.ts` - API endpoints
+- `server/routes.ts` - API endpoints including website scraping
 - `server/storage.ts` - Database operations (DatabaseStorage class)
-- `server/telegram.ts` - Telegram bot logic with AI response generation
+- `server/telegram.ts` - Telegram bot logic with AI response generation, webhook/polling modes
 - `server/seed.ts` - Database seeding
 - `client/src/App.tsx` - Main app with sidebar layout
 - `client/src/pages/` - Dashboard, Knowledge, Activity, Reports, Settings pages
 
+## Bot Context Sources
+1. **Global Context** - Free-text description of project/community (Settings page)
+2. **Website Import** - Scrapes a URL and stores extracted text content (Settings page)
+3. **Knowledge Base** - Individual entries with categories (Knowledge Base page)
+4. **Paste Content** - Bulk text import into knowledge base (Knowledge Base page)
+
 ## API Endpoints
-- `GET/PATCH /api/config` - Bot configuration
+- `GET/PATCH /api/config` - Bot configuration (includes globalContext, websiteUrl, websiteContent)
 - `GET/POST/PATCH/DELETE /api/knowledge` - Knowledge base CRUD
+- `POST /api/scrape-website` - Fetch and extract text from a website URL
 - `GET /api/groups` - Connected Telegram groups
 - `GET /api/activity` - Activity logs
 
@@ -34,6 +43,7 @@ A web dashboard for configuring and managing an AI-powered Telegram group bot. T
 - `TELEGRAM_BOT_TOKEN` - Telegram bot token
 - `AI_INTEGRATIONS_OPENAI_API_KEY` - Auto-set by Replit
 - `AI_INTEGRATIONS_OPENAI_BASE_URL` - Auto-set by Replit
+- `REPLIT_DOMAINS` - Auto-set in production, used for webhook URL
 
 ## Running
 - `npm run dev` starts both frontend (Vite) and backend (Express) on port 5000

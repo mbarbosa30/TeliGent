@@ -75,6 +75,67 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/scrape-website", async (req, res) => {
+    try {
+      const { url } = req.body;
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ error: "URL is required" });
+      }
+
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        return res.status(400).json({ error: "Invalid URL format" });
+      }
+
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        return res.status(400).json({ error: "Only http and https URLs are allowed" });
+      }
+
+      const hostname = parsed.hostname.toLowerCase();
+      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" ||
+          hostname.startsWith("10.") || hostname.startsWith("192.168.") || hostname.startsWith("172.") ||
+          hostname === "169.254.169.254" || hostname.endsWith(".internal") || hostname === "[::1]") {
+        return res.status(400).json({ error: "Internal/private URLs are not allowed" });
+      }
+
+      const response = await fetch(url, {
+        headers: { "User-Agent": "ContextBot/1.0" },
+        signal: AbortSignal.timeout(15000),
+        redirect: "follow",
+      });
+
+      if (!response.ok) {
+        return res.status(400).json({ error: `Failed to fetch website: ${response.status}` });
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("text/html") && !contentType.includes("text/plain")) {
+        return res.status(400).json({ error: "URL must return HTML or text content" });
+      }
+
+      const html = await response.text();
+      const textContent = html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "")
+        .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "")
+        .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&[a-z]+;/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 10000);
+
+      await storage.upsertConfig({ websiteUrl: url, websiteContent: textContent });
+
+      res.json({ content: textContent, length: textContent.length });
+    } catch (err: any) {
+      res.status(500).json({ error: `Failed to scrape website: ${err.message}` });
+    }
+  });
+
   // Groups
   app.get("/api/groups", async (_req, res) => {
     try {

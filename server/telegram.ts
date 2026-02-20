@@ -272,6 +272,16 @@ async function generateAIResponse(userMessage: string, userName: string, config:
       }).join("\n\n");
   }
 
+  let globalContextSection = "";
+  if (config.globalContext && config.globalContext.trim()) {
+    globalContextSection = `\n\n--- ABOUT THIS PROJECT/COMMUNITY ---\n${config.globalContext}`;
+  }
+
+  let websiteSection = "";
+  if (config.websiteContent && config.websiteContent.trim()) {
+    websiteSection = `\n\n--- WEBSITE CONTENT (from ${config.websiteUrl || "website"}) ---\n${config.websiteContent.slice(0, 3000)}`;
+  }
+
   const systemPrompt = `${config.personality}
 
 You are a bot assistant in the Telegram group "${groupName}".
@@ -282,10 +292,10 @@ Important rules:
 - Be helpful but not spammy
 - If someone is reporting an issue, acknowledge it and note what they reported
 - If you don't know something, say so honestly
-- Use the knowledge base below to answer questions when relevant
+- Use the context information below to answer questions when relevant
 - Don't repeat information unnecessarily
 - Match the tone of the conversation
-${knowledgeContext}`;
+${globalContextSection}${websiteSection}${knowledgeContext}`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
