@@ -445,6 +445,9 @@ async function handleReportCommand(msg: TelegramBot.Message, config: BotConfig, 
       try {
         await bot!.deleteMessage(chatId, reportedMsg.message_id);
         actionTaken = "deleted";
+        try {
+          await bot!.deleteMessage(chatId, msg.message_id);
+        } catch (_) {}
       } catch (deleteErr: any) {
         log(`Failed to delete reported message: ${deleteErr.message}`, "telegram");
         actionTaken = "flagged (could not delete — bot may need admin rights)";
@@ -453,11 +456,13 @@ async function handleReportCommand(msg: TelegramBot.Message, config: BotConfig, 
 
     let responseText: string;
     if (actionTaken === "deleted") {
-      responseText = `Report received. The message from ${reportedAuthor} was removed — ${assessment.reason}`;
-    } else if (actionTaken.includes("could not delete")) {
-      responseText = `Report received. The message should be removed but I don't have admin rights to delete messages. An admin should review this. ${assessment.reason}`;
+      responseText = `⚠️ The message from ${reportedAuthor} has been removed — ${assessment.reason}. Stay safe and don't engage with suspicious content.`;
+    } else if (assessment.shouldDelete && actionTaken.includes("could not delete")) {
+      responseText = `⚠️ That message looks like ${assessment.category.toLowerCase().replace("_", " ")} — ${assessment.reason}. I couldn't remove it automatically, but do NOT engage with it.`;
+    } else if (assessment.category === "LEGITIMATE") {
+      responseText = `Reviewed — this message looks fine. ${assessment.reason}`;
     } else {
-      responseText = `Report received and logged for admin review. ${assessment.reason}`;
+      responseText = `⚠️ Flagged as ${assessment.category.toLowerCase().replace("_", " ")} — ${assessment.reason}. Do not engage with suspicious content.`;
     }
 
     await sendBotMessage(chatId, responseText, msg.message_id);
@@ -519,7 +524,7 @@ This community values genuine utility, real growth, and authentic community supp
 Respond in this exact JSON format only:
 {"shouldDelete": true/false, "reason": "brief 1-sentence explanation", "category": "SPAM|SCAM_PROMOTION|INAPPROPRIATE|OFF_TOPIC|LEGITIMATE"}
 
-Recommend deletion for SPAM, SCAM_PROMOTION, or INAPPROPRIATE messages. When in doubt about OFF_TOPIC, flag for admin review.`;
+ALWAYS recommend deletion (shouldDelete: true) for SPAM, SCAM_PROMOTION, and INAPPROPRIATE messages — these should be removed immediately without hesitation. For OFF_TOPIC, only recommend deletion if it's clearly disruptive; otherwise flag it. Only mark as LEGITIMATE if the message is genuinely acceptable.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
