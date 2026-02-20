@@ -252,6 +252,58 @@ async function executeScamAction(
   return true;
 }
 
+function normalizeUnicode(text: string): string {
+  const ranges: [number, number, number][] = [
+    [0x1D400, 0x1D419, 0x41], // Math Bold A-Z
+    [0x1D41A, 0x1D433, 0x61], // Math Bold a-z
+    [0x1D434, 0x1D44D, 0x41], // Math Italic A-Z
+    [0x1D44E, 0x1D467, 0x61], // Math Italic a-z
+    [0x1D468, 0x1D481, 0x41], // Math Bold Italic A-Z
+    [0x1D482, 0x1D49B, 0x61], // Math Bold Italic a-z
+    [0x1D49C, 0x1D4B5, 0x41], // Math Script A-Z
+    [0x1D4B6, 0x1D4CF, 0x61], // Math Script a-z
+    [0x1D4D0, 0x1D4E9, 0x41], // Math Bold Script A-Z
+    [0x1D4EA, 0x1D503, 0x61], // Math Bold Script a-z
+    [0x1D504, 0x1D51D, 0x41], // Math Fraktur A-Z
+    [0x1D51E, 0x1D537, 0x61], // Math Fraktur a-z
+    [0x1D538, 0x1D551, 0x41], // Math Double-Struck A-Z
+    [0x1D552, 0x1D56B, 0x61], // Math Double-Struck a-z
+    [0x1D56C, 0x1D585, 0x41], // Math Bold Fraktur A-Z
+    [0x1D586, 0x1D59F, 0x61], // Math Bold Fraktur a-z
+    [0x1D5A0, 0x1D5B9, 0x41], // Math Sans A-Z
+    [0x1D5BA, 0x1D5D3, 0x61], // Math Sans a-z
+    [0x1D5D4, 0x1D5ED, 0x41], // Math Sans Bold A-Z
+    [0x1D5EE, 0x1D607, 0x61], // Math Sans Bold a-z
+    [0x1D608, 0x1D621, 0x41], // Math Sans Italic A-Z
+    [0x1D622, 0x1D63B, 0x61], // Math Sans Italic a-z
+    [0x1D63C, 0x1D655, 0x41], // Math Sans Bold Italic A-Z
+    [0x1D656, 0x1D66F, 0x61], // Math Sans Bold Italic a-z
+    [0x1D670, 0x1D689, 0x41], // Math Monospace A-Z
+    [0x1D68A, 0x1D6A3, 0x61], // Math Monospace a-z
+    [0xFF21, 0xFF3A, 0x41],   // Fullwidth A-Z
+    [0xFF41, 0xFF5A, 0x61],   // Fullwidth a-z
+    [0x24B6, 0x24CF, 0x41],   // Circled A-Z
+    [0x24D0, 0x24E9, 0x61],   // Circled a-z
+  ];
+
+  let result = "";
+  for (const char of text) {
+    const cp = char.codePointAt(0)!;
+    let mapped = false;
+    for (const [start, end, base] of ranges) {
+      if (cp >= start && cp <= end) {
+        result += String.fromCharCode(base + (cp - start));
+        mapped = true;
+        break;
+      }
+    }
+    if (!mapped) {
+      result += char;
+    }
+  }
+  return result;
+}
+
 async function detectAndHandleScam(
   msg: TelegramBot.Message,
   text: string,
@@ -268,15 +320,26 @@ async function detectAndHandleScam(
     log(`Could not check sender role: ${e.message}`, "telegram");
   }
 
-  const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b|\b(inbox|dm|pm)\b.*\b(for|me)\b/i.test(text);
-  const hasScamOffer = /\b(promot|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(text);
+  const normalized = normalizeUnicode(text);
+  if (normalized !== text) {
+    log(`Unicode normalized: "${text.substring(0, 60)}" → "${normalized.substring(0, 60)}"`, "telegram");
+  }
+
+  const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b|\b(inbox|dm|pm)\b.*\b(for|me)\b/i.test(normalized);
+  const hasScamOffer = /\b(promot|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized);
   const sexualEmojis = ['🍆', '🍑', '💦', '🔥', '🥵', '😈', '💋'];
-  const hasSexualSpam = sexualEmojis.some(e => text.includes(e)) && /\b(inbox|dm|pm|message|contact|send)\b/i.test(text);
-  const hasSolicitationSpam = /\b(inbox|dm|pm)\b/i.test(text) && /\b(fun|service|interest|offer|available)\b/i.test(text);
+  const hasSexualSpam = sexualEmojis.some(e => text.includes(e)) && /\b(inbox|dm|pm|message|contact|send)\b/i.test(normalized);
+  const hasSolicitationSpam = /\b(inbox|dm|pm)\b/i.test(normalized) && /\b(fun|service|interest|offer|available)\b/i.test(normalized);
 
-  const hasRaidShillSpam = /\b(raid\s*(team|group|squad|crew|service)s?|raid\s*team\s*of\s*\d+|shill(er)?s?\s*(team|group|squad|crew|service)s?|shill(er)?s?\s*to\s*boost|raider(s)?\s*(and|&)\s*shill(er)?s?|verified\s*(raider|shiller)s?|boost(ing)?\s*engag(ement|e)|engag(ement|e)\s*boost(ing|er|service|team|farm)?|free\s*test\s*run|paid\s*(raid|shill|promo|market)|hire\s*(raid|shill|market))\b/i.test(text);
-  const hasPaidServiceSpam = /\b(growth\s*service|marketing\s*service|promotion\s*service|listing\s*service|trending\s*service|cmc\s*(list|trend)|coingecko\s*(list|trend)|dextools\s*trend|twitter\s*(raid|growth|boost)|telegram\s*(growth|member|boost))\b/i.test(text);
+  const hasRaidShillSpam = /\b(raid\s*(team|group|squad|crew|service)s?|raid\s*team\s*of\s*\d+|shill(er)?s?\s*(team|group|squad|crew|service)s?|shill(er)?s?\s*to\s*boost|raider(s)?\s*(and|&)\s*shill(er)?s?|verified\s*(raider|shiller)s?|boost(ing)?\s*engag(ement|e)|engag(ement|e)\s*boost(ing|er|service|team|farm)?|free\s*test\s*run|paid\s*(raid|shill|promo|market)|hire\s*(raid|shill|market))\b/i.test(normalized);
+  const hasPaidServiceSpam = /\b(growth\s*service|marketing\s*service|promotion\s*service|listing\s*service|trending\s*service|cmc\s*(list|trend)|coingecko\s*(list|trend)|dextools\s*trend|twitter\s*(raid|growth|boost)|telegram\s*(growth|member|boost))\b/i.test(normalized);
 
+  const hasAggressiveDmSpam = /\b(dm\s*now|dm\s*me\s*now|send\s*(a\s*)?dm|kindly\s*(send|dm)|holders?\s*dm|dm\s*if\s*you)\b/i.test(normalized);
+
+  if (hasAggressiveDmSpam) {
+    log(`Deterministic spam match (aggressive DM solicitation) from ${userName}: "${text.substring(0, 80)}"`, "telegram");
+    return await executeScamAction(msg, text, userName, groupRecord, "Aggressive DM solicitation spam");
+  }
   if (hasDmSolicitation && hasScamOffer) {
     log(`Deterministic scam match from ${userName}: "${text.substring(0, 80)}"`, "telegram");
     return await executeScamAction(msg, text, userName, groupRecord, "DM solicitation with scam/promo offer");
@@ -291,12 +354,12 @@ async function detectAndHandleScam(
   }
 
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
-  if (!hasUrl && text.length < MIN_SCAM_CHECK_LENGTH) {
+  if (!hasUrl && normalized.length < MIN_SCAM_CHECK_LENGTH) {
     log(`Scam check skipped (short msg, no URL): "${text.substring(0, 40)}"`, "telegram");
     return false;
   }
 
-  const { isScam, reason } = await aiScamCheck(text, "regular_user");
+  const { isScam, reason } = await aiScamCheck(normalized, "regular_user");
   if (!isScam) return false;
 
   return await executeScamAction(msg, text, userName, groupRecord, `AI: ${reason}`);
