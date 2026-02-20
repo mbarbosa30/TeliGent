@@ -273,24 +273,39 @@ async function shouldBotRespond(msg: TelegramBot.Message, config: BotConfig): Pr
 async function generateAIResponse(userMessage: string, userName: string, config: BotConfig, groupName: string, replyContext?: string | null, replyIsFromBot?: boolean): Promise<string> {
   const knowledgeEntries = await storage.getActiveKnowledgeEntries();
 
-  let knowledgeContext = "";
-  if (knowledgeEntries.length > 0) {
-    knowledgeContext = "\n\n--- KNOWLEDGE BASE ---\n" +
-      knowledgeEntries.map(e => {
-        let entry = `[${e.category}] ${e.title}:\n${e.content}`;
-        if (e.sourceUrl) entry += `\nSource: ${e.sourceUrl}`;
-        return entry;
-      }).join("\n\n");
-  }
+  const MAX_CONTEXT_CHARS = 6000;
+  let usedChars = 0;
 
   let globalContextSection = "";
   if (config.globalContext && config.globalContext.trim()) {
-    globalContextSection = `\n\n--- ABOUT THIS PROJECT/COMMUNITY ---\n${config.globalContext}`;
+    const globalText = config.globalContext.slice(0, 2000);
+    globalContextSection = `\n\n--- ABOUT THIS PROJECT/COMMUNITY ---\n${globalText}`;
+    usedChars += globalText.length;
   }
 
   let websiteSection = "";
   if (config.websiteContent && config.websiteContent.trim()) {
-    websiteSection = `\n\n--- WEBSITE CONTENT (from ${config.websiteUrl || "website"}) ---\n${config.websiteContent.slice(0, 3000)}`;
+    const maxWebsite = Math.min(2000, MAX_CONTEXT_CHARS - usedChars);
+    if (maxWebsite > 100) {
+      const websiteText = config.websiteContent.slice(0, maxWebsite);
+      websiteSection = `\n\n--- WEBSITE CONTENT (from ${config.websiteUrl || "website"}) ---\n${websiteText}`;
+      usedChars += websiteText.length;
+    }
+  }
+
+  let knowledgeContext = "";
+  if (knowledgeEntries.length > 0) {
+    const maxKnowledge = Math.max(0, MAX_CONTEXT_CHARS - usedChars);
+    let kbText = "";
+    for (const e of knowledgeEntries) {
+      let entry = `[${e.category}] ${e.title}:\n${e.content}`;
+      if (e.sourceUrl) entry += `\nSource: ${e.sourceUrl}`;
+      if (kbText.length + entry.length + 2 > maxKnowledge) break;
+      kbText += (kbText ? "\n\n" : "") + entry;
+    }
+    if (kbText) {
+      knowledgeContext = `\n\n--- KNOWLEDGE BASE ---\n${kbText}`;
+    }
   }
 
   const systemPrompt = `You are "${config.botName}", a bot assistant in the Telegram group "${groupName}".

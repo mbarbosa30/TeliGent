@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, Users, BookOpen, Activity, MessageSquare, Shield, TrendingUp, Clock } from "lucide-react";
+import { Bot, Users, BookOpen, Activity, MessageSquare, Shield, TrendingUp, Clock, AlertTriangle } from "lucide-react";
+import { Link } from "wouter";
 import type { BotConfig, Group, ActivityLog, KnowledgeBaseEntry } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -55,6 +56,20 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Dashboard</h1>
           <p className="text-muted-foreground mt-1">Monitor your bot's activity and performance</p>
         </div>
+
+        {!configLoading && config && !config.globalContext?.trim() && (
+          <Card className="border-yellow-600/50 dark:border-yellow-500/40 bg-yellow-50 dark:bg-yellow-900/10" data-testid="banner-setup-context">
+            <CardContent className="flex items-start gap-3 pt-5 pb-4">
+              <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Your bot needs context to answer questions</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Go to <Link href="/settings" className="text-foreground underline underline-offset-2 font-medium" data-testid="link-settings-context">Settings</Link> and fill in the <strong>Global Context</strong> with a description of your project or community. Without it, the bot won't know what to say when people ask about your project.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
