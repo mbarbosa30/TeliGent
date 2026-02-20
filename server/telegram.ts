@@ -337,6 +337,7 @@ async function detectAndHandleScam(
   const hasDmWithUsername = /\b(dm|pm)\s*.{0,5}@\w+/i.test(normalized) && /\b(call|signal|insider|profit|trade|print|miss|join|part)\b/i.test(normalized);
   const hasInsiderCallSpam = /\b(insider|my\s*(call|signal)|vip\s*(call|group|channel|access)|paid\s*(call|group|signal)|fading\s*me)\b/i.test(normalized) && /\b(dm|pm)\s*.{0,10}@\w+/i.test(normalized);
   const hasAggressiveDmSpam = /\b(dm\s*now|dm\s*me\s*now|send\s*(a\s*)?dm|kindly\s*(send|dm)|holders?\s*dm|dm\s*if\s*you)\b/i.test(normalized);
+  const hasWalletBuyingSelling = /\b(buy|sell|get|need|want|pay)\b.{0,30}\b(wallet|account)\b.{0,30}\b(history|transaction|old|empty|aged|month|year)\b/i.test(normalized) || /\b(old|empty|aged)\s*(wallet|account)\b.{0,30}\b(pay|buy|sell|solana|sol|eth|usdt|btc)\b/i.test(normalized) || /\b(wallet|account)\s*(with|that\s*has)\s*.{0,20}(transaction|history|activit)/i.test(normalized);
 
   if (hasAggressiveDmSpam || hasDmWithUsername) {
     log(`Deterministic spam match (aggressive DM solicitation) from ${userName}: "${text.substring(0, 80)}"`, "telegram");
@@ -345,6 +346,10 @@ async function detectAndHandleScam(
   if (hasInsiderCallSpam) {
     log(`Deterministic spam match (insider/call scam) from ${userName}: "${text.substring(0, 80)}"`, "telegram");
     return await executeScamAction(msg, text, userName, groupRecord, "Insider trading / paid call scam");
+  }
+  if (hasWalletBuyingSelling) {
+    log(`Deterministic spam match (wallet buying/selling) from ${userName}: "${text.substring(0, 80)}"`, "telegram");
+    return await executeScamAction(msg, text, userName, groupRecord, "Wallet buying/selling scam");
   }
   if (hasDmSolicitation && hasScamOffer) {
     log(`Deterministic scam match from ${userName}: "${text.substring(0, 80)}"`, "telegram");
