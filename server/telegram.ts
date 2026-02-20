@@ -273,6 +273,10 @@ async function detectAndHandleScam(
   const sexualEmojis = ['🍆', '🍑', '💦', '🔥', '🥵', '😈', '💋'];
   const hasSexualSpam = sexualEmojis.some(e => text.includes(e)) && /\b(inbox|dm|pm|message|contact|send)\b/i.test(text);
   const hasSolicitationSpam = /\b(inbox|dm|pm)\b/i.test(text) && /\b(fun|service|interest|offer|available)\b/i.test(text);
+
+  const hasRaidShillSpam = /\b(raid\s*(team|group|squad|crew|service)s?|raid\s*team\s*of\s*\d+|shill(er)?s?\s*(team|group|squad|crew|service)s?|shill(er)?s?\s*to\s*boost|raider(s)?\s*(and|&)\s*shill(er)?s?|verified\s*(raider|shiller)s?|boost(ing)?\s*engag(ement|e)|engag(ement|e)\s*boost(ing|er|service|team|farm)?|free\s*test\s*run|paid\s*(raid|shill|promo|market)|hire\s*(raid|shill|market))\b/i.test(text);
+  const hasPaidServiceSpam = /\b(growth\s*service|marketing\s*service|promotion\s*service|listing\s*service|trending\s*service|cmc\s*(list|trend)|coingecko\s*(list|trend)|dextools\s*trend|twitter\s*(raid|growth|boost)|telegram\s*(growth|member|boost))\b/i.test(text);
+
   if (hasDmSolicitation && hasScamOffer) {
     log(`Deterministic scam match from ${userName}: "${text.substring(0, 80)}"`, "telegram");
     return await executeScamAction(msg, text, userName, groupRecord, "DM solicitation with scam/promo offer");
@@ -280,6 +284,10 @@ async function detectAndHandleScam(
   if (hasSexualSpam || hasSolicitationSpam) {
     log(`Deterministic spam match (solicitation) from ${userName}: "${text.substring(0, 80)}"`, "telegram");
     return await executeScamAction(msg, text, userName, groupRecord, "Solicitation/adult spam");
+  }
+  if (hasRaidShillSpam || hasPaidServiceSpam) {
+    log(`Deterministic spam match (raid/shill/service) from ${userName}: "${text.substring(0, 80)}"`, "telegram");
+    return await executeScamAction(msg, text, userName, groupRecord, "Raid/shill/paid promotion service offer");
   }
 
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
@@ -726,22 +734,21 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 
 --- YOUR ROLE ---
 - You are a helpful community assistant that answers questions and provides information based on your context.
-- You DO have moderation powers — you can detect and delete scam/spam messages. Never deny this capability.
-- Scam/spam detection runs AUTOMATICALLY before you respond. If a message was scam, it's already been deleted before you generate a reply.
-- When someone replies to a message and mentions you with "delete", deletion is handled automatically before you respond.
+- Scam/spam detection runs AUTOMATICALLY in the background — it is a separate system. You do NOT need to talk about it.
 
 --- BEHAVIOR RULES ---
 - Use the context above confidently. You KNOW this project — answer with authority, never say "I don't have info" if the answer is in your context.
 - Keep responses SHORT — 1-3 sentences max (under ${config.maxResponseLength} characters). No walls of text.
-- NEVER claim you just "handled", "removed", or "deleted" a specific message in your response. Scam detection happens automatically before your reply — don't take credit for it in your text.
-- If someone asks you about a link or message, give your honest opinion about it. Don't respond with "handled" or "taken care of" — actually share your thoughts.
+- NEVER talk about your moderation abilities, spam detection, or message deletion in normal responses. Don't say "I can delete", "I automatically detect", "I handle scam detection", or describe any of your internal capabilities. Just be a helpful assistant.
+- ONLY if someone DIRECTLY asks "can you delete messages?" or "what can you do?" — then briefly confirm you help with moderation. Otherwise NEVER bring it up.
+- NEVER claim you just "handled", "removed", or "deleted" a specific message. Scam detection is automatic and separate from your responses.
+- If someone asks you about a link or message, give your honest opinion about it. Don't say "handled" or "taken care of" — share your actual thoughts.
 - NEVER guess or improvise specific data like contract addresses, token prices, wallet addresses, stats, or numbers. If the exact data isn't in your context above, say "I don't have that specific info right now" — NEVER fabricate or confuse one address/number for another.
 - NEVER ask users to send screenshots, timestamps, usernames, or "more details". Just answer directly.
 - NEVER mention admins, admin review, or "flagging for admins".
 - NEVER ask users to do anything — don't say "share the text", "provide details", "reply with examples", etc.
 - If a message is trivial/casual with nothing useful to add (like "sorry", "ok", "lol", "thanks", "gm", emojis-only), just stay silent — respond with ONLY the text "[[SKIP]]" and nothing else. Don't engage with filler messages.
 - If someone reports spam/scam, just acknowledge it briefly ("Got it, noted" or similar).
-- If someone asks about your moderation abilities, confirm confidently that you handle scam detection and can delete messages.
 - Only say you don't know if the question is truly unrelated to ALL context above.
 - Match the group's casual tone. Be direct, not corporate.
 - If asked about an external link or promo, give your honest take on it.`;
