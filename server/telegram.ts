@@ -192,10 +192,14 @@ async function handleMessage(msg: TelegramBot.Message) {
   const shouldRespond = await shouldBotRespond(msg, config);
   if (!shouldRespond) return;
 
-  const cooldownKey = `${chatId}`;
+  const userId = msg.from?.id?.toString() || "unknown";
+  const cooldownKey = `${chatId}:${userId}`;
   const now = Date.now();
   const lastResponse = cooldowns.get(cooldownKey) || 0;
-  if (now - lastResponse < config.cooldownSeconds * 1000) return;
+  if (now - lastResponse < config.cooldownSeconds * 1000) {
+    log(`Skipping response to ${userName} (user cooldown: ${Math.ceil((config.cooldownSeconds * 1000 - (now - lastResponse)) / 1000)}s remaining)`, "telegram");
+    return;
+  }
 
   try {
     let replyContext: string | null = null;
