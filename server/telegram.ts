@@ -151,10 +151,18 @@ async function handleLeftMember(msg: TelegramBot.Message) {
 const SCAM_PATTERNS: { pattern: RegExp; weight: number; label: string }[] = [
   { pattern: /\b(contract\s*(address|upgrade|migration))\b/i, weight: 3, label: "contract migration" },
   { pattern: /\b(v2\s*(airdrop|contract|token|upgrade|migration))\b/i, weight: 3, label: "v2 migration scam" },
+  { pattern: /\bredeploy(ing)?\s*(CA|contract|token)\b/i, weight: 4, label: "redeploy CA scam" },
   { pattern: /\b(PM\s*me|DM\s*me|message\s*me)\b.*\b(token|airdrop|register|secure|claim)\b/i, weight: 4, label: "PM-for-tokens" },
+  { pattern: /\b(send|contact|reach)\s*(me|us)\s*(a\s*)?(PM|DM|message|privately)\b/i, weight: 3, label: "reversed PM request" },
+  { pattern: /\b(kindly|please)?\s*send\s*(me|us)\s*(a\s*)?(PM|DM)\b/i, weight: 3, label: "polite PM solicitation" },
+  { pattern: /\btransaction\s*hash\b/i, weight: 4, label: "transaction hash request" },
+  { pattern: /\b(register|sign\s*up)\s*(for|to)\s*(the\s*)?(airdrop|drop|claim)\b/i, weight: 4, label: "airdrop registration scam" },
+  { pattern: /\bairdrop(ping|s)?\s*(our\s*)?holders?\b/i, weight: 3, label: "fake holder airdrop" },
+  { pattern: /\bkill\s*dead\s*wallets?\b/i, weight: 4, label: "dead wallet manipulation" },
+  { pattern: /\breduce\s*supply\b/i, weight: 2, label: "supply manipulation" },
   { pattern: /\b(register\s*now|claim\s*now|act\s*now|hurry)\b.*\b(token|airdrop|reward)\b/i, weight: 3, label: "urgency scam" },
   { pattern: /\b(no\s*registration.*no\s*airdrop)\b/i, weight: 4, label: "conditional airdrop threat" },
-  { pattern: /\b(send|transfer)\s*\d+\s*(ETH|BTC|SOL|BNB|USDT|USDC)\b/i, weight: 5, label: "send-crypto scam" },
+  { pattern: /\b(send|transfer)\s*\d+\s*(ETH|BTC|SOL|BNB|USDT|USDC|CELO)\b/i, weight: 5, label: "send-crypto scam" },
   { pattern: /\b(validate|verify|sync)\s*(your\s*)?(wallet|metamask)\b/i, weight: 5, label: "wallet phishing" },
   { pattern: /\b(connect\s*wallet)\b.*\b(claim|airdrop|reward|token)\b/i, weight: 4, label: "connect-wallet scam" },
   { pattern: /\b(guaranteed\s*(return|profit|gain)|100x|1000x|moonshot)\b/i, weight: 3, label: "guaranteed returns" },
@@ -165,6 +173,7 @@ const SCAM_PATTERNS: { pattern: RegExp; weight: number; label: string }[] = [
   { pattern: /\b(earn\s*\$?\d+\s*(daily|hourly|weekly))\b/i, weight: 4, label: "earnings promise" },
   { pattern: /\b(private\s*sale|pre-?sale)\b.*\b(token|coin|join|register)\b/i, weight: 3, label: "presale scam" },
   { pattern: /\b(snapshot|migrate|swap)\b.*\b(within\s*\d+\s*(hour|day|minute))\b/i, weight: 3, label: "time-pressure migration" },
+  { pattern: /\bin\s*\d+\s*(hour|day|minute)s?\b.*\b(airdrop|migrate|redeploy|swap)\b/i, weight: 3, label: "timed action pressure" },
 ];
 
 const SCAM_THRESHOLD = 5;
@@ -645,6 +654,7 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 --- BEHAVIOR RULES ---
 - Use the context above confidently. You KNOW this project — answer with authority, never say "I don't have info" if the answer is in your context.
 - Keep responses SHORT — 1-3 sentences max (under ${config.maxResponseLength} characters). No walls of text.
+- NEVER guess or improvise specific data like contract addresses, token prices, wallet addresses, stats, or numbers. If the exact data isn't in your context above, say "I don't have that specific info right now" — NEVER fabricate or confuse one address/number for another.
 - NEVER ask users to send screenshots, timestamps, usernames, or "more details". Just handle it.
 - NEVER mention admins, admin review, or "flagging for admins". You handle things yourself.
 - NEVER ask users to do anything — don't say "share the text", "provide details", "reply with examples", etc.
@@ -670,7 +680,7 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
   messages.push({ role: "user", content: `${userName} says: ${userMessage}` });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
     const response = await openai.chat.completions.create({
