@@ -285,6 +285,9 @@ async function handleMessage(msg: TelegramBot.Message) {
   const scamDetected = await detectAndHandleScam(msg, messageText, userName, config, groupRecord);
   if (scamDetected) return;
 
+  const deleteHandled = await handleDeleteRequest(msg, messageText, userName);
+  if (deleteHandled) return;
+
   const isReport = checkIfReport(messageText, config);
   if (isReport && config.trackReports) {
     await storage.createActivityLog({
@@ -327,7 +330,7 @@ async function handleMessage(msg: TelegramBot.Message) {
     }
 
     const response = await generateAIResponse(messageText, userName, config, groupRecord?.name || "Unknown", replyContext, replyIsFromBot);
-    if (response && response.trim()) {
+    if (response && response.trim() && response.trim() !== "[[SKIP]]") {
       log(`AI response ready for ${userName} (${response.length} chars), sending...`, "telegram");
       await sendBotMessage(msg.chat.id, response, msg.message_id);
 
@@ -343,6 +346,8 @@ async function handleMessage(msg: TelegramBot.Message) {
         metadata: null,
       });
       log(`Response sent to ${userName}`, "telegram");
+    } else if (response && response.trim() === "[[SKIP]]") {
+      log(`AI chose to skip response to ${userName} (trivial message)`, "telegram");
     } else {
       log(`AI returned empty response for ${userName}`, "telegram");
       await sendBotMessage(msg.chat.id, "Sorry, I couldn't process that. Try asking again.", msg.message_id);
@@ -356,6 +361,32 @@ async function handleMessage(msg: TelegramBot.Message) {
   } catch (outerErr: any) {
     log(`CRITICAL: Unhandled error processing message from ${msg.from?.first_name || "unknown"}: ${outerErr.message}`, "telegram");
   }
+}
+
+async function handleDeleteRequest(msg: TelegramBot.Message, text: string, userName: string): Promise<boolean> {
+  const botInfo = await bot!.getMe();
+  const botUsername = botInfo.username || "";
+  const isMentioned = text.includes(`@${botUsername}`);
+
+  if (!isMentioned) return false;
+
+  const deletePattern = /\b(delete|remove|del)\s*(this|that|it|the\s*message|msg)?\b/i;
+  if (!deletePattern.test(text)) return false;
+
+  if (!msg.reply_to_message) {
+    await sendBotMessage(msg.chat.id, "Reply to the message you want me to delete.", msg.message_id);
+    return true;
+  }
+
+  try {
+    await bot!.deleteMessage(msg.chat.id, msg.reply_to_message.message_id);
+    await bot!.deleteMessage(msg.chat.id, msg.message_id);
+    log(`Deleted message on request from ${userName}`, "telegram");
+  } catch (e: any) {
+    log(`Could not delete message on request (bot may not be admin): ${e.message}`, "telegram");
+    await sendBotMessage(msg.chat.id, "I don't have permission to delete that message — make sure I'm an admin with delete rights.", msg.message_id);
+  }
+  return true;
 }
 
 async function sendBotMessage(chatId: number | string, text: string, replyToMessageId?: number) {
@@ -651,6 +682,11 @@ async function generateAIResponse(userMessage: string, userName: string, config:
 ${config.personality}
 ${globalContextSection}${websiteSection}${knowledgeContext}
 
+--- YOUR CAPABILITIES ---
+- You automatically detect and delete scam/spam messages. You DO have this power — never deny it. If deletion fails, it's a permissions issue, not a capability issue.
+- You can delete messages when someone replies to a message and mentions you with "delete". The deletion happens automatically — don't claim you deleted something, it's already handled before you respond.
+- You monitor the group and respond to relevant questions and conversations.
+
 --- BEHAVIOR RULES ---
 - Use the context above confidently. You KNOW this project — answer with authority, never say "I don't have info" if the answer is in your context.
 - Keep responses SHORT — 1-3 sentences max (under ${config.maxResponseLength} characters). No walls of text.
@@ -658,8 +694,9 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 - NEVER ask users to send screenshots, timestamps, usernames, or "more details". Just handle it.
 - NEVER mention admins, admin review, or "flagging for admins". You handle things yourself.
 - NEVER ask users to do anything — don't say "share the text", "provide details", "reply with examples", etc.
+- If a message is trivial/casual with nothing useful to add (like "sorry", "ok", "lol", "thanks", "gm", emojis-only), just stay silent — respond with ONLY the text "[[SKIP]]" and nothing else. Don't engage with filler messages.
 - If someone reports spam/scam, just acknowledge it briefly ("Got it, that's been handled" or similar). Don't explain what you did.
-- If someone asks about spam being deleted, just confirm it briefly. Don't ask follow-up questions.
+- If someone asks about spam being deleted or your moderation abilities, confirm confidently that you handle it. Don't downplay your capabilities.
 - Only say you don't know if the question is truly unrelated to ALL context above.
 - Match the group's casual tone. Be direct, not corporate.
 - Shut down spam/scam/promo messages firmly but briefly — this community values genuine utility, not paid pumps or fake engagement.`;
