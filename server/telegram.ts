@@ -401,15 +401,18 @@ Reported message by "${sanitize(author)}": "${sanitize(messageText)}"
 Report reason: "${sanitize(reportReason)}"
 
 Evaluate the message against these criteria:
-1. SPAM — unsolicited promotion, ads, scam links, repeated self-promotion
-2. INAPPROPRIATE — offensive, hateful, harassing, or NSFW content
-3. OFF_TOPIC — completely unrelated to the group's purpose (only if clearly irrelevant)
-4. LEGITIMATE — the message is acceptable and doesn't violate guidelines
+1. SPAM — unsolicited promotion, ads, scam links, repeated self-promotion, paid shilling offers
+2. SCAM_PROMOTION — offering fake investors, promising market cap, asking to DM for paid promotion, offering to "pump" or "shill" tokens, promising unrealistic returns, offering to buy/sell followers or engagement, any "DM me for investors/marketing" type messages
+3. INAPPROPRIATE — offensive, hateful, harassing, or NSFW content
+4. OFF_TOPIC — completely unrelated to the group's purpose (only if clearly irrelevant)
+5. LEGITIMATE — the message is acceptable and doesn't violate guidelines
+
+This community values genuine utility, real growth, and authentic community support. Messages offering paid promotion, fake investor connections, market cap manipulation, or any "get rich quick" schemes should be treated as SPAM/SCAM and deleted.
 
 Respond in this exact JSON format only:
-{"shouldDelete": true/false, "reason": "brief 1-sentence explanation", "category": "SPAM|INAPPROPRIATE|OFF_TOPIC|LEGITIMATE"}
+{"shouldDelete": true/false, "reason": "brief 1-sentence explanation", "category": "SPAM|SCAM_PROMOTION|INAPPROPRIATE|OFF_TOPIC|LEGITIMATE"}
 
-Only recommend deletion for SPAM, INAPPROPRIATE, or clearly OFF_TOPIC messages. When in doubt, keep the message and flag for admin review.`;
+Recommend deletion for SPAM, SCAM_PROMOTION, or INAPPROPRIATE messages. When in doubt about OFF_TOPIC, flag for admin review.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
@@ -522,7 +525,8 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 - If someone is reporting an issue, acknowledge it and note what they reported
 - Only say you don't know if the question is truly unrelated to any of the context above
 - Don't repeat information unnecessarily
-- Match the tone of the conversation`;
+- Match the tone of the conversation
+- Do NOT engage positively with spam, scam promotions, or "DM me for investors/marketing" type messages. If someone offers paid promotion, fake investors, market cap promises, or shilling services, politely shut it down — this community is focused on genuine utility and organic growth, not paid pumps or fake engagement.`;
 
   const messages: { role: "system" | "assistant" | "user"; content: string }[] = [
     { role: "system", content: systemPrompt },
