@@ -229,14 +229,13 @@ async function detectAndHandleScam(
     log(`Could not delete scam message (bot may not be admin): ${e.message}`, "telegram");
   }
 
-  const warningText = deleted
-    ? `⚠️ A message from ${userName} was automatically removed — it matched scam/spam patterns (${matches.slice(0, 3).join(", ")}). Stay safe: never share wallet keys or send crypto to strangers.`
-    : `⚠️ Warning: The message above from ${userName} looks like a scam/spam (${matches.slice(0, 3).join(", ")}). Do NOT click links, send crypto, or DM anyone offering tokens. Admins, please review.`;
-
-  try {
-    await sendBotMessage(msg.chat.id, warningText);
-  } catch (e: any) {
-    log(`Could not send scam warning: ${e.message}`, "telegram");
+  if (!deleted) {
+    const warningText = `⚠️ Warning: The message above from ${userName} looks like a scam/spam. Do NOT click links, send crypto, or DM anyone offering tokens.`;
+    try {
+      await sendBotMessage(msg.chat.id, warningText);
+    } catch (e: any) {
+      log(`Could not send scam warning: ${e.message}`, "telegram");
+    }
   }
 
   await storage.createActivityLog({
@@ -244,7 +243,7 @@ async function detectAndHandleScam(
     type: "report",
     userName,
     userMessage: text,
-    botResponse: warningText,
+    botResponse: deleted ? "(silently deleted)" : "(warned — could not delete)",
     isReport: true,
     metadata: JSON.stringify({ autoDetected: true, scamScore: score, flags: matches }),
   });
