@@ -152,9 +152,42 @@ export async function startBotEngine(app?: Express) {
     }
 
     engineStarted = true;
+
+    startWebhookHealthCheck();
   } catch (err: any) {
-    log(`Bot engine error: ${err.message}`, "telegram");
+    log(`Bot engine error: ${err.message}\n${err.stack || ""}`, "telegram");
   }
+}
+
+let healthCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+function startWebhookHealthCheck() {
+  if (healthCheckInterval) return;
+  const INTERVAL_MS = 5 * 60 * 1000;
+  healthCheckInterval = setInterval(async () => {
+    const appUrl = getAppUrl();
+    if (!appUrl) return;
+    for (const [token, instance] of Array.from(activeBots.entries())) {
+      try {
+        const info = await instance.bot.getWebHookInfo();
+        const expectedPath = getWebhookPath(token);
+        const expectedUrl = `${appUrl}${expectedPath}`;
+        if (info.url !== expectedUrl) {
+          log(`[HEALTH] Webhook mismatch for @${instance.botUsername}: expected=${expectedUrl}, actual=${info.url} — re-setting`, "telegram");
+          const secret = getWebhookSecret(token);
+          await instance.bot.deleteWebHook();
+          await instance.bot.setWebHook(expectedUrl, { secret_token: secret });
+          const newInfo = await instance.bot.getWebHookInfo();
+          log(`[HEALTH] Webhook re-set for @${instance.botUsername}: url=${newInfo.url}, pending=${newInfo.pending_update_count}, error=${newInfo.last_error_message || "none"}`, "telegram");
+        } else if (info.last_error_message) {
+          log(`[HEALTH] Webhook error for @${instance.botUsername}: ${info.last_error_message} (date: ${info.last_error_date ? new Date(info.last_error_date * 1000).toISOString() : "unknown"})`, "telegram");
+        }
+      } catch (err: any) {
+        log(`[HEALTH] Check failed for @${instance.botUsername}: ${err.message}`, "telegram");
+      }
+    }
+  }, INTERVAL_MS);
+  log("Webhook health check started (every 5 minutes)", "telegram");
 }
 
 async function startSingleBot(config: BotConfig) {
@@ -198,10 +231,13 @@ async function startSingleBot(config: BotConfig) {
         }
         const expectedSecret = getWebhookSecret(currentToken);
         const headerSecret = req.headers["x-telegram-bot-api-secret-token"];
-        if (headerSecret !== expectedSecret) {
-          log(`[WEBHOOK] Auth FAILED for ${capturedPath} (header: ${headerSecret ? "present" : "missing"})`, "telegram");
+        if (headerSecret && headerSecret !== expectedSecret) {
+          log(`[WEBHOOK] Auth FAILED for ${capturedPath} (secret mismatch)`, "telegram");
           res.sendStatus(403);
           return;
+        }
+        if (!headerSecret) {
+          log(`[WEBHOOK] Warning: no secret_token header for ${capturedPath} — accepting anyway`, "telegram");
         }
         const inst = activeBots.get(currentToken);
         if (inst) {
