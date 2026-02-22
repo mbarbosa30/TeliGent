@@ -49,6 +49,50 @@ function getAppUrl(): string | null {
   return null;
 }
 
+export async function getWebhookStatus(botConfigId: number): Promise<any> {
+  for (const [, instance] of Array.from(activeBots.entries())) {
+    if (instance.botConfigId === botConfigId) {
+      try {
+        const info = await instance.bot.getWebHookInfo();
+        return {
+          active: true,
+          botUsername: instance.botUsername,
+          webhookUrl: info.url,
+          pendingUpdates: info.pending_update_count,
+          lastError: info.last_error_message || null,
+          lastErrorDate: info.last_error_date ? new Date(info.last_error_date * 1000).toISOString() : null,
+          hasCustomCert: info.has_custom_certificate,
+          maxConnections: info.max_connections,
+        };
+      } catch (err: any) {
+        return { active: true, error: err.message, stack: err.stack };
+      }
+    }
+  }
+
+  try {
+    const config = await storage.getBotConfig(botConfigId);
+    if (!config || !config.botToken) {
+      return { active: false, error: "No bot config or token found" };
+    }
+    const tempBot = new TelegramBot(config.botToken);
+    const info = await tempBot.getWebHookInfo();
+    return {
+      active: false,
+      botName: config.botName,
+      webhookUrl: info.url,
+      pendingUpdates: info.pending_update_count,
+      lastError: info.last_error_message || null,
+      lastErrorDate: info.last_error_date ? new Date(info.last_error_date * 1000).toISOString() : null,
+      hasCustomCert: info.has_custom_certificate,
+      maxConnections: info.max_connections,
+      note: "Bot is not in active instances — queried Telegram directly",
+    };
+  } catch (err: any) {
+    return { active: false, error: err.message, stack: err.stack };
+  }
+}
+
 export async function startBotEngine(app?: Express) {
   if (app) expressApp = app;
 
@@ -179,10 +223,31 @@ async function startSingleBot(config: BotConfig) {
     }
 
     const webhookUrl = `${appUrl}${webhookPath}`;
-    await bot.setWebHook(webhookUrl, { secret_token: secret });
+    try {
+      await bot.deleteWebHook();
+    } catch (e: any) {
+      log(`Warning: deleteWebHook before set failed for @${botUsername}: ${e.message}`, "telegram");
+    }
+    const setResult = await bot.setWebHook(webhookUrl, { secret_token: secret });
+    log(`setWebHook result for @${botUsername}: ${setResult}`, "telegram");
+
+    const webhookInfo = await bot.getWebHookInfo();
+    log(`Webhook info for @${botUsername}: url=${webhookInfo.url}, pending=${webhookInfo.pending_update_count}, last_error=${webhookInfo.last_error_message || "none"}, last_error_date=${webhookInfo.last_error_date || "none"}, has_custom_cert=${webhookInfo.has_custom_certificate}, max_connections=${webhookInfo.max_connections}`, "telegram");
+
+    if (webhookInfo.last_error_message) {
+      log(`WARNING: Telegram reports webhook error for @${botUsername}: ${webhookInfo.last_error_message}`, "telegram");
+      log(`Retrying setWebHook for @${botUsername}...`, "telegram");
+      await bot.deleteWebHook();
+      await new Promise(r => setTimeout(r, 1000));
+      const retryResult = await bot.setWebHook(webhookUrl, { secret_token: secret });
+      log(`Retry setWebHook result for @${botUsername}: ${retryResult}`, "telegram");
+      const retryInfo = await bot.getWebHookInfo();
+      log(`Retry webhook info for @${botUsername}: url=${retryInfo.url}, pending=${retryInfo.pending_update_count}, last_error=${retryInfo.last_error_message || "none"}`, "telegram");
+    }
+
     log(`Bot started for user ${userId}: @${botUsername} (webhook: ${webhookUrl})`, "telegram");
   } catch (err: any) {
-    log(`Failed to start bot for user ${userId}: ${err.message}`, "telegram");
+    log(`Failed to start bot for user ${userId}: ${err.message}\n${err.stack || ""}`, "telegram");
   }
 }
 

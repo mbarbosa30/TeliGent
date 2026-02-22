@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
-import { startBotEngine } from "./telegram";
+import { startBotEngine, getWebhookStatus } from "./telegram";
 import { isAuthenticated } from "./auth";
 
 function getUserId(req: any): string {
@@ -102,6 +102,16 @@ export async function registerRoutes(
   app.get("/api/bots/:botId/config", isAuthenticated, requireBotOwnership, async (req, res) => {
     try {
       res.json((req as any).botConfig);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/webhook-status", isAuthenticated, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const status = await getWebhookStatus(botId);
+      res.json(status);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
