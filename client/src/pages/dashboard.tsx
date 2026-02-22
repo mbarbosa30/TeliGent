@@ -64,7 +64,7 @@ export default function Dashboard() {
               <div className="min-w-0">
                 <p className="text-sm font-medium">Connect your Telegram bot</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Go to <Link href="/settings" className="text-foreground underline underline-offset-2 font-medium" data-testid="link-settings-token">Settings</Link> and enter your <strong>Telegram Bot Token</strong> to get started. You can get one from @BotFather on Telegram.
+                  Follow the <Link href="/setup" className="text-foreground underline underline-offset-2 font-medium" data-testid="link-setup-guide">Setup Guide</Link> to create a Telegram bot and connect it, or go directly to <Link href="/settings" className="text-foreground underline underline-offset-2 font-medium" data-testid="link-settings-token">Settings</Link> to enter your bot token.
                 </p>
               </div>
             </CardContent>
