@@ -368,12 +368,24 @@ A message IS a SCAM/SPAM if it does ANY of these:
 - Pitches any kind of paid or free service to the group unsolicited
 - Uses homoglyph evasion (replacing letters with look-alikes like I for l, 0 for O) — this is ALWAYS a scam indicator
 
+CRITICAL — GIVEAWAY SCAMS (ALWAYS flag these):
+- Any message offering to give/send/distribute crypto (SOL, ETH, BTC, tokens, etc.) to group members — this is ALWAYS a scam
+- "I want to give some SOL to the first 5 members" → SCAM
+- "Giving away ETH to the community" → SCAM  
+- "Contact me with your wallet address" → SCAM
+- "First X people to DM/contact/message me get free crypto" → SCAM
+- ANY variation of "I will give/send/distribute crypto to people who contact me" → SCAM
+- Regular users NEVER legitimately distribute crypto in group chats
+
 EXAMPLES OF SCAMS (flag these):
+- "HEY GUYS I WANT TO GIVE SOME SOL TO THE FIRST 5 MEMBERS OF THIS GROUP TO CONTACT ME WITH SOL ADDRESS" → SCAM (crypto giveaway scam)
+- "gonna send some BTC to the first 3 holders who reach out" → SCAM (crypto giveaway scam)
 - "Love your project! I'd love to create custom 2D/3D crypto meme animations using your mascot" → SCAM (unsolicited service offer)
 - "Am working on migration and airdropping of all holders" → SCAM (impersonating authority, fake migration)  
 - "Drop me a private message with your tx hash" → SCAM (DM solicitation + asking for tx data)
 - "I can design NFTs, logos, banners for your project" → SCAM (unsolicited service pitch)
 - "Great project! DM me for promotion services" → SCAM (flattery + service pitch)
+- "I'm giving away 1000 USDT to the first 10 people who message me" → SCAM (giveaway scam)
 
 A message is NOT a scam if it's:
 - A normal question or discussion about the project
@@ -724,7 +736,11 @@ async function detectAndHandleScam(
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Token pump / paid promotion service offer");
   }
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
-  if (!hasUrl && normalized.length < MIN_SCAM_CHECK_LENGTH && !isImpersonator && !evasionDetected) {
+  const hasCryptoKeywords = /\b(sol|eth|btc|bnb|usdt|usdc|crypto|token|coin|nft|wallet|airdrop|giveaway|give\s*away|migration|migrat(e|ing)|swap|dex|defi|staking|stake|yield|liquidity|rug|pump|dump|shill|raid|shitcoin|memecoin|meme\s*coin|presale|pre\s*sale|whitelist|white\s*list|seed\s*phrase|private\s*key|contract\s*address|ca\b|mint|bridge|chain|blockchain|web3|solana|ethereum|bitcoin|tether|binance|phantom|metamask|ledger|trezor)\b/i.test(normalized);
+  const hasDmKeywords = /\b(dm|pm|inbox|private\s*message|contact\s*me|reach\s*out|message\s*me|send\s*me|write\s*me|hit\s*me\s*up)\b/i.test(normalized);
+  const hasFinancialKeywords = /\b(invest|profit|trading|signal|call|insider|roi|return|earn|income|passive|guarantee|risk\s*free|double\s*your|triple\s*your|x\d+|\d+x\b|moon|lambo)\b/i.test(normalized);
+  const needsAiCheck = hasUrl || hasCryptoKeywords || hasDmKeywords || hasFinancialKeywords || isImpersonator || evasionDetected;
+  if (!needsAiCheck && normalized.length < MIN_SCAM_CHECK_LENGTH) {
     return false;
   }
 
