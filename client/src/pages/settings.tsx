@@ -124,8 +124,8 @@ export default function SettingsPage() {
       <div className="p-6 space-y-6 max-w-3xl mx-auto">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold" data-testid="text-page-title">Settings</h1>
-            <p className="text-muted-foreground mt-1">Configure how your bot behaves</p>
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Settings</h1>
+            <p className="text-sm text-muted-foreground mt-1">Configure how your bot behaves</p>
           </div>
           <Button onClick={form.handleSubmit((d) => mutation.mutate(d))} disabled={mutation.isPending || isLoading || !config} data-testid="button-save-settings">
             <Save className="h-4 w-4 mr-2" />
@@ -136,9 +136,9 @@ export default function SettingsPage() {
         <Form {...form}>
           <form className="space-y-6" onSubmit={form.handleSubmit((d) => { if (config) mutation.mutate(d); })}>
             {!config?.botToken?.trim() && (
-              <Card className="border-yellow-600/50 dark:border-yellow-500/40 bg-yellow-50 dark:bg-yellow-900/10" data-testid="banner-setup-token">
+              <Card className="border-foreground/30" data-testid="banner-setup-token">
                 <CardContent className="flex items-start gap-3 pt-5 pb-4">
-                  <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+                  <AlertTriangle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">Bot token required</p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -250,7 +250,7 @@ export default function SettingsPage() {
                     </Button>
                   </div>
                   {config?.websiteContent && (
-                    <div className="rounded-md bg-muted/50 p-3 space-y-1">
+                    <div className="bg-muted p-3 space-y-1">
                       <p className="text-xs font-medium text-muted-foreground">Imported website content ({config.websiteContent.length.toLocaleString()} characters)</p>
                       <p className="text-xs text-muted-foreground line-clamp-3">{config.websiteContent.slice(0, 300)}...</p>
                     </div>

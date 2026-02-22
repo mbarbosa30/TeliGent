@@ -4,6 +4,7 @@
 A multi-tenant SaaS platform where users sign up with email/password, connect their own Telegram bot tokens, and configure AI-powered group bots. Each user has isolated data (configs, knowledge base, groups, activity logs). Supports per-user bot instances running concurrently.
 
 ## Recent Changes
+- 2026-02-22: **Design overhaul — refined minimal aesthetic** — Space Grotesk + JetBrains Mono fonts, zero border-radius, no shadows, monochrome palette, sharp edges, font-mono on stats/timestamps/badges only
 - 2026-02-22: **Replaced Replit Auth with email/password auth** — bcrypt password hashing, session-based auth, register/login forms
 - 2026-02-22: **Scam detection massively improved** — homoglyph normalization (I/l, 0/O, Cyrillic), unsolicited service offer detection, migration/airdrop scam patterns, name impersonation detection, strengthened AI prompt
 - 2026-02-22: Multi-tenant SaaS conversion — per-user data isolation, multi-bot engine, landing page, bot token onboarding

@@ -39,15 +39,15 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
-            <Bot className="h-5 w-5 text-primary-foreground" />
+          <div className="flex h-9 w-9 items-center justify-center bg-foreground">
+            <Bot className="h-5 w-5 text-background" />
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-sm font-semibold truncate" data-testid="text-bot-name">
               {config?.botName || "ContextBot"}
             </span>
             <div className="flex items-center gap-1.5">
-              <div className={`h-1.5 w-1.5 rounded-full ${hasToken && config?.isActive ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+              <div className={`h-1.5 w-1.5 ${hasToken && config?.isActive ? "bg-green-500" : "bg-muted-foreground/40"}`} />
               <span className="text-xs text-muted-foreground">
                 {!hasToken ? "No token set" : config?.isActive ? "Online" : "Offline"}
               </span>
@@ -57,7 +57,7 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-xs uppercase tracking-wider text-muted-foreground">Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
@@ -81,9 +81,9 @@ export function AppSidebar() {
         {user && (
           <div className="flex items-center gap-2">
             {user.profileImageUrl ? (
-              <img src={user.profileImageUrl} alt="" className="h-7 w-7 rounded-full" />
+              <img src={user.profileImageUrl} alt="" className="h-7 w-7" />
             ) : (
-              <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+              <div className="h-7 w-7 bg-muted flex items-center justify-center text-xs font-medium">
                 {(user.firstName || user.email || "U")[0].toUpperCase()}
               </div>
             )}
@@ -98,7 +98,7 @@ export function AppSidebar() {
           </div>
         )}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary" className="text-xs">v2.0</Badge>
+          <Badge variant="secondary" className="text-xs font-mono">v2.0</Badge>
           <span>ContextBot</span>
         </div>
       </SidebarFooter>

@@ -25,21 +25,17 @@ function StepCard({
   completed?: boolean;
 }) {
   return (
-    <Card className={completed ? "border-green-500/30 bg-green-500/5" : ""}>
+    <Card>
       <CardHeader className="pb-3">
         <div className="flex items-start gap-3">
-          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-            completed
-              ? "bg-green-500 text-white"
-              : "bg-primary text-primary-foreground"
-          }`}>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center text-sm font-bold bg-foreground text-background">
             {completed ? <CheckCircle2 className="h-4 w-4" /> : step}
           </div>
           <div className="space-y-1">
             <CardTitle className="text-base flex items-center gap-2">
               {title}
               {completed && (
-                <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600">
+                <Badge variant="secondary" className="text-xs">
                   Done
                 </Badge>
               )}
@@ -55,7 +51,7 @@ function StepCard({
 
 function CodeBlock({ children }: { children: string }) {
   return (
-    <code className="inline-block px-2 py-0.5 bg-muted rounded text-sm font-mono">
+    <code className="inline-block px-2 py-0.5 bg-muted text-sm font-mono">
       {children}
     </code>
   );
@@ -71,10 +67,10 @@ export default function SetupGuidePage() {
       <div className="max-w-3xl mx-auto p-6 space-y-6">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            <h1 className="text-2xl font-bold" data-testid="text-setup-title">Setup Guide</h1>
+            <Sparkles className="h-5 w-5 text-muted-foreground" />
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-setup-title">Setup Guide</h1>
           </div>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Follow these steps to create your Telegram bot and connect it to ContextBot. The whole process takes about 5 minutes.
           </p>
         </div>
@@ -95,7 +91,7 @@ export default function SetupGuidePage() {
                     href="https://t.me/BotFather"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary hover:underline inline-flex items-center gap-1"
+                    className="text-foreground underline underline-offset-2 inline-flex items-center gap-1"
                     data-testid="link-botfather"
                   >
                     @BotFather <ExternalLink className="h-3 w-3" />
@@ -112,12 +108,12 @@ export default function SetupGuidePage() {
                 </li>
                 <li>
                   BotFather will reply with your <strong>bot token</strong> — it looks like this:
-                  <div className="mt-1 p-2 bg-muted rounded-md font-mono text-xs break-all">
+                  <div className="mt-1 p-2 bg-muted font-mono text-xs break-all">
                     123456789:ABCdefGHIjklMNOpqrsTUVwxyz
                   </div>
                 </li>
               </ol>
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-amber-700 dark:text-amber-400 text-xs">
+              <div className="p-3 bg-muted border text-xs">
                 <strong>Keep your token secret!</strong> Anyone with your token can control your bot. Never share it publicly.
               </div>
             </div>
@@ -136,7 +132,7 @@ export default function SetupGuidePage() {
                     href="https://t.me/BotFather"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary hover:underline inline-flex items-center gap-1"
+                    className="text-foreground underline underline-offset-2 inline-flex items-center gap-1"
                   >
                     @BotFather <ExternalLink className="h-3 w-3" />
                   </a>
@@ -145,7 +141,7 @@ export default function SetupGuidePage() {
                 <li>Select your bot from the list</li>
                 <li>Choose <strong>Disable</strong></li>
               </ol>
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-amber-700 dark:text-amber-400 text-xs">
+              <div className="p-3 bg-muted border text-xs">
                 <strong>Why is this important?</strong> By default, bots in groups can only see messages that mention them directly. Disabling privacy mode lets the bot read all messages — which is required for scam detection and auto-moderation.
               </div>
             </div>
@@ -190,15 +186,15 @@ export default function SetupGuidePage() {
               <p>On the Settings page, customize:</p>
               <ul className="space-y-1.5">
                 <li className="flex items-start gap-2">
-                  <Bot className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                  <Bot className="h-4 w-4 mt-0.5 shrink-0" />
                   <span><strong>Bot Name</strong> — How your bot identifies itself</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <MessageSquare className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                  <MessageSquare className="h-4 w-4 mt-0.5 shrink-0" />
                   <span><strong>Personality</strong> — The tone and style of bot responses</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Shield className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                  <Shield className="h-4 w-4 mt-0.5 shrink-0" />
                   <span><strong>Scam Detection</strong> — Automatically detects and removes scam messages</span>
                 </li>
               </ul>
@@ -233,7 +229,7 @@ export default function SetupGuidePage() {
                   </ul>
                 </li>
               </ol>
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md text-blue-700 dark:text-blue-400 text-xs">
+              <div className="p-3 bg-muted border text-xs">
                 The bot will appear in your Connected Groups list on the Dashboard once someone sends a message in the group.
               </div>
             </div>
@@ -248,15 +244,15 @@ export default function SetupGuidePage() {
               <p>Go to the Knowledge Base page and add information your bot should know, like:</p>
               <ul className="space-y-1.5">
                 <li className="flex items-start gap-2">
-                  <BookOpen className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                  <BookOpen className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>Project FAQ, tokenomics, roadmap</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <BookOpen className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                  <BookOpen className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>Official links and social media</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <BookOpen className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+                  <BookOpen className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>Rules and guidelines for your community</span>
                 </li>
               </ul>

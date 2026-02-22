@@ -157,7 +157,7 @@ function PasteContentDialog() {
           <div className="space-y-2">
             <Label htmlFor="paste-content">Content</Label>
             <Textarea id="paste-content" placeholder="Paste your text here..." value={content} onChange={(e) => setContent(e.target.value)} className="min-h-[200px]" data-testid="input-paste-content" />
-            {content && <p className="text-xs text-muted-foreground">{content.length.toLocaleString()} characters</p>}
+            {content && <p className="text-xs text-muted-foreground font-mono">{content.length.toLocaleString()} characters</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="paste-category">Category</Label>
@@ -224,8 +224,8 @@ export default function KnowledgeBase() {
       <div className="p-6 space-y-6 max-w-5xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold" data-testid="text-page-title">Knowledge Base</h1>
-            <p className="text-muted-foreground mt-1">Content the bot uses to answer questions</p>
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Knowledge Base</h1>
+            <p className="text-sm text-muted-foreground mt-1">Content the bot uses to answer questions</p>
           </div>
           <div className="flex gap-2">
             <PasteContentDialog />
@@ -278,13 +278,13 @@ export default function KnowledgeBase() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         <h3 className="text-sm font-semibold">{entry.title}</h3>
-                        <Badge variant="secondary" className="text-xs">{entry.category}</Badge>
+                        <Badge variant="secondary" className="text-xs font-mono">{entry.category}</Badge>
                         {!entry.isActive && <Badge variant="secondary" className="text-xs">Disabled</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground line-clamp-2">{entry.content}</p>
                       <div className="flex items-center gap-3 mt-2 flex-wrap">
                         {entry.sourceUrl && (
-                          <a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-primary">
+                          <a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-foreground underline underline-offset-2">
                             <ExternalLink className="h-3 w-3" />
                             Source
                           </a>

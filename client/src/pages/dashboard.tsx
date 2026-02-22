@@ -18,7 +18,7 @@ function StatCard({ title, value, icon: Icon, description, loading }: {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">{title}</CardTitle>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
@@ -26,7 +26,7 @@ function StatCard({ title, value, icon: Icon, description, loading }: {
           <Skeleton className="h-7 w-20" />
         ) : (
           <>
-            <div className="text-2xl font-bold" data-testid={`text-stat-${title.toLowerCase().replace(/\s/g, "-")}`}>{value}</div>
+            <div className="font-mono text-3xl font-bold" data-testid={`text-stat-${title.toLowerCase().replace(/\s/g, "-")}`}>{value}</div>
             {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
           </>
         )}
@@ -53,14 +53,14 @@ export default function Dashboard() {
     <ScrollArea className="h-full">
       <div className="p-6 space-y-6 max-w-6xl mx-auto">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Monitor your bot's activity and performance</p>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">Monitor your bot's activity and performance</p>
         </div>
 
         {!configLoading && config && !config.botToken?.trim() && (
-          <Card className="border-yellow-600/50 dark:border-yellow-500/40 bg-yellow-50 dark:bg-yellow-900/10" data-testid="banner-setup-token">
+          <Card className="border-foreground/30" data-testid="banner-setup-token">
             <CardContent className="flex items-start gap-3 pt-5 pb-4">
-              <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+              <AlertTriangle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <p className="text-sm font-medium">Connect your Telegram bot</p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -72,9 +72,9 @@ export default function Dashboard() {
         )}
 
         {!configLoading && config && config.botToken?.trim() && !config.globalContext?.trim() && (
-          <Card className="border-yellow-600/50 dark:border-yellow-500/40 bg-yellow-50 dark:bg-yellow-900/10" data-testid="banner-setup-context">
+          <Card className="border-foreground/30" data-testid="banner-setup-context">
             <CardContent className="flex items-start gap-3 pt-5 pb-4">
-              <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+              <AlertTriangle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <p className="text-sm font-medium">Your bot needs context to answer questions</p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -86,34 +86,10 @@ export default function Dashboard() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            title="Groups"
-            value={groups.length}
-            icon={Users}
-            description={`${totalMembers} total members`}
-            loading={groupsLoading}
-          />
-          <StatCard
-            title="Knowledge Items"
-            value={knowledge.length}
-            icon={BookOpen}
-            description="Active entries"
-            loading={knowledgeLoading}
-          />
-          <StatCard
-            title="Today's Activity"
-            value={todayActivity}
-            icon={Activity}
-            description="Messages processed"
-            loading={activityLoading}
-          />
-          <StatCard
-            title="Reports"
-            value={recentReports}
-            icon={Shield}
-            description="User reports tracked"
-            loading={activityLoading}
-          />
+          <StatCard title="Groups" value={groups.length} icon={Users} description={`${totalMembers} total members`} loading={groupsLoading} />
+          <StatCard title="Knowledge Items" value={knowledge.length} icon={BookOpen} description="Active entries" loading={knowledgeLoading} />
+          <StatCard title="Today's Activity" value={todayActivity} icon={Activity} description="Messages processed" loading={activityLoading} />
+          <StatCard title="Reports" value={recentReports} icon={Shield} description="User reports tracked" loading={activityLoading} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -143,15 +119,15 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Cooldown</span>
-                    <span className="text-sm font-medium">{config.cooldownSeconds}s</span>
+                    <span className="text-sm font-mono">{config.cooldownSeconds}s</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Mention Only</span>
-                    <span className="text-sm font-medium">{config.onlyRespondWhenMentioned ? "Yes" : "No"}</span>
+                    <span className="text-sm font-mono">{config.onlyRespondWhenMentioned ? "Yes" : "No"}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Respond to Replies</span>
-                    <span className="text-sm font-medium">{config.respondToReplies ? "Yes" : "No"}</span>
+                    <span className="text-sm font-mono">{config.respondToReplies ? "Yes" : "No"}</span>
                   </div>
                 </>
               ) : (
@@ -182,8 +158,8 @@ export default function Dashboard() {
                   {groups.slice(0, 5).map((group) => (
                     <div key={group.id} className="flex items-center justify-between" data-testid={`group-item-${group.id}`}>
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-secondary">
-                          <MessageSquare className="h-4 w-4 text-secondary-foreground" />
+                        <div className="flex h-8 w-8 items-center justify-center bg-muted">
+                          <MessageSquare className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">{group.name}</p>
@@ -223,13 +199,13 @@ export default function Dashboard() {
               <div className="space-y-3">
                 {activity.slice(0, 8).map((log) => (
                   <div key={log.id} className="flex items-start gap-3 pb-3 border-b last:border-b-0 last:pb-0" data-testid={`activity-item-${log.id}`}>
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${log.isReport ? "bg-destructive/10" : "bg-secondary"}`}>
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center ${log.isReport ? "bg-destructive/10" : "bg-muted"}`}>
                       {log.isReport ? (
                         <Shield className="h-4 w-4 text-destructive" />
                       ) : log.type === "response" ? (
-                        <MessageSquare className="h-4 w-4 text-secondary-foreground" />
+                        <MessageSquare className="h-4 w-4" />
                       ) : (
-                        <Activity className="h-4 w-4 text-secondary-foreground" />
+                        <Activity className="h-4 w-4" />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -245,7 +221,7 @@ export default function Dashboard() {
                         <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">Bot: {log.botResponse}</p>
                       )}
                     </div>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 font-mono">
                       {format(new Date(log.createdAt), "HH:mm")}
                     </span>
                   </div>

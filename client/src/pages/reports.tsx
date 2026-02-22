@@ -16,30 +16,30 @@ export default function ReportsPage() {
     <ScrollArea className="h-full">
       <div className="p-6 space-y-6 max-w-5xl mx-auto">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Reports</h1>
-          <p className="text-muted-foreground mt-1">Issues and reports detected from group conversations</p>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Reports</h1>
+          <p className="text-sm text-muted-foreground mt-1">Issues and reports detected from group conversations</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Reports</CardTitle>
+              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Total Reports</CardTitle>
               <Shield className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-7 w-16" /> : (
-                <div className="text-2xl font-bold" data-testid="text-total-reports">{reports.length}</div>
+                <div className="font-mono text-3xl font-bold" data-testid="text-total-reports">{reports.length}</div>
               )}
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Today</CardTitle>
+              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Today</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-7 w-16" /> : (
-                <div className="text-2xl font-bold">
+                <div className="font-mono text-3xl font-bold">
                   {reports.filter(r => new Date(r.createdAt).toDateString() === new Date().toDateString()).length}
                 </div>
               )}
@@ -47,12 +47,12 @@ export default function ReportsPage() {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Unique Reporters</CardTitle>
+              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Unique Reporters</CardTitle>
               <User className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-7 w-16" /> : (
-                <div className="text-2xl font-bold">
+                <div className="font-mono text-3xl font-bold">
                   {new Set(reports.map(r => r.userName).filter(Boolean)).size}
                 </div>
               )}
@@ -80,7 +80,7 @@ export default function ReportsPage() {
               <Card key={report.id} data-testid={`report-item-${report.id}`}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-destructive/10">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-destructive/10">
                       <AlertTriangle className="h-4 w-4 text-destructive" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -89,7 +89,7 @@ export default function ReportsPage() {
                           <span className="text-sm font-medium">{report.userName || "Unknown"}</span>
                           <Badge variant="destructive" className="text-xs">Report</Badge>
                         </div>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground font-mono">
                           {format(new Date(report.createdAt), "MMM d, yyyy HH:mm")}
                         </span>
                       </div>
@@ -97,7 +97,7 @@ export default function ReportsPage() {
                         <p className="text-sm mt-1">{report.userMessage}</p>
                       )}
                       {report.botResponse && (
-                        <div className="mt-2 p-2.5 rounded-md bg-secondary/50">
+                        <div className="mt-2 border-l-2 border-border pl-3 py-1">
                           <p className="text-xs font-medium text-muted-foreground mb-0.5">Bot Acknowledgment</p>
                           <p className="text-sm">{report.botResponse}</p>
                         </div>

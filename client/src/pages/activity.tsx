@@ -19,15 +19,6 @@ const typeIcons: Record<string, any> = {
   command: Bot,
 };
 
-const typeColors: Record<string, string> = {
-  response: "bg-primary/10",
-  report: "bg-destructive/10",
-  join: "bg-chart-2/10",
-  leave: "bg-muted",
-  mention: "bg-chart-3/10",
-  command: "bg-chart-4/10",
-};
-
 export default function ActivityPage() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
@@ -45,8 +36,8 @@ export default function ActivityPage() {
     <ScrollArea className="h-full">
       <div className="p-6 space-y-6 max-w-5xl mx-auto">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Activity Log</h1>
-          <p className="text-muted-foreground mt-1">See everything your bot is doing across groups</p>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Activity Log</h1>
+          <p className="text-sm text-muted-foreground mt-1">See everything your bot is doing across groups</p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
@@ -89,12 +80,11 @@ export default function ActivityPage() {
           <div className="space-y-2">
             {filtered.map((log) => {
               const Icon = typeIcons[log.type] || Activity;
-              const colorClass = typeColors[log.type] || "bg-secondary";
               return (
                 <Card key={log.id} data-testid={`activity-log-${log.id}`}>
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
-                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${colorClass}`}>
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center ${log.isReport ? "bg-destructive/10" : "bg-muted"}`}>
                         <Icon className={`h-4 w-4 ${log.isReport ? "text-destructive" : ""}`} />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -105,7 +95,7 @@ export default function ActivityPage() {
                               {log.isReport ? "Report" : log.type}
                             </Badge>
                           </div>
-                          <span className="text-xs text-muted-foreground shrink-0">
+                          <span className="text-xs text-muted-foreground shrink-0 font-mono">
                             {format(new Date(log.createdAt), "MMM d, HH:mm")}
                           </span>
                         </div>
@@ -113,7 +103,7 @@ export default function ActivityPage() {
                           <p className="text-sm text-muted-foreground mt-1">{log.userMessage}</p>
                         )}
                         {log.botResponse && (
-                          <div className="mt-2 p-2.5 rounded-md bg-secondary/50">
+                          <div className="mt-2 border-l-2 border-border pl-3 py-1">
                             <p className="text-xs font-medium text-muted-foreground mb-0.5">Bot Response</p>
                             <p className="text-sm">{log.botResponse}</p>
                           </div>
