@@ -654,6 +654,10 @@ async function detectAndHandleScam(
   const hasFlatteryPitch = hasFlattery && hasServicePitch;
 
   const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b|\b(inbox|dm|pm)\b.*\b(for|me)\b|\bshould\s*(dm|pm|message|inbox)\b/i.test(normalized);
+  const serviceMenuKeywordsGlobal = /\b(sticker|logo|banner|meme|gif|emoji|animation|video|website|white\s*paper|whitepaper|buybot|buy\s*bot|drawing|promo|design|nft|mascot|flyer|poster|thumbnail|graphic|branding|merch)s?\b/ig;
+  const serviceMenuCount = (normalized.match(serviceMenuKeywordsGlobal) || []).length;
+  const hasDmServiceMenu = /\b(dm|pm|inbox|message|contact)\s*.{0,20}@\w+/i.test(normalized) && serviceMenuCount >= 2;
+  const hasServiceListSpam = serviceMenuCount >= 3 && /\b(dm|pm|inbox|message|contact|order|hire|available|and\s*more)\b/i.test(normalized);
   const hasScamOffer = /\b(promot|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized);
   const hasCryptoGiveawayScam = /\b(giv(e|ing)\s*(away|out|free|you|them|my))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
     /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,40}\b(giv(e|ing)\s*(away|out|free))\b/i.test(normalized) ||
@@ -681,7 +685,7 @@ async function detectAndHandleScam(
   );
   const hasUnsolicitedGroupLink = hasTelegramLink && /\b(join\s*(us|our|my|this|the)|come\s*join|check\s*(this|my|our)|new\s*(group|channel|community))\b/i.test(normalized);
 
-  const hasDmWithUsername = /\b(dm|pm)\s*.{0,5}@\w+/i.test(normalized) && /\b(call|signal|insider|profit|trade|print|miss|join|part)\b/i.test(normalized);
+  const hasDmWithUsername = /\b(dm|pm)\s*.{0,5}@\w+/i.test(normalized) && /\b(call|signal|insider|profit|trade|print|miss|join|part|sticker|logo|banner|design|animation|website|promo|nft|mascot|gif|emoji|video|meme|drawing|whitepaper|white\s*paper|branding|graphic)s?\b/i.test(normalized);
   const hasInsiderCallSpam = (/\b(insider|my\s*(call|signal)|vip\s*(call|group|channel|access)|paid\s*(call|group|signal)|fading\s*me)\b/i.test(normalized) && /\b(dm|pm)\s*.{0,10}@\w+/i.test(normalized)) || /\binsider\b.{0,20}\b(cook|member|call|signal|group)s?\b.{0,30}(print|profit|money|gain|earning)/i.test(normalized) || /\bdrop\s*(cook|call|signal)s?\b.{0,20}(print|profit|member)/i.test(normalized) || /\b(inner\s*circle|private\s*circle)\b.{0,40}(print|profit|\dx|\d+x\b|money|earning|gain)/i.test(normalized) || /\d+(\.\d+)?x\s*(done|profit|gain|made)\b.{0,30}\b(inner|circle|member|private)/i.test(normalized);
   const hasAggressiveDmSpam = /\b(dm\s*now|dm\s*me\s*now|send\s*(a\s*)?dm|check\s*(my\s*)?dm|kindly\s*(send|dm)|holders?\s*dm|dm\s*if\s*you|dm\s*for\s*(promo|promotion|detail|info|offer|deal|signal|call))\b/i.test(normalized);
   const hasWalletBuyingSelling = /\b(buy|sell|get|need|want|pay)\b.{0,30}\b(wallet|account)\b.{0,30}\b(history|transaction|old|empty|aged|month|year)\b/i.test(normalized) || /\b(old|empty|aged)\s*(wallet|account)\b.{0,30}\b(pay|buy|sell|solana|sol|eth|usdt|btc)\b/i.test(normalized) || /\b(wallet|account)\s*(with|that\s*has)\s*.{0,20}(transaction|history|activit)/i.test(normalized);
@@ -689,7 +693,8 @@ async function detectAndHandleScam(
 
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
-    hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam || hasBoostBotPromo;
+    hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam || hasBoostBotPromo ||
+    hasDmServiceMenu || hasServiceListSpam;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -707,6 +712,9 @@ async function detectAndHandleScam(
   }
   if (hasFlatteryPitch || hasCryptoServiceKeywords || hasUnsolicitedServiceOffer) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Unsolicited service offer / cold-pitch spam");
+  }
+  if (hasDmServiceMenu || hasServiceListSpam) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "DM service menu spam (unsolicited service listing)");
   }
   if (hasAggressiveDmSpam || hasDmWithUsername) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Aggressive DM solicitation spam");
