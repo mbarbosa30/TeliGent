@@ -19,6 +19,7 @@ interface BotInstance {
   userId: string;
   token: string;
   webhookPath: string;
+  botUsername: string;
 }
 
 const activeBots = new Map<string, BotInstance>();
@@ -167,7 +168,7 @@ async function startSingleBot(config: BotConfig) {
 
     await storage.upsertConfig(userId, { botName: me.first_name || "Bot" });
 
-    const instance: BotInstance = { bot, userId, token, webhookPath };
+    const instance: BotInstance = { bot, userId, token, webhookPath, botUsername: me.username || "" };
     activeBots.set(token, instance);
 
     bot.on("message", (msg) => handleMessage(msg, instance));
@@ -651,7 +652,10 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     }
 
     const scamDetected = await detectAndHandleScam(bot, msg, messageText, userName, userId, config, groupRecord);
-    if (scamDetected) return;
+    if (scamDetected) {
+      log(`Scam detected from ${userName} — handled`, "telegram");
+      return;
+    }
 
     const deleteHandled = await handleDeleteRequest(bot, msg, messageText, userName);
     if (deleteHandled) return;
@@ -684,6 +688,8 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       return;
     }
 
+    log(`Generating AI response for ${userName} in "${groupRecord?.name || "?"}"...`, "telegram");
+
     try {
       let replyContext: string | null = null;
       let replyIsFromBot = false;
@@ -696,9 +702,12 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
         replyContext = `${replyAuthor} said: ${msg.reply_to_message.text}`;
       }
 
-      const response = await generateAIResponse(userId, messageText, userName, config, groupRecord?.name || "Unknown", replyContext, replyIsFromBot);
+      const response = await generateAIResponse(userId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot);
+      log(`AI response for ${userName}: "${(response || "").substring(0, 60)}..."`, "telegram");
+
       if (response && response.trim() && response.trim() !== "[[SKIP]]") {
         await sendBotMessage(bot, msg.chat.id, response, msg.message_id);
+        log(`Reply sent to ${userName} in chat ${chatId}`, "telegram");
         cooldowns.set(cooldownKey, now);
 
         await storage.createActivityLog(userId, {
@@ -710,17 +719,20 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
           isReport: false,
           metadata: null,
         });
+      } else if (response && response.trim() === "[[SKIP]]") {
+        log(`AI chose to skip message from ${userName}`, "telegram");
       } else if (!response || !response.trim()) {
+        log(`AI returned empty response for ${userName} — sending fallback`, "telegram");
         await sendBotMessage(bot, msg.chat.id, "Sorry, I couldn't process that. Try asking again.", msg.message_id);
       }
     } catch (err: any) {
-      log(`Error generating response for ${userName}: ${err.message}`, "telegram");
+      log(`Error generating response for ${userName}: ${err.message}\n${err.stack || ""}`, "telegram");
       try {
         await sendBotMessage(bot, msg.chat.id, "Something went wrong processing your message. Try again in a moment.", msg.message_id);
       } catch (_) {}
     }
   } catch (outerErr: any) {
-    log(`CRITICAL: Unhandled error processing message: ${outerErr.message}`, "telegram");
+    log(`CRITICAL: Unhandled error processing message: ${outerErr.message}\n${outerErr.stack || ""}`, "telegram");
   }
 }
 
@@ -981,7 +993,7 @@ async function shouldBotRespond(bot: TelegramBot, msg: TelegramBot.Message, conf
   return false;
 }
 
-async function generateAIResponse(userId: string, userMessage: string, userName: string, config: BotConfig, groupName: string, replyContext?: string | null, replyIsFromBot?: boolean): Promise<string> {
+async function generateAIResponse(userId: string, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean): Promise<string> {
   const knowledgeEntries = await storage.getActiveKnowledgeEntries(userId);
 
   const MAX_CONTEXT_CHARS = 6000;
@@ -1019,13 +1031,15 @@ async function generateAIResponse(userId: string, userMessage: string, userName:
     }
   }
 
-  const systemPrompt = `You are "${config.botName}", a bot assistant in the Telegram group "${groupName}".
+  const usernameClause = botUsername ? ` Your Telegram handle is @${botUsername} — when people mention @${botUsername}, they are talking to YOU.` : "";
+  const systemPrompt = `You are "${config.botName}", a bot assistant in the Telegram group "${groupName}".${usernameClause}
 
 ${config.personality}
 ${globalContextSection}${websiteSection}${knowledgeContext}
 
 --- YOUR ROLE ---
 - You are a helpful community assistant that answers questions and provides information based on your context.
+- When users mention your @handle or your name, they are addressing YOU directly. Never refer to yourself as a separate entity.
 - Scam/spam detection runs AUTOMATICALLY in the background — it is a separate system. You do NOT need to talk about it.
 
 --- BEHAVIOR RULES ---
