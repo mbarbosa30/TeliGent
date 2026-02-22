@@ -2,9 +2,12 @@ import TelegramBot from "node-telegram-bot-api";
 import OpenAI from "openai";
 import { storage } from "./storage";
 import { log } from "./index";
+import { db } from "./db";
+import { users } from "@shared/schema";
 import type { BotConfig } from "@shared/schema";
 import type { Express } from "express";
 import crypto from "crypto";
+import { eq } from "drizzle-orm";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -53,11 +56,33 @@ export async function startBotEngine(app?: Express) {
 
   try {
     const allConfigs = await storage.getAllActiveConfigs();
-    const configsWithTokens = allConfigs.filter(c => c.botToken && c.botToken.trim());
+    const configsWithTokens: BotConfig[] = [];
+    for (const c of allConfigs) {
+      if (!c.botToken || !c.botToken.trim()) continue;
+      const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, c.userId)).limit(1);
+      if (!user) {
+        log(`Orphaned config for non-existent user ${c.userId} — skipping`, "telegram");
+        continue;
+      }
+      configsWithTokens.push(c);
+    }
 
-    log(`Bot engine: found ${configsWithTokens.length} active bot configs with tokens`, "telegram");
+    const tokenMap = new Map<string, BotConfig>();
+    for (const c of configsWithTokens) {
+      const existing = tokenMap.get(c.botToken);
+      if (!existing || new Date(c.updatedAt) > new Date(existing.updatedAt)) {
+        tokenMap.set(c.botToken, c);
+      }
+    }
+    const dedupedConfigs = Array.from(tokenMap.values());
 
-    const currentTokens = new Set(configsWithTokens.map(c => c.botToken));
+    if (dedupedConfigs.length < configsWithTokens.length) {
+      log(`Bot engine: deduplicated ${configsWithTokens.length} configs to ${dedupedConfigs.length} unique tokens`, "telegram");
+    }
+
+    log(`Bot engine: found ${dedupedConfigs.length} active bot configs with tokens`, "telegram");
+
+    const currentTokens = new Set(dedupedConfigs.map(c => c.botToken));
     for (const [token, instance] of Array.from(activeBots.entries())) {
       if (!currentTokens.has(token)) {
         log(`Stopping bot for user ${instance.userId} (config removed or deactivated)`, "telegram");
@@ -71,7 +96,7 @@ export async function startBotEngine(app?: Express) {
       }
     }
 
-    for (const config of configsWithTokens) {
+    for (const config of dedupedConfigs) {
       if (activeBots.has(config.botToken)) continue;
       await startSingleBot(config);
     }
@@ -562,12 +587,20 @@ async function detectAndHandleScam(
 
 async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
   try {
-    if (!msg.text || !msg.chat || msg.chat.type === "private") return;
+    if (!msg.text || !msg.chat || msg.chat.type === "private") {
+      log(`Message skipped: no text, no chat, or private chat`, "telegram");
+      return;
+    }
     if (msg.from?.is_bot) return;
 
     const { bot, userId } = instance;
+    log(`Message from ${msg.from?.first_name || "Unknown"} in "${msg.chat.title || "?"}" (user: ${userId}): "${msg.text.substring(0, 80)}"`, "telegram");
+
     const config = await storage.getConfig(userId);
-    if (!config || !config.isActive) return;
+    if (!config || !config.isActive) {
+      log(`Bot inactive or no config for user ${userId}`, "telegram");
+      return;
+    }
 
     const chatId = msg.chat.id.toString();
     const userName = msg.from?.first_name || msg.from?.username || "Unknown";
@@ -610,13 +643,19 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     }
 
     const shouldRespond = await shouldBotRespond(bot, msg, config);
-    if (!shouldRespond) return;
+    if (!shouldRespond) {
+      log(`Not responding (mention/reply rules) to "${messageText.substring(0, 40)}" from ${userName}`, "telegram");
+      return;
+    }
 
     const tgUserId = msg.from?.id?.toString() || "unknown";
     const cooldownKey = `${chatId}:${tgUserId}`;
     const now = Date.now();
     const lastResponse = cooldowns.get(cooldownKey) || 0;
-    if (now - lastResponse < config.cooldownSeconds * 1000) return;
+    if (now - lastResponse < config.cooldownSeconds * 1000) {
+      log(`Cooldown active for ${userName} (${Math.round((config.cooldownSeconds * 1000 - (now - lastResponse)) / 1000)}s left)`, "telegram");
+      return;
+    }
 
     try {
       let replyContext: string | null = null;
