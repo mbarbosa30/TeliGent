@@ -51,7 +51,11 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        const safeBody = JSON.stringify(capturedJsonResponse, (key, value) => {
+          if (key === "botToken" && typeof value === "string") return value.slice(0, 6) + "***";
+          return value;
+        });
+        logLine += ` :: ${safeBody}`;
       }
 
       log(logLine);
