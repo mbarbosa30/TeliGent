@@ -179,9 +179,7 @@ export async function registerRoutes(
     }
   });
 
-  startBotEngine(app).catch((err) => {
-    console.error("Failed to start bot engine:", err);
-  });
+  await startBotEngine(app);
 
   return httpServer;
 }
