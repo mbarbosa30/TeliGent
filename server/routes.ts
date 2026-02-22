@@ -3,10 +3,10 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
 import { startBotEngine } from "./telegram";
-import { isAuthenticated } from "./replit_integrations/auth";
+import { isAuthenticated } from "./auth";
 
 function getUserId(req: any): string {
-  return req.user?.claims?.sub;
+  return req.session?.userId;
 }
 
 async function scrapeUrl(url: string): Promise<string> {
@@ -121,7 +121,7 @@ export async function registerRoutes(
   app.patch("/api/knowledge/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
-      const id = parseInt(req.params.id);
+      const id = parseInt(req.params.id as string);
       const partial = insertKnowledgeBaseSchema.partial().parse(req.body);
       const entry = await storage.updateKnowledgeEntry(userId, id, partial);
       if (!entry) return res.status(404).json({ error: "Entry not found" });
@@ -134,7 +134,7 @@ export async function registerRoutes(
   app.delete("/api/knowledge/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
-      const id = parseInt(req.params.id);
+      const id = parseInt(req.params.id as string);
       await storage.deleteKnowledgeEntry(userId, id);
       res.status(204).send();
     } catch (err: any) {

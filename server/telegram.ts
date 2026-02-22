@@ -487,6 +487,13 @@ async function detectAndHandleScam(
   const hasRaidShillSpam = /\b(raid\s*(team|group|squad|crew|service)s?|raid\s*team\s*of\s*\d+|shill(er)?s?\s*(team|group|squad|crew|service)s?|shill(er)?s?\s*to\s*boost|raider(s)?\s*(and|&)\s*shill(er)?s?|verified\s*(raider|shiller)s?|boost(ing)?\s*engag(ement|e)|engag(ement|e)\s*boost(ing|er|service|team|farm)?|free\s*test\s*run|paid\s*(raid|shill|promo|market)|hire\s*(raid|shill|market))\b/i.test(normalized);
   const hasPaidServiceSpam = /\b(growth\s*service|marketing\s*service|promotion\s*service|listing\s*service|trending\s*service|cmc\s*(list|trend)|coingecko\s*(list|trend)|dextools\s*trend|twitter\s*(raid|growth|boost)|telegram\s*(growth|member|boost))\b/i.test(normalized);
 
+  const hasTelegramLink = /t\.me\/[A-Za-z0-9_]+/i.test(text);
+  const hasGroupPromoShill = hasTelegramLink && (
+    /\b(join|check\s*out|visit|come\s*to|head\s*to|look\s*at)\b/i.test(normalized) &&
+    /\b(tag|follow|support|help|pls|please|guys|fam|fren|ape)\b/i.test(normalized)
+  );
+  const hasUnsolicitedGroupLink = hasTelegramLink && /\b(join\s*(us|our|my|this|the)|come\s*join|check\s*(this|my|our)|new\s*(group|channel|community))\b/i.test(normalized);
+
   const hasDmWithUsername = /\b(dm|pm)\s*.{0,5}@\w+/i.test(normalized) && /\b(call|signal|insider|profit|trade|print|miss|join|part)\b/i.test(normalized);
   const hasInsiderCallSpam = (/\b(insider|my\s*(call|signal)|vip\s*(call|group|channel|access)|paid\s*(call|group|signal)|fading\s*me)\b/i.test(normalized) && /\b(dm|pm)\s*.{0,10}@\w+/i.test(normalized)) || /\binsider\b.{0,20}\b(cook|member|call|signal|group)s?\b.{0,30}(print|profit|money|gain|earning)/i.test(normalized) || /\bdrop\s*(cook|call|signal)s?\b.{0,20}(print|profit|member)/i.test(normalized) || /\b(inner\s*circle|private\s*circle)\b.{0,40}(print|profit|\dx|\d+x\b|money|earning|gain)/i.test(normalized) || /\d+(\.\d+)?x\s*(done|profit|gain|made)\b.{0,30}\b(inner|circle|member|private)/i.test(normalized);
   const hasAggressiveDmSpam = /\b(dm\s*now|dm\s*me\s*now|send\s*(a\s*)?dm|check\s*(my\s*)?dm|kindly\s*(send|dm)|holders?\s*dm|dm\s*if\s*you|dm\s*for\s*(promo|promotion|detail|info|offer|deal|signal|call))\b/i.test(normalized);
@@ -528,6 +535,9 @@ async function detectAndHandleScam(
   }
   if (hasSexualSpam || hasSolicitationSpam) {
     return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Solicitation/adult spam");
+  }
+  if (hasGroupPromoShill || hasUnsolicitedGroupLink) {
+    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Telegram group/channel promotion spam");
   }
   if (hasRaidShillSpam || hasPaidServiceSpam) {
     return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Raid/shill/paid promotion service offer");

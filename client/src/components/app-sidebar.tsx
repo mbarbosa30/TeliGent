@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import type { BotConfig } from "@shared/schema";
+import type { AuthUser } from "@/hooks/use-auth";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
