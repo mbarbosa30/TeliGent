@@ -641,8 +641,14 @@ async function detectAndHandleScam(
     /\b(nft|logo|banner|sticker|gif|animation|mascot|emoji|promot|market|listing|website|app|bot|smart\s*contract)\b/i.test(normalized);
   const hasFlatteryPitch = hasFlattery && hasServicePitch;
 
-  const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b|\b(inbox|dm|pm)\b.*\b(for|me)\b/i.test(normalized);
+  const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b|\b(inbox|dm|pm)\b.*\b(for|me)\b|\bshould\s*(dm|pm|message|inbox)\b/i.test(normalized);
   const hasScamOffer = /\b(promot|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized);
+  const hasCryptoGiveawayScam = /\b(giv(e|ing)\s*(away|out|free|you|them|my))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
+    /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,40}\b(giv(e|ing)\s*(away|out|free))\b/i.test(normalized) ||
+    /\b(first\s*\d+\s*(people|person|member|holder|user|follower)s?)\b.{0,60}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|give|free|win|claim|airdrop)\b/i.test(normalized) ||
+    /\b(first\s*\d+\s*(people|person|member|holder|user|follower)s?)\b.{0,60}\b(dm|pm|message|inbox)\b/i.test(normalized) && /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|give|free|airdrop)\b/i.test(normalized) ||
+    /\b(i\s*(will|am|'m)\s*(giv(e|ing)|send(ing)?|distribut(e|ing)|drop(ping)?))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
+    /\b(not\s*interested\s*in\s*crypto|don'?t\s*(want|need)\s*(the\s*)?(crypto|sol|eth|btc))\b.{0,60}\b(dm|pm|message|give|free)\b/i.test(normalized);
   const sexualEmojis = ['🍆', '🍑', '💦', '🔥', '🥵', '😈', '💋'];
   const hasSexualSpam = sexualEmojis.some(e => text.includes(e)) && /\b(inbox|dm|pm|message|contact|send)\b/i.test(normalized);
   const hasSolicitationSpam = /\b(inbox|dm|pm)\b/i.test(normalized) && /\b(fun|service|interest|offer|available)\b/i.test(normalized);
@@ -665,7 +671,7 @@ async function detectAndHandleScam(
 
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
-    hasDmSolicitation || hasScamOffer || hasAggressiveDmSpam || hasPumpPromoSpam;
+    hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -692,6 +698,9 @@ async function detectAndHandleScam(
   }
   if (hasWalletBuyingSelling) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Wallet buying/selling scam");
+  }
+  if (hasCryptoGiveawayScam) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Crypto giveaway / free token scam");
   }
   if (hasDmSolicitation && hasScamOffer) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "DM solicitation with scam/promo offer");
