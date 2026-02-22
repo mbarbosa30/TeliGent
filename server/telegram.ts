@@ -173,7 +173,7 @@ async function handleLeftMember(msg: TelegramBot.Message, instance: BotInstance)
   }
 }
 
-const MIN_SCAM_CHECK_LENGTH = 50;
+const MIN_SCAM_CHECK_LENGTH = 30;
 
 async function aiScamCheck(text: string, senderRole: string): Promise<{ isScam: boolean; reason: string }> {
   try {
@@ -185,32 +185,44 @@ async function aiScamCheck(text: string, senderRole: string): Promise<{ isScam: 
       messages: [
         {
           role: "system",
-          content: `You are a scam detection system for a crypto/Web3 Telegram group. The sender is a REGULAR USER (not an admin or owner). Analyze their message and determine if it is a SCAM or SPAM.
+          content: `You are an aggressive scam detection system for a crypto/Web3 Telegram group. The sender is a REGULAR USER (not an admin). Your job is to PROTECT the community. When in doubt, flag as scam — false positives are better than letting scams through.
 
-A message is a SCAM/SPAM if it does ANY of these:
-- Poses as project leadership or makes official-sounding announcements (migrations, relaunches, contract changes, new CAs, etc.) — a regular user has no authority to do this
-- Asks people to DM/PM/inbox/contact them for refunds, airdrops, tokens, or anything
-- Asks for transaction hashes, wallet addresses, private keys, or seed phrases
+A message IS a SCAM/SPAM if it does ANY of these:
+- Poses as project leadership or makes official-sounding announcements (migrations, relaunches, contract changes, new CAs, airdrops, etc.)
+- Asks people to DM/PM/inbox/contact/message them privately for ANY reason
+- Uses "drop me a private message", "send me a message", "reach out to me", "contact me privately" or similar
+- Asks for transaction hashes, wallet addresses, private keys, seed phrases, or screenshots of purchases
 - Promotes fake airdrops, token swaps, or contract migrations
+- Mentions "migration", "airdrop", "recover loss", "boost volume" — regular users don't announce these
 - Asks people to connect wallets or click suspicious links
 - Offers guaranteed returns, paid promotions, or investment services
 - Creates false urgency (act now, limited time, within X hours)
 - Promotes other tokens/projects unsolicited (shilling)
-- Shares links to other Telegram groups, channels, or bots to promote them (e.g. t.me/SomeOtherGroup)
+- Shares links to other Telegram groups, channels, or bots
 - Offers services like "I can get you investors/listings/volume"
-- Claims to own/run a "community", "group", or "channel" and offers promotion, engagement, or marketing services — this is unsolicited self-promotion
-- Pitches any kind of paid service (promotion, marketing, listing, volume boosting, community building) to the group
-- Uses flattery + DM solicitation pattern (e.g. "Hello sir, DM me for...")
+- Offers ANY unsolicited services: design, animation, NFTs, logos, banners, stickers, GIFs, marketing, promotion, community management, development, etc.
+- Cold-pitches services nobody asked for (e.g. "I'd love to create X for your project", "I can make Y for you", "I offer Z services")
+- Uses flattery followed by a pitch (e.g. "Love your project! I can create...", "Great community! I offer...")
+- Claims to own/run a community/group/channel and offers services
+- Pitches any kind of paid or free service to the group unsolicited
+- Uses homoglyph evasion (replacing letters with look-alikes like I for l, 0 for O) — this is ALWAYS a scam indicator
+
+EXAMPLES OF SCAMS (flag these):
+- "Love your project! I'd love to create custom 2D/3D crypto meme animations using your mascot" → SCAM (unsolicited service offer)
+- "Am working on migration and airdropping of all holders" → SCAM (impersonating authority, fake migration)  
+- "Drop me a private message with your tx hash" → SCAM (DM solicitation + asking for tx data)
+- "I can design NFTs, logos, banners for your project" → SCAM (unsolicited service pitch)
+- "Great project! DM me for promotion services" → SCAM (flattery + service pitch)
 
 A message is NOT a scam if it's:
 - A normal question or discussion about the project
 - General crypto discussion without solicitation
 - Complaints or criticism (even harsh ones)
 - Casual chat, memes, or banter
-- Asking about project status without making announcements
-- Sharing a link that is directly relevant to an ongoing conversation someone else started (not unsolicited promotion)
+- Asking about project status WITHOUT making announcements
+- Sharing a link directly relevant to an ongoing conversation (not unsolicited)
 
-Respond with ONLY valid JSON, no other text: {"scam": true, "reason": "brief explanation"} or {"scam": false, "reason": "brief explanation"}`
+Respond with ONLY valid JSON: {"scam": true, "reason": "brief explanation"} or {"scam": false, "reason": "brief explanation"}`
         },
         { role: "user", content: text }
       ],
@@ -279,6 +291,41 @@ async function executeScamAction(
   return true;
 }
 
+const HOMOGLYPH_MAP: Record<string, string> = {
+  '\u0410': 'A', '\u0430': 'a', '\u0412': 'B', '\u0421': 'C', '\u0441': 'c',
+  '\u0415': 'E', '\u0435': 'e', '\u041D': 'H', '\u043E': 'o', '\u041E': 'O',
+  '\u0420': 'P', '\u0440': 'p', '\u0422': 'T', '\u0443': 'y', '\u0425': 'X',
+  '\u0445': 'x', '\u0417': '3', '\u0456': 'i', '\u0406': 'I',
+  '\u0131': 'i', '\u0130': 'I',
+  '\u2018': "'", '\u2019': "'", '\u201C': '"', '\u201D': '"',
+  '\u2013': '-', '\u2014': '-',
+  '\u200B': '', '\u200C': '', '\u200D': '', '\uFEFF': '', '\u00AD': '',
+  '\u2060': '', '\u180E': '',
+};
+
+function fixHomoglyphWords(text: string): string {
+  return text.replace(/\b\w+\b/g, (word) => {
+    const lower = word.toLowerCase();
+    if (/[A-Z]/.test(word) && /[a-z]/.test(word)) {
+      const fixed = word
+        .replace(/I(?=[a-z])/g, 'l')
+        .replace(/(?<=[a-z])I/g, 'l');
+      if (fixed !== word) return fixed;
+    }
+    const allLower = lower
+      .replace(/0/g, 'o')
+      .replace(/1/g, 'l')
+      .replace(/3/g, 'e')
+      .replace(/4/g, 'a')
+      .replace(/5/g, 's')
+      .replace(/\$/g, 's');
+    if (allLower !== lower) {
+      return word.length === lower.length ? allLower : word;
+    }
+    return word;
+  });
+}
+
 function normalizeUnicode(text: string): string {
   const ranges: [number, number, number][] = [
     [0x1D400, 0x1D419, 0x41], [0x1D41A, 0x1D433, 0x61],
@@ -300,6 +347,10 @@ function normalizeUnicode(text: string): string {
 
   let result = "";
   for (const char of text) {
+    if (HOMOGLYPH_MAP[char] !== undefined) {
+      result += HOMOGLYPH_MAP[char];
+      continue;
+    }
     const cp = char.codePointAt(0)!;
     let mapped = false;
     for (const [start, end, base] of ranges) {
@@ -314,7 +365,61 @@ function normalizeUnicode(text: string): string {
     }
   }
   result = result.replace(/\b([A-Za-z])\s+(?=[A-Za-z]\b)/g, '$1');
+  result = fixHomoglyphWords(result);
   return result;
+}
+
+function hasHomoglyphEvasion(original: string, normalized: string): boolean {
+  if (original === normalized) return false;
+  const ilSwaps = /[A-Z]/.test(original) && /I/.test(original);
+  const origWords = original.split(/\s+/);
+  const normWords = normalized.split(/\s+/);
+  let letterSwaps = 0;
+  for (let i = 0; i < Math.min(origWords.length, normWords.length); i++) {
+    const ow = origWords[i];
+    const nw = normWords[i];
+    if (ow === nw || ow.length < 4) continue;
+    const owClean = ow.replace(/[^a-zA-Z]/g, "");
+    const nwClean = nw.replace(/[^a-zA-Z]/g, "");
+    if (owClean.length === nwClean.length && owClean !== nwClean) {
+      let diffs = 0;
+      for (let j = 0; j < owClean.length; j++) {
+        if (owClean[j] !== nwClean[j]) diffs++;
+      }
+      if (diffs > 0 && diffs <= 2) letterSwaps++;
+    }
+  }
+  return ilSwaps && letterSwaps >= 2;
+}
+
+function checkNameImpersonation(msg: TelegramBot.Message, config: BotConfig): boolean {
+  const senderName = (
+    (msg.from?.first_name || "") + " " + (msg.from?.last_name || "")
+  ).trim().toLowerCase();
+  const senderUsername = (msg.from?.username || "").toLowerCase();
+  const botName = (config.botName || "").toLowerCase().trim();
+  const groupName = (msg.chat.title || "").toLowerCase().trim();
+
+  if (!senderName && !senderUsername) return false;
+  if (botName.length < 3 && groupName.length < 3) return false;
+
+  const normalize = (s: string) => s.replace(/[^a-z0-9]/g, "");
+  const senderNorm = normalize(senderName);
+  const senderUserNorm = normalize(senderUsername);
+
+  if (botName.length >= 3) {
+    const botNorm = normalize(botName);
+    if (botNorm.length >= 3 && (senderNorm.includes(botNorm) || senderUserNorm.includes(botNorm))) {
+      return true;
+    }
+  }
+  if (groupName.length >= 3) {
+    const groupNorm = normalize(groupName);
+    if (groupNorm.length >= 3 && (senderNorm.includes(groupNorm) || senderUserNorm.includes(groupNorm))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function detectAndHandleScam(
@@ -340,6 +445,39 @@ async function detectAndHandleScam(
     log(`Unicode normalized: "${text.substring(0, 60)}" → "${normalized.substring(0, 60)}"`, "telegram");
   }
 
+  const evasionDetected = hasHomoglyphEvasion(text, normalized);
+  if (evasionDetected) {
+    log(`Homoglyph evasion detected in message from ${userName}`, "telegram");
+  }
+
+  const isImpersonator = checkNameImpersonation(msg, config);
+  if (isImpersonator) {
+    log(`Name impersonation detected: "${userName}" mimics bot/group name`, "telegram");
+  }
+
+  const hasMigrationAirdropScam = /\b(migrat(ion|ing|e)|airdrop(ping|s)?)\b.{0,60}\b(holder|hoIder|volume|voIume|loss|Ioss|recover|boost|all)\b/i.test(normalized) ||
+    /\b(recover|boost)\b.{0,30}\b(loss|volume|price)\b/i.test(normalized) ||
+    /\b(working\s*on|announcing|starting)\s*(a\s*)?(migration|airdrop|token\s*swap|contract\s*change)\b/i.test(normalized);
+
+  const hasPrivateMessageSolicitation = /\b(private\s*message|send\s*me\s*(a\s*)?(message|msg)|drop\s*(me\s*)?(a\s*)?(message|msg|line|dm|pm)|reach\s*out\s*to\s*me|contact\s*me\s*(privately|directly)|write\s*me\s*(a\s*)?(message|privately|directly))\b/i.test(normalized) ||
+    /\b(private|direct)\s*(message|msg|chat)\b.{0,20}\b(with|your|tx|hash|screenshot|purchase)\b/i.test(normalized);
+
+  const hasTxHashRequest = /\b(tx\s*hash|transaction\s*hash|screenshot\s*of\s*(your\s*)?(purchase|transaction|buy|tx)|proof\s*of\s*(purchase|transaction|buy))\b/i.test(normalized);
+
+  const hasUnsolicitedServiceOffer =
+    /\b(i('d| would)?\s*(love|like)\s*to\s*(create|make|design|build|develop|offer))\b/i.test(normalized) ||
+    /\b(i\s*(can|will|offer|provide|specialize|do)\s*(create|make|design|build|develop|custom|professional))\b/i.test(normalized) ||
+    /\b(hire\s*me|my\s*services|my\s*portfolio|check\s*my\s*(work|portfolio|profile))\b/i.test(normalized) ||
+    /\b(looking\s*for\s*(a\s*)?(designer|developer|animator|artist|creator)\s*\?\s*i)\b/i.test(normalized);
+
+  const hasCryptoServiceKeywords = /\b(nft|logo|banner|sticker|gif|animation|mascot|meme\s*(coin|token|animation)|dex\s*banner|coin\s*logo|token\s*logo|2d|3d)\b/i.test(normalized) &&
+    /\b(creat|design|make|build|custom|your\s*(project|token|coin|mascot))\b/i.test(normalized);
+
+  const hasFlattery = /\b(love\s*your|great\s*(project|community|token)|amazing\s*(project|community|token)|awesome\s*(project|community))\b/i.test(normalized);
+  const hasServicePitch = /\b(creat|design|make|build|develop|offer|provid|along\s*with|services?)\b/i.test(normalized) &&
+    /\b(nft|logo|banner|sticker|gif|animation|mascot|emoji|promot|market|listing|website|app|bot|smart\s*contract)\b/i.test(normalized);
+  const hasFlatteryPitch = hasFlattery && hasServicePitch;
+
   const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b|\b(inbox|dm|pm)\b.*\b(for|me)\b/i.test(normalized);
   const hasScamOffer = /\b(promot|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized);
   const sexualEmojis = ['🍆', '🍑', '💦', '🔥', '🥵', '😈', '💋'];
@@ -355,6 +493,27 @@ async function detectAndHandleScam(
   const hasWalletBuyingSelling = /\b(buy|sell|get|need|want|pay)\b.{0,30}\b(wallet|account)\b.{0,30}\b(history|transaction|old|empty|aged|month|year)\b/i.test(normalized) || /\b(old|empty|aged)\s*(wallet|account)\b.{0,30}\b(pay|buy|sell|solana|sol|eth|usdt|btc)\b/i.test(normalized) || /\b(wallet|account)\s*(with|that\s*has)\s*.{0,20}(transaction|history|activit)/i.test(normalized);
   const hasPumpPromoSpam = /\b(pump|boost)\s*(your|ur)\s*(token|project|coin|mc|market\s*cap)\b/i.test(normalized) || /\b(i\s*(can|will)\s*(pump|boost|promote))\b.{0,40}\b(token|project|coin|mc|market\s*cap|profit)\b/i.test(normalized) || /\bpromotion\s*on\s*my\s*(telegram|channel|group)\b/i.test(normalized) || /\b(investor|holder)s?\s*(who\s*will|that\s*will|to)\s*(pump|buy|invest)/i.test(normalized) || /\b(contact|message|reach)\s*(me|us)\s*(in\s*)?(my\s*)?(inbox|dm|pm)\b.{0,30}\b(pump|promo|boost)/i.test(normalized);
 
+  const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
+    hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
+    hasDmSolicitation || hasScamOffer || hasAggressiveDmSpam || hasPumpPromoSpam;
+  if (evasionDetected && hasAnyScamSignal) {
+    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
+  }
+  if (evasionDetected) {
+    log(`Homoglyph evasion without scam keywords — escalating to AI check`, "telegram");
+  }
+  if (isImpersonator && (hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasDmSolicitation)) {
+    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Impersonation + scam (name mimics bot/group)");
+  }
+  if (hasMigrationAirdropScam) {
+    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Fake migration/airdrop scam");
+  }
+  if (hasPrivateMessageSolicitation || (hasDmSolicitation && hasTxHashRequest)) {
+    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "DM solicitation / tx hash phishing");
+  }
+  if (hasFlatteryPitch || hasCryptoServiceKeywords || hasUnsolicitedServiceOffer) {
+    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Unsolicited service offer / cold-pitch spam");
+  }
   if (hasAggressiveDmSpam || hasDmWithUsername) {
     return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Aggressive DM solicitation spam");
   }
@@ -376,16 +535,19 @@ async function detectAndHandleScam(
   if (hasPumpPromoSpam) {
     return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Token pump / paid promotion service offer");
   }
-
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
-  if (!hasUrl && normalized.length < MIN_SCAM_CHECK_LENGTH) {
+  if (!hasUrl && normalized.length < MIN_SCAM_CHECK_LENGTH && !isImpersonator && !evasionDetected) {
     return false;
   }
 
-  const { isScam, reason } = await aiScamCheck(normalized, "regular_user");
+  const aiContext = isImpersonator
+    ? `[SUSPICIOUS: This user's display name "${userName}" closely matches the bot/group name. Non-admins impersonating official accounts is a common scam tactic. Be extra vigilant.]\n\n${normalized}`
+    : normalized;
+  const { isScam, reason } = await aiScamCheck(aiContext, "regular_user");
   if (!isScam) return false;
 
-  return await executeScamAction(bot, msg, text, userName, userId, groupRecord, `AI: ${reason}`);
+  const aiReason = isImpersonator ? `AI (impersonator): ${reason}` : `AI: ${reason}`;
+  return await executeScamAction(bot, msg, text, userName, userId, groupRecord, aiReason);
 }
 
 async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
