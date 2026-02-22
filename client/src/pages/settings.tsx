@@ -16,10 +16,11 @@ import { Separator } from "@/components/ui/separator";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Settings, Bot, MessageSquare, Shield, Zap, Save, Globe, FileText, Loader2 } from "lucide-react";
+import { Settings, Bot, MessageSquare, Shield, Zap, Save, Globe, FileText, Loader2, Key, AlertTriangle } from "lucide-react";
 import type { BotConfig } from "@shared/schema";
 
 const settingsSchema = z.object({
+  botToken: z.string(),
   botName: z.string().min(1, "Bot name is required"),
   personality: z.string().min(10, "Personality prompt should be at least 10 characters"),
   globalContext: z.string(),
@@ -43,6 +44,7 @@ export default function SettingsPage() {
   const form = useForm<SettingsForm>({
     resolver: zodResolver(settingsSchema),
     defaultValues: {
+      botToken: "",
       botName: "",
       personality: "",
       globalContext: "",
@@ -61,6 +63,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (config) {
       form.reset({
+        botToken: config.botToken || "",
         botName: config.botName,
         personality: config.personality,
         globalContext: config.globalContext || "",
@@ -132,6 +135,46 @@ export default function SettingsPage() {
 
         <Form {...form}>
           <form className="space-y-6" onSubmit={form.handleSubmit((d) => { if (config) mutation.mutate(d); })}>
+            {!config?.botToken?.trim() && (
+              <Card className="border-yellow-600/50 dark:border-yellow-500/40 bg-yellow-50 dark:bg-yellow-900/10" data-testid="banner-setup-token">
+                <CardContent className="flex items-start gap-3 pt-5 pb-4">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Bot token required</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Add your Telegram bot token below to get started. You can get one from <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-foreground underline underline-offset-2 font-medium">@BotFather</a> on Telegram.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Key className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-base">Telegram Bot Token</CardTitle>
+                </div>
+                <CardDescription>Connect your Telegram bot by entering its token from @BotFather</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField control={form.control} name="botToken" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Bot Token</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="password"
+                        placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                        data-testid="input-bot-token"
+                      />
+                    </FormControl>
+                    <FormDescription>Your token is stored securely and never shared</FormDescription>
+                  </FormItem>
+                )} />
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">

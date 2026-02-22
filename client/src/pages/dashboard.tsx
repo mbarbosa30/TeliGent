@@ -57,14 +57,28 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-1">Monitor your bot's activity and performance</p>
         </div>
 
-        {!configLoading && config && !config.globalContext?.trim() && (
+        {!configLoading && config && !config.botToken?.trim() && (
+          <Card className="border-yellow-600/50 dark:border-yellow-500/40 bg-yellow-50 dark:bg-yellow-900/10" data-testid="banner-setup-token">
+            <CardContent className="flex items-start gap-3 pt-5 pb-4">
+              <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Connect your Telegram bot</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Go to <Link href="/settings" className="text-foreground underline underline-offset-2 font-medium" data-testid="link-settings-token">Settings</Link> and enter your <strong>Telegram Bot Token</strong> to get started. You can get one from @BotFather on Telegram.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!configLoading && config && config.botToken?.trim() && !config.globalContext?.trim() && (
           <Card className="border-yellow-600/50 dark:border-yellow-500/40 bg-yellow-50 dark:bg-yellow-900/10" data-testid="banner-setup-context">
             <CardContent className="flex items-start gap-3 pt-5 pb-4">
               <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <p className="text-sm font-medium">Your bot needs context to answer questions</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Go to <Link href="/settings" className="text-foreground underline underline-offset-2 font-medium" data-testid="link-settings-context">Settings</Link> and fill in the <strong>Global Context</strong> with a description of your project or community. Without it, the bot won't know what to say when people ask about your project.
+                  Go to <Link href="/settings" className="text-foreground underline underline-offset-2 font-medium" data-testid="link-settings-context">Settings</Link> and fill in the <strong>Global Context</strong> with a description of your project or community.
                 </p>
               </div>
             </CardContent>

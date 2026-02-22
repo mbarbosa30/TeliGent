@@ -2,8 +2,12 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
-import { startTelegramBot } from "./telegram";
-import { seedDatabase } from "./seed";
+import { startBotEngine } from "./telegram";
+import { isAuthenticated } from "./replit_integrations/auth";
+
+function getUserId(req: any): string {
+  return req.user?.claims?.sub;
+}
 
 async function scrapeUrl(url: string): Promise<string> {
   const parsed = new URL(url);
@@ -47,12 +51,12 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Bot config
-  app.get("/api/config", async (_req, res) => {
+  app.get("/api/config", isAuthenticated, async (req, res) => {
     try {
-      let config = await storage.getConfig();
+      const userId = getUserId(req);
+      let config = await storage.getConfig(userId);
       if (!config) {
-        config = await storage.upsertConfig({});
+        config = await storage.upsertConfig(userId, {});
       }
       res.json(config);
     } catch (err: any) {
@@ -60,29 +64,38 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/config", async (req, res) => {
+  app.patch("/api/config", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const partial = insertBotConfigSchema.partial().parse(req.body);
-      const config = await storage.upsertConfig(partial);
+      const config = await storage.upsertConfig(userId, partial);
+
+      if (partial.botToken !== undefined || partial.isActive !== undefined) {
+        startBotEngine(app).catch(err => {
+          console.error("Failed to restart bot engine:", err);
+        });
+      }
+
       res.json(config);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
   });
 
-  // Knowledge base
-  app.get("/api/knowledge", async (_req, res) => {
+  app.get("/api/knowledge", isAuthenticated, async (req, res) => {
     try {
-      const entries = await storage.getKnowledgeEntries();
+      const userId = getUserId(req);
+      const entries = await storage.getKnowledgeEntries(userId);
       res.json(entries);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/knowledge", async (req, res) => {
+  app.post("/api/knowledge", isAuthenticated, async (req, res) => {
     try {
-      const parsed = insertKnowledgeBaseSchema.parse(req.body);
+      const userId = getUserId(req);
+      const parsed = insertKnowledgeBaseSchema.omit({ userId: true }).parse(req.body);
 
       if (parsed.sourceUrl && parsed.sourceUrl.trim()) {
         try {
@@ -98,18 +111,19 @@ export async function registerRoutes(
         }
       }
 
-      const entry = await storage.createKnowledgeEntry(parsed);
+      const entry = await storage.createKnowledgeEntry(userId, parsed);
       res.status(201).json(entry);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
   });
 
-  app.patch("/api/knowledge/:id", async (req, res) => {
+  app.patch("/api/knowledge/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
       const partial = insertKnowledgeBaseSchema.partial().parse(req.body);
-      const entry = await storage.updateKnowledgeEntry(id, partial);
+      const entry = await storage.updateKnowledgeEntry(userId, id, partial);
       if (!entry) return res.status(404).json({ error: "Entry not found" });
       res.json(entry);
     } catch (err: any) {
@@ -117,25 +131,27 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/knowledge/:id", async (req, res) => {
+  app.delete("/api/knowledge/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      await storage.deleteKnowledgeEntry(id);
+      await storage.deleteKnowledgeEntry(userId, id);
       res.status(204).send();
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/scrape-website", async (req, res) => {
+  app.post("/api/scrape-website", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { url } = req.body;
       if (!url || typeof url !== "string") {
         return res.status(400).json({ error: "URL is required" });
       }
 
       const textContent = await scrapeUrl(url);
-      await storage.upsertConfig({ websiteUrl: url, websiteContent: textContent });
+      await storage.upsertConfig(userId, { websiteUrl: url, websiteContent: textContent });
 
       res.json({ content: textContent, length: textContent.length });
     } catch (err: any) {
@@ -143,33 +159,28 @@ export async function registerRoutes(
     }
   });
 
-  // Groups
-  app.get("/api/groups", async (_req, res) => {
+  app.get("/api/groups", isAuthenticated, async (req, res) => {
     try {
-      const allGroups = await storage.getGroups();
+      const userId = getUserId(req);
+      const allGroups = await storage.getGroups(userId);
       res.json(allGroups);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  // Activity logs
-  app.get("/api/activity", async (_req, res) => {
+  app.get("/api/activity", isAuthenticated, async (req, res) => {
     try {
-      const logs = await storage.getActivityLogs(200);
+      const userId = getUserId(req);
+      const logs = await storage.getActivityLogs(userId, 200);
       res.json(logs);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  // Seed database and start telegram bot
-  seedDatabase().catch((err) => {
-    console.error("Failed to seed database:", err);
-  });
-
-  startTelegramBot(app).catch((err) => {
-    console.error("Failed to start Telegram bot:", err);
+  startBotEngine(app).catch((err) => {
+    console.error("Failed to start bot engine:", err);
   });
 
   return httpServer;

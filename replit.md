@@ -1,57 +1,59 @@
-# ContextBot - Telegram Bot Manager
+# ContextBot - Multi-Tenant Telegram Bot Manager (SaaS)
 
 ## Overview
-A web dashboard for configuring and managing an AI-powered Telegram group bot. The bot uses OpenAI (via Replit AI Integrations) to understand group context, answer questions from a knowledge base, detect reports, and respond intelligently without being spammy.
+A multi-tenant SaaS platform where users sign up, connect their own Telegram bot tokens, and configure AI-powered group bots. Each user has isolated data (configs, knowledge base, groups, activity logs). Uses Replit Auth for authentication and supports per-user bot instances running concurrently.
 
 ## Recent Changes
-- 2026-02-20: Deterministic pre-check catches DM solicitation scams (e.g. "send me a DM", "DM me for promotion") before AI even runs — works on short messages too
-- 2026-02-20: AI scam detection prompt strengthened with more patterns (community promo, paid services, flattery+DM)
-- 2026-02-20: Bot AI prompt fixed — no longer falsely claims "handled" in responses; gives honest opinions on links instead
-- 2026-02-20: Fixed "smart" mode to ONLY respond when bot is mentioned or replied to — no more false triggers on question words
-- 2026-02-20: Proactive scam detection — auto-deletes and warns on scam messages (contract migration, PM-for-tokens, wallet phishing, etc.) with admin bypass
-- 2026-02-20: Per-user cooldowns (instead of per-chat) so multiple users get responses simultaneously
-- 2026-02-20: Dev mode clears webhook before polling to prevent 409 conflicts and message loss
-- 2026-02-20: Added slash commands (/start, /help, /report) with AI-powered report moderation
-- 2026-02-20: Token-safe context truncation (6000 char budget across global/website/knowledge)
-- 2026-02-20: Fixed settings form race condition that could wipe globalContext on save
-- 2026-02-20: Dashboard setup banner when Global Context is empty
-- 2026-02-20: Bot now understands reply context (includes its previous message in AI conversation)
-- 2026-02-20: Knowledge base auto-scrapes URLs when sourceUrl is provided
-- 2026-02-20: Added Global Context, Website Import, and Paste Content features for richer bot context
-- 2026-02-20: Switched to webhook mode in production, polling in development to avoid 409 conflicts
+- 2026-02-22: **Multi-tenant SaaS conversion** — Replit Auth, per-user data isolation, multi-bot engine, landing page, bot token onboarding
+- 2026-02-22: All tables now have userId column for data isolation
+- 2026-02-22: Bot token stored per-user in botConfigs (no more env var)
+- 2026-02-22: Multi-bot engine manages concurrent TelegramBot instances per user
+- 2026-02-22: Landing page for unauthenticated users, auth-gated dashboard
+- 2026-02-20: Deterministic pre-check catches DM solicitation scams before AI runs
+- 2026-02-20: AI scam detection prompt strengthened with more patterns
+- 2026-02-20: Proactive scam detection — auto-deletes and warns on scam messages with admin bypass
+- 2026-02-20: Per-user cooldowns, slash commands, token-safe context truncation
 - 2026-02-20: Initial MVP built with dashboard, knowledge base, activity log, reports, and settings pages
 
 ## Architecture
 - **Frontend**: React + TypeScript with Vite, Shadcn UI, TanStack Query, Wouter routing
 - **Backend**: Express.js with Drizzle ORM on PostgreSQL
-- **Telegram Bot**: node-telegram-bot-api with polling (dev) / webhook (production)
-- **AI**: OpenAI via Replit AI Integrations (gpt-5-mini for cost-effective responses)
+- **Auth**: Replit Auth (OpenID Connect) with PostgreSQL session storage
+- **Telegram Bot**: Multi-instance bot engine — one TelegramBot per user, webhook mode in production
+- **AI**: OpenAI via Replit AI Integrations (gpt-5-mini)
 
 ## Key Files
-- `shared/schema.ts` - Database schema (botConfigs, knowledgeBase, groups, activityLogs)
-- `server/routes.ts` - API endpoints including website scraping
-- `server/storage.ts` - Database operations (DatabaseStorage class)
-- `server/telegram.ts` - Telegram bot logic with AI response generation, webhook/polling modes
-- `server/seed.ts` - Database seeding
-- `client/src/App.tsx` - Main app with sidebar layout
+- `shared/schema.ts` - Database schema with userId on all tables, exports auth models
+- `shared/models/auth.ts` - Users and sessions tables for Replit Auth
+- `server/index.ts` - Express app with auth setup before routes
+- `server/routes.ts` - Auth-protected API endpoints with userId scoping
+- `server/storage.ts` - Database operations scoped by userId
+- `server/telegram.ts` - Multi-bot engine managing per-user TelegramBot instances
+- `server/replit_integrations/auth/` - Replit Auth module (do not modify)
+- `client/src/App.tsx` - Auth-gated app with landing page for logged-out users
+- `client/src/pages/landing.tsx` - Public landing page
 - `client/src/pages/` - Dashboard, Knowledge, Activity, Reports, Settings pages
+- `client/src/hooks/use-auth.ts` - Auth hook for React components
+- `client/src/components/app-sidebar.tsx` - Sidebar with user profile and logout
 
-## Bot Context Sources
-1. **Global Context** - Free-text description of project/community (Settings page)
-2. **Website Import** - Scrapes a URL and stores extracted text content (Settings page)
-3. **Knowledge Base** - Individual entries with categories (Knowledge Base page)
-4. **Paste Content** - Bulk text import into knowledge base (Knowledge Base page)
+## Multi-Tenant Design
+- Each user provides their own Telegram bot token via Settings page
+- All data tables (botConfigs, knowledgeBase, groups, activityLogs) have userId foreign key
+- Storage methods are scoped: `storage.getConfig(userId)`, `storage.getGroups(userId)`, etc.
+- Bot engine starts/stops individual bots based on active configs with tokens
+- Webhooks use hashed tokens for unique per-bot paths
 
-## API Endpoints
-- `GET/PATCH /api/config` - Bot configuration (includes globalContext, websiteUrl, websiteContent)
+## API Endpoints (all require auth)
+- `GET/PATCH /api/config` - Bot configuration (includes botToken, globalContext, websiteUrl)
 - `GET/POST/PATCH/DELETE /api/knowledge` - Knowledge base CRUD
 - `POST /api/scrape-website` - Fetch and extract text from a website URL
 - `GET /api/groups` - Connected Telegram groups
 - `GET /api/activity` - Activity logs
+- Auth routes: `/api/login`, `/api/logout`, `/api/auth/user`, `/api/callback`
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection
-- `TELEGRAM_BOT_TOKEN` - Telegram bot token
+- `SESSION_SECRET` - Session encryption key
 - `AI_INTEGRATIONS_OPENAI_API_KEY` - Auto-set by Replit
 - `AI_INTEGRATIONS_OPENAI_BASE_URL` - Auto-set by Replit
 - `REPLIT_DOMAINS` - Auto-set in production, used for webhook URL

@@ -11,9 +11,11 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, BookOpen, Settings, Activity, Bot, Shield } from "lucide-react";
+import { LayoutDashboard, BookOpen, Settings, Activity, Bot, Shield, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import type { BotConfig } from "@shared/schema";
 
 const navItems = [
@@ -27,6 +29,9 @@ const navItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { data: config } = useQuery<BotConfig>({ queryKey: ["/api/config"] });
+  const { user, logout } = useAuth();
+
+  const hasToken = config?.botToken && config.botToken.trim();
 
   return (
     <Sidebar>
@@ -37,12 +42,12 @@ export function AppSidebar() {
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-sm font-semibold truncate" data-testid="text-bot-name">
-              {config?.botName || "Telegram Bot"}
+              {config?.botName || "ContextBot"}
             </span>
             <div className="flex items-center gap-1.5">
-              <div className={`h-1.5 w-1.5 rounded-full ${config?.isActive ? "bg-status-online" : "bg-status-offline"}`} />
+              <div className={`h-1.5 w-1.5 rounded-full ${hasToken && config?.isActive ? "bg-green-500" : "bg-muted-foreground/40"}`} />
               <span className="text-xs text-muted-foreground">
-                {config?.isActive ? "Online" : "Offline"}
+                {!hasToken ? "No token set" : config?.isActive ? "Online" : "Offline"}
               </span>
             </div>
           </div>
@@ -70,10 +75,29 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 space-y-3">
+        {user && (
+          <div className="flex items-center gap-2">
+            {user.profileImageUrl ? (
+              <img src={user.profileImageUrl} alt="" className="h-7 w-7 rounded-full" />
+            ) : (
+              <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+                {(user.firstName || user.email || "U")[0].toUpperCase()}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium truncate" data-testid="text-user-name">
+                {user.firstName ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}` : user.email || "User"}
+              </p>
+            </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => logout()} data-testid="button-logout">
+              <LogOut className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary" className="text-xs">v1.0</Badge>
-          <span>Context Bot</span>
+          <Badge variant="secondary" className="text-xs">v2.0</Badge>
+          <span>ContextBot</span>
         </div>
       </SidebarFooter>
     </Sidebar>

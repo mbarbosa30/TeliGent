@@ -3,8 +3,12 @@ import { pgTable, text, varchar, serial, integer, boolean, timestamp, jsonb } fr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export * from "./models/auth";
+
 export const botConfigs = pgTable("bot_configs", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  botToken: text("bot_token").notNull().default(""),
   botName: text("bot_name").notNull().default("My Bot"),
   personality: text("personality").notNull().default("You are a helpful group assistant. Answer questions clearly and concisely based on the knowledge base provided. Be friendly but not overly chatty."),
   globalContext: text("global_context").notNull().default(""),
@@ -24,6 +28,7 @@ export const botConfigs = pgTable("bot_configs", {
 
 export const knowledgeBase = pgTable("knowledge_base", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
   sourceUrl: text("source_url"),
@@ -34,7 +39,8 @@ export const knowledgeBase = pgTable("knowledge_base", {
 
 export const groups = pgTable("groups", {
   id: serial("id").primaryKey(),
-  telegramChatId: text("telegram_chat_id").notNull().unique(),
+  userId: varchar("user_id").notNull(),
+  telegramChatId: text("telegram_chat_id").notNull(),
   name: text("name").notNull(),
   memberCount: integer("member_count").default(0),
   isActive: boolean("is_active").notNull().default(true),
@@ -43,6 +49,7 @@ export const groups = pgTable("groups", {
 
 export const activityLogs = pgTable("activity_logs", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
   groupId: integer("group_id").references(() => groups.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
   userName: text("user_name"),

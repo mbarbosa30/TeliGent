@@ -4,92 +4,97 @@ import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBas
 import { eq, desc, and } from "drizzle-orm";
 
 export interface IStorage {
-  getConfig(): Promise<BotConfig | undefined>;
-  upsertConfig(data: Partial<InsertBotConfig>): Promise<BotConfig>;
+  getConfig(userId: string): Promise<BotConfig | undefined>;
+  upsertConfig(userId: string, data: Partial<InsertBotConfig>): Promise<BotConfig>;
+  getAllActiveConfigs(): Promise<BotConfig[]>;
 
-  getKnowledgeEntries(): Promise<KnowledgeBaseEntry[]>;
-  getActiveKnowledgeEntries(): Promise<KnowledgeBaseEntry[]>;
-  createKnowledgeEntry(entry: InsertKnowledgeBaseEntry): Promise<KnowledgeBaseEntry>;
-  updateKnowledgeEntry(id: number, entry: Partial<InsertKnowledgeBaseEntry>): Promise<KnowledgeBaseEntry | undefined>;
-  deleteKnowledgeEntry(id: number): Promise<void>;
+  getKnowledgeEntries(userId: string): Promise<KnowledgeBaseEntry[]>;
+  getActiveKnowledgeEntries(userId: string): Promise<KnowledgeBaseEntry[]>;
+  createKnowledgeEntry(userId: string, entry: Omit<InsertKnowledgeBaseEntry, "userId">): Promise<KnowledgeBaseEntry>;
+  updateKnowledgeEntry(userId: string, id: number, entry: Partial<InsertKnowledgeBaseEntry>): Promise<KnowledgeBaseEntry | undefined>;
+  deleteKnowledgeEntry(userId: string, id: number): Promise<void>;
 
-  getGroups(): Promise<Group[]>;
-  getGroupByChatId(chatId: string): Promise<Group | undefined>;
-  upsertGroup(data: InsertGroup): Promise<Group>;
-  updateGroup(id: number, data: Partial<InsertGroup>): Promise<Group | undefined>;
+  getGroups(userId: string): Promise<Group[]>;
+  getGroupByChatId(userId: string, chatId: string): Promise<Group | undefined>;
+  upsertGroup(userId: string, data: Omit<InsertGroup, "userId">): Promise<Group>;
+  updateGroup(userId: string, id: number, data: Partial<InsertGroup>): Promise<Group | undefined>;
 
-  getActivityLogs(limit?: number): Promise<ActivityLog[]>;
-  createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
+  getActivityLogs(userId: string, limit?: number): Promise<ActivityLog[]>;
+  createActivityLog(userId: string, log: Omit<InsertActivityLog, "userId">): Promise<ActivityLog>;
 }
 
 export class DatabaseStorage implements IStorage {
-  async getConfig(): Promise<BotConfig | undefined> {
-    const [config] = await db.select().from(botConfigs).limit(1);
+  async getConfig(userId: string): Promise<BotConfig | undefined> {
+    const [config] = await db.select().from(botConfigs).where(eq(botConfigs.userId, userId)).limit(1);
     return config;
   }
 
-  async upsertConfig(data: Partial<InsertBotConfig>): Promise<BotConfig> {
-    const existing = await this.getConfig();
+  async upsertConfig(userId: string, data: Partial<InsertBotConfig>): Promise<BotConfig> {
+    const existing = await this.getConfig(userId);
     if (existing) {
       const [updated] = await db.update(botConfigs).set({ ...data, updatedAt: new Date() }).where(eq(botConfigs.id, existing.id)).returning();
       return updated;
     }
-    const [created] = await db.insert(botConfigs).values(data as InsertBotConfig).returning();
+    const [created] = await db.insert(botConfigs).values({ ...data, userId } as InsertBotConfig).returning();
     return created;
   }
 
-  async getKnowledgeEntries(): Promise<KnowledgeBaseEntry[]> {
-    return db.select().from(knowledgeBase).orderBy(desc(knowledgeBase.createdAt));
+  async getAllActiveConfigs(): Promise<BotConfig[]> {
+    return db.select().from(botConfigs).where(eq(botConfigs.isActive, true));
   }
 
-  async getActiveKnowledgeEntries(): Promise<KnowledgeBaseEntry[]> {
-    return db.select().from(knowledgeBase).where(eq(knowledgeBase.isActive, true)).orderBy(desc(knowledgeBase.createdAt));
+  async getKnowledgeEntries(userId: string): Promise<KnowledgeBaseEntry[]> {
+    return db.select().from(knowledgeBase).where(eq(knowledgeBase.userId, userId)).orderBy(desc(knowledgeBase.createdAt));
   }
 
-  async createKnowledgeEntry(entry: InsertKnowledgeBaseEntry): Promise<KnowledgeBaseEntry> {
-    const [created] = await db.insert(knowledgeBase).values(entry).returning();
+  async getActiveKnowledgeEntries(userId: string): Promise<KnowledgeBaseEntry[]> {
+    return db.select().from(knowledgeBase).where(and(eq(knowledgeBase.userId, userId), eq(knowledgeBase.isActive, true))).orderBy(desc(knowledgeBase.createdAt));
+  }
+
+  async createKnowledgeEntry(userId: string, entry: Omit<InsertKnowledgeBaseEntry, "userId">): Promise<KnowledgeBaseEntry> {
+    const [created] = await db.insert(knowledgeBase).values({ ...entry, userId }).returning();
     return created;
   }
 
-  async updateKnowledgeEntry(id: number, entry: Partial<InsertKnowledgeBaseEntry>): Promise<KnowledgeBaseEntry | undefined> {
-    const [updated] = await db.update(knowledgeBase).set(entry).where(eq(knowledgeBase.id, id)).returning();
+  async updateKnowledgeEntry(userId: string, id: number, entry: Partial<InsertKnowledgeBaseEntry>): Promise<KnowledgeBaseEntry | undefined> {
+    const [updated] = await db.update(knowledgeBase).set(entry).where(and(eq(knowledgeBase.id, id), eq(knowledgeBase.userId, userId))).returning();
     return updated;
   }
 
-  async deleteKnowledgeEntry(id: number): Promise<void> {
-    await db.delete(knowledgeBase).where(eq(knowledgeBase.id, id));
+  async deleteKnowledgeEntry(userId: string, id: number): Promise<void> {
+    await db.delete(knowledgeBase).where(and(eq(knowledgeBase.id, id), eq(knowledgeBase.userId, userId)));
   }
 
-  async getGroups(): Promise<Group[]> {
-    return db.select().from(groups).orderBy(desc(groups.joinedAt));
+  async getGroups(userId: string): Promise<Group[]> {
+    return db.select().from(groups).where(eq(groups.userId, userId)).orderBy(desc(groups.joinedAt));
   }
 
-  async getGroupByChatId(chatId: string): Promise<Group | undefined> {
-    const [group] = await db.select().from(groups).where(eq(groups.telegramChatId, chatId));
+  async getGroupByChatId(userId: string, chatId: string): Promise<Group | undefined> {
+    const [group] = await db.select().from(groups).where(and(eq(groups.userId, userId), eq(groups.telegramChatId, chatId)));
     return group;
   }
 
-  async upsertGroup(data: InsertGroup): Promise<Group> {
-    const existing = await this.getGroupByChatId(data.telegramChatId);
+  async upsertGroup(userId: string, data: Omit<InsertGroup, "userId">): Promise<Group> {
+    const existing = await this.getGroupByChatId(userId, data.telegramChatId);
     if (existing) {
       const [updated] = await db.update(groups).set(data).where(eq(groups.id, existing.id)).returning();
       return updated;
     }
-    const [created] = await db.insert(groups).values(data).returning();
+    const [created] = await db.insert(groups).values({ ...data, userId }).returning();
     return created;
   }
 
-  async updateGroup(id: number, data: Partial<InsertGroup>): Promise<Group | undefined> {
-    const [updated] = await db.update(groups).set(data).where(eq(groups.id, id)).returning();
+  async updateGroup(userId: string, id: number, data: Partial<InsertGroup>): Promise<Group | undefined> {
+    const [updated] = await db.update(groups).set(data).where(and(eq(groups.id, id), eq(groups.userId, userId))).returning();
     return updated;
   }
 
-  async getActivityLogs(limit = 100): Promise<ActivityLog[]> {
-    return db.select().from(activityLogs).orderBy(desc(activityLogs.createdAt)).limit(limit);
+  async getActivityLogs(userId: string, limit = 100): Promise<ActivityLog[]> {
+    return db.select().from(activityLogs).where(eq(activityLogs.userId, userId)).orderBy(desc(activityLogs.createdAt)).limit(limit);
   }
 
-  async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
-    const [created] = await db.insert(activityLogs).values(log).returning();
+  async createActivityLog(userId: string, log: Omit<InsertActivityLog, "userId">): Promise<ActivityLog> {
+    const [created] = await db.insert(activityLogs).values({ ...log, userId }).returning();
     return created;
   }
 }
