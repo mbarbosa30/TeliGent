@@ -157,8 +157,9 @@ export default function SetupGuidePage() {
                 <li>Select your bot from the list</li>
                 <li>Choose <strong>Disable</strong></li>
               </ol>
-              <div className="p-3 bg-muted border text-xs">
-                <strong>Why is this important?</strong> By default, bots in groups can only see messages that mention them directly. Disabling privacy mode lets the bot read all messages — which is required for scam detection and auto-moderation.
+              <div className="p-3 bg-muted border text-xs space-y-2">
+                <p><strong>Why is this important?</strong> By default, bots in groups can only see messages that mention them directly. Disabling privacy mode lets the bot read all messages — which is required for scam detection and auto-moderation.</p>
+                <p><strong>Already added the bot to a group?</strong> You must <strong>remove the bot from the group and add it back</strong> after disabling privacy mode. Telegram only applies this change when the bot joins a group.</p>
               </div>
             </div>
           </StepCard>
