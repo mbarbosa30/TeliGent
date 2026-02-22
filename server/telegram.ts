@@ -475,6 +475,25 @@ const HOMOGLYPH_MAP: Record<string, string> = {
   '\u2013': '-', '\u2014': '-',
   '\u200B': '', '\u200C': '', '\u200D': '', '\uFEFF': '', '\u00AD': '',
   '\u2060': '', '\u180E': '',
+  '\u00B0': ' ', '\u00B7': ' ', '\u2022': ' ', '\u2023': ' ', '\u2043': ' ',
+  '\u25E6': ' ', '\u2219': ' ', '\u22C5': ' ', '\u2027': ' ',
+  '\u2024': '.', '\u2025': '..', '\u2026': '...',
+  '\u00A0': ' ', '\u2002': ' ', '\u2003': ' ', '\u2004': ' ', '\u2005': ' ',
+  '\u2006': ' ', '\u2007': ' ', '\u2008': ' ', '\u2009': ' ', '\u200A': ' ',
+  '\u202F': ' ', '\u205F': ' ', '\u3000': ' ',
+  '\u2070': '0', '\u00B9': '1', '\u00B2': '2', '\u00B3': '3',
+  '\u2074': '4', '\u2075': '5', '\u2076': '6', '\u2077': '7',
+  '\u2078': '8', '\u2079': '9',
+  '\u2080': '0', '\u2081': '1', '\u2082': '2', '\u2083': '3',
+  '\u2084': '4', '\u2085': '5', '\u2086': '6', '\u2087': '7',
+  '\u2088': '8', '\u2089': '9',
+  '\uFF10': '0', '\uFF11': '1', '\uFF12': '2', '\uFF13': '3',
+  '\uFF14': '4', '\uFF15': '5', '\uFF16': '6', '\uFF17': '7',
+  '\uFF18': '8', '\uFF19': '9',
+  '\u2500': '-', '\u2501': '-', '\u2502': '|', '\u2503': '|',
+  '\uFE4D': '_', '\uFE4E': '_', '\uFE4F': '_',
+  '\u2010': '-', '\u2011': '-', '\u2012': '-', '\u2015': '-',
+  '\uFE58': '-', '\uFE63': '-', '\uFF0D': '-',
 };
 
 function fixHomoglyphWords(text: string): string {
@@ -538,6 +557,7 @@ function normalizeUnicode(text: string): string {
       result += char;
     }
   }
+  result = result.replace(/\s{2,}/g, ' ').trim();
   result = result.replace(/\b([A-Za-z])\s+(?=[A-Za-z]\b)/g, '$1');
   result = fixHomoglyphWords(result);
   return result;
@@ -658,7 +678,12 @@ async function detectAndHandleScam(
   const serviceMenuCount = (normalized.match(serviceMenuKeywordsGlobal) || []).length;
   const hasDmServiceMenu = /\b(dm|pm|inbox|message|contact)\s*.{0,20}@\w+/i.test(normalized) && serviceMenuCount >= 2;
   const hasServiceListSpam = serviceMenuCount >= 3 && /\b(dm|pm|inbox|message|contact|order|hire|available|and\s*more)\b/i.test(normalized);
-  const hasScamOffer = /\b(promot|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized);
+  const hasScamOffer = /\b(promot|promo\b|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized);
+  const hasColdPitchPromo = /\b(promo|promot(e|ion|ing)|market(ing)?|boost(ing)?|advertis(e|ing)|shill(ing)?)\s*.{0,30}\b(your|ur)\s*(project|token|coin|community|group|channel)\b/i.test(normalized) ||
+    /\b(we\s*(will|can|offer|provide|do)|i\s*(will|can|offer|provide|do))\s*(promo|promot(e|ion|ing)|market(ing)?|boost(ing)?|advertis(e|ing)|shill(ing)?|trend(ing)?|list(ing)?)\s*.{0,20}\b(your|ur)\b/i.test(normalized) ||
+    /\b(low\s*cost|cheap|affordable|best\s*price|discount|free\s*trial)\b.{0,40}\b(promo|promot|market|boost|advertis|listing|trending)/i.test(normalized) ||
+    /\b(promo|promot|market|boost|advertis|listing|trending)\b.{0,40}\b(low\s*cost|cheap|affordable|best\s*price|discount|free\s*trial)/i.test(normalized) ||
+    /\b(top|best|big|major)\s*(channel|group|platform)s?\b.{0,30}\b(low\s*cost|cheap|affordable|promo|promot|advertis)/i.test(normalized);
   const hasCryptoGiveawayScam = /\b(giv(e|ing)\s*(away|out|free|you|them|my))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
     /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,40}\b(giv(e|ing)\s*(away|out|free))\b/i.test(normalized) ||
     /\b(first\s*\d+(\s*(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|give|free|win|claim|airdrop)\b/i.test(normalized) ||
@@ -694,7 +719,7 @@ async function detectAndHandleScam(
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
     hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam || hasBoostBotPromo ||
-    hasDmServiceMenu || hasServiceListSpam;
+    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -715,6 +740,9 @@ async function detectAndHandleScam(
   }
   if (hasDmServiceMenu || hasServiceListSpam) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "DM service menu spam (unsolicited service listing)");
+  }
+  if (hasColdPitchPromo) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Cold-pitch promotion / paid promo service offer");
   }
   if (hasAggressiveDmSpam || hasDmWithUsername) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Aggressive DM solicitation spam");
