@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
@@ -7,6 +7,20 @@ import { isAuthenticated } from "./auth";
 
 function getUserId(req: any): string {
   return req.session?.userId;
+}
+
+async function requireBotOwnership(req: Request, res: Response, next: NextFunction) {
+  const userId = getUserId(req);
+  const botId = parseInt(req.params.botId as string);
+  if (isNaN(botId)) {
+    return res.status(400).json({ error: "Invalid bot ID" });
+  }
+  const config = await storage.getBotConfig(botId);
+  if (!config || config.userId !== userId) {
+    return res.status(404).json({ error: "Bot not found" });
+  }
+  (req as any).botConfig = config;
+  next();
 }
 
 async function scrapeUrl(url: string): Promise<string> {
@@ -51,24 +65,53 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.get("/api/config", isAuthenticated, async (req, res) => {
+  app.get("/api/bots", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
-      let config = await storage.getConfig(userId);
-      if (!config) {
-        config = await storage.upsertConfig(userId, {});
-      }
-      res.json(config);
+      const bots = await storage.getBotConfigs(userId);
+      res.json(bots);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.patch("/api/config", isAuthenticated, async (req, res) => {
+  app.post("/api/bots", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
+      const { botName } = req.body;
+      const config = await storage.createBotConfig(userId, { botName: botName || "My Bot" });
+      res.status(201).json(config);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/bots/:botId", isAuthenticated, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      await storage.deleteBotConfig(botId);
+      startBotEngine(app).catch(err => {
+        console.error("Failed to restart bot engine:", err);
+      });
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/config", isAuthenticated, requireBotOwnership, async (req, res) => {
+    try {
+      res.json((req as any).botConfig);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/bots/:botId/config", isAuthenticated, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
       const partial = insertBotConfigSchema.partial().parse(req.body);
-      const config = await storage.upsertConfig(userId, partial);
+      const config = await storage.updateBotConfig(botId, partial);
 
       if (partial.botToken !== undefined || partial.isActive !== undefined) {
         startBotEngine(app).catch(err => {
@@ -82,20 +125,21 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/knowledge", isAuthenticated, async (req, res) => {
+  app.get("/api/bots/:botId/knowledge", isAuthenticated, requireBotOwnership, async (req, res) => {
     try {
-      const userId = getUserId(req);
-      const entries = await storage.getKnowledgeEntries(userId);
+      const botId = parseInt(req.params.botId as string);
+      const entries = await storage.getKnowledgeEntries(botId);
       res.json(entries);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/knowledge", isAuthenticated, async (req, res) => {
+  app.post("/api/bots/:botId/knowledge", isAuthenticated, requireBotOwnership, async (req, res) => {
     try {
+      const botId = parseInt(req.params.botId as string);
       const userId = getUserId(req);
-      const parsed = insertKnowledgeBaseSchema.omit({ userId: true }).parse(req.body);
+      const parsed = insertKnowledgeBaseSchema.omit({ userId: true, botConfigId: true }).parse(req.body);
 
       if (parsed.sourceUrl && parsed.sourceUrl.trim()) {
         try {
@@ -111,19 +155,19 @@ export async function registerRoutes(
         }
       }
 
-      const entry = await storage.createKnowledgeEntry(userId, parsed);
+      const entry = await storage.createKnowledgeEntry(botId, userId, parsed);
       res.status(201).json(entry);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
   });
 
-  app.patch("/api/knowledge/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/bots/:botId/knowledge/:id", isAuthenticated, requireBotOwnership, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const botId = parseInt(req.params.botId as string);
       const id = parseInt(req.params.id as string);
       const partial = insertKnowledgeBaseSchema.partial().parse(req.body);
-      const entry = await storage.updateKnowledgeEntry(userId, id, partial);
+      const entry = await storage.updateKnowledgeEntry(botId, id, partial);
       if (!entry) return res.status(404).json({ error: "Entry not found" });
       res.json(entry);
     } catch (err: any) {
@@ -131,27 +175,27 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/knowledge/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/bots/:botId/knowledge/:id", isAuthenticated, requireBotOwnership, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const botId = parseInt(req.params.botId as string);
       const id = parseInt(req.params.id as string);
-      await storage.deleteKnowledgeEntry(userId, id);
+      await storage.deleteKnowledgeEntry(botId, id);
       res.status(204).send();
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/scrape-website", isAuthenticated, async (req, res) => {
+  app.post("/api/bots/:botId/scrape-website", isAuthenticated, requireBotOwnership, async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const botId = parseInt(req.params.botId as string);
       const { url } = req.body;
       if (!url || typeof url !== "string") {
         return res.status(400).json({ error: "URL is required" });
       }
 
       const textContent = await scrapeUrl(url);
-      await storage.upsertConfig(userId, { websiteUrl: url, websiteContent: textContent });
+      await storage.updateBotConfig(botId, { websiteUrl: url, websiteContent: textContent });
 
       res.json({ content: textContent, length: textContent.length });
     } catch (err: any) {
@@ -159,20 +203,20 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/groups", isAuthenticated, async (req, res) => {
+  app.get("/api/bots/:botId/groups", isAuthenticated, requireBotOwnership, async (req, res) => {
     try {
-      const userId = getUserId(req);
-      const allGroups = await storage.getGroups(userId);
+      const botId = parseInt(req.params.botId as string);
+      const allGroups = await storage.getGroups(botId);
       res.json(allGroups);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.get("/api/activity", isAuthenticated, async (req, res) => {
+  app.get("/api/bots/:botId/activity", isAuthenticated, requireBotOwnership, async (req, res) => {
     try {
-      const userId = getUserId(req);
-      const logs = await storage.getActivityLogs(userId, 200);
+      const botId = parseInt(req.params.botId as string);
+      const logs = await storage.getActivityLogs(botId, 200);
       res.json(logs);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

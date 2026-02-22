@@ -15,8 +15,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { useBot } from "@/hooks/use-bot";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Settings, Bot, MessageSquare, Shield, Zap, Save, Globe, FileText, Loader2, Key, AlertTriangle } from "lucide-react";
+import { Settings, Bot, MessageSquare, Shield, Zap, Save, Globe, FileText, Loader2, Key, AlertTriangle, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { BotConfig } from "@shared/schema";
 
 const settingsSchema = z.object({
@@ -38,8 +50,13 @@ const settingsSchema = z.object({
 type SettingsForm = z.infer<typeof settingsSchema>;
 
 export default function SettingsPage() {
-  const { data: config, isLoading } = useQuery<BotConfig>({ queryKey: ["/api/config"] });
+  const { selectedBotId, bots, selectBot } = useBot();
   const { toast } = useToast();
+
+  const { data: config, isLoading } = useQuery<BotConfig>({
+    queryKey: ["/api/bots", selectedBotId, "config"],
+    enabled: !!selectedBotId,
+  });
 
   const form = useForm<SettingsForm>({
     resolver: zodResolver(settingsSchema),
@@ -82,11 +99,12 @@ export default function SettingsPage() {
 
   const mutation = useMutation({
     mutationFn: (data: SettingsForm) => {
-      if (!config) throw new Error("Config not loaded yet");
-      return apiRequest("PATCH", "/api/config", data);
+      if (!selectedBotId) throw new Error("No bot selected");
+      return apiRequest("PATCH", `/api/bots/${selectedBotId}/config`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots"] });
       toast({ title: "Settings saved", description: "Your bot configuration has been updated." });
     },
     onError: () => {
@@ -96,17 +114,45 @@ export default function SettingsPage() {
 
   const scrapeMutation = useMutation({
     mutationFn: async (url: string) => {
-      const res = await apiRequest("POST", "/api/scrape-website", { url });
+      const res = await apiRequest("POST", `/api/bots/${selectedBotId}/scrape-website`, { url });
       return res.json();
     },
     onSuccess: (data: { content: string; length: number }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "config"] });
       toast({ title: "Website imported", description: `Extracted ${data.length.toLocaleString()} characters of content from your website.` });
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to fetch website content. Make sure the URL is correct and accessible.", variant: "destructive" });
     },
   });
+
+  const deleteBotMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedBotId) throw new Error("No bot selected");
+      return apiRequest("DELETE", `/api/bots/${selectedBotId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bots"] });
+      const remaining = bots.filter(b => b.id !== selectedBotId);
+      if (remaining.length > 0) {
+        selectBot(remaining[0].id);
+      }
+      toast({ title: "Bot deleted", description: "The bot and all its data have been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete bot.", variant: "destructive" });
+    },
+  });
+
+  if (!selectedBotId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6">
+        <Bot className="h-12 w-12 text-muted-foreground/40 mb-4" />
+        <h2 className="text-lg font-semibold">No bot selected</h2>
+        <p className="text-sm text-muted-foreground mt-1">Use the bot switcher in the sidebar to create or select a bot.</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -372,6 +418,44 @@ export default function SettingsPage() {
                     <FormDescription>Comma-separated words that trigger report detection</FormDescription>
                   </FormItem>
                 )} />
+              </CardContent>
+            </Card>
+
+            <Card className="border-destructive/30">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Trash2 className="h-5 w-5 text-destructive" />
+                  <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
+                </div>
+                <CardDescription>Permanently delete this bot and all its data</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" data-testid="button-delete-bot">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Bot
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this bot?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete the bot "{config?.botName}" and all associated data including knowledge base entries, activity logs, and group connections. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => deleteBotMutation.mutate()}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        data-testid="button-confirm-delete-bot"
+                      >
+                        {deleteBotMutation.isPending ? "Deleting..." : "Delete permanently"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </CardContent>
             </Card>
           </form>

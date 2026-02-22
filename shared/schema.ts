@@ -29,6 +29,7 @@ export const botConfigs = pgTable("bot_configs", {
 export const knowledgeBase = pgTable("knowledge_base", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),
+  botConfigId: integer("bot_config_id").references(() => botConfigs.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   content: text("content").notNull(),
   sourceUrl: text("source_url"),
@@ -40,6 +41,7 @@ export const knowledgeBase = pgTable("knowledge_base", {
 export const groups = pgTable("groups", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),
+  botConfigId: integer("bot_config_id").references(() => botConfigs.id, { onDelete: "cascade" }),
   telegramChatId: text("telegram_chat_id").notNull(),
   name: text("name").notNull(),
   memberCount: integer("member_count").default(0),
@@ -50,6 +52,7 @@ export const groups = pgTable("groups", {
 export const activityLogs = pgTable("activity_logs", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),
+  botConfigId: integer("bot_config_id").references(() => botConfigs.id, { onDelete: "cascade" }),
   groupId: integer("group_id").references(() => groups.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
   userName: text("user_name"),

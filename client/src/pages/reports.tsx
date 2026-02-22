@@ -3,14 +3,30 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Shield, AlertTriangle, Clock, User } from "lucide-react";
+import { Shield, AlertTriangle, Clock, User, Bot } from "lucide-react";
+import { useBot } from "@/hooks/use-bot";
 import type { ActivityLog } from "@shared/schema";
 import { format } from "date-fns";
 
 export default function ReportsPage() {
-  const { data: logs = [], isLoading } = useQuery<ActivityLog[]>({ queryKey: ["/api/activity"] });
+  const { selectedBotId } = useBot();
+
+  const { data: logs = [], isLoading } = useQuery<ActivityLog[]>({
+    queryKey: ["/api/bots", selectedBotId, "activity"],
+    enabled: !!selectedBotId,
+  });
 
   const reports = logs.filter((l) => l.isReport);
+
+  if (!selectedBotId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6">
+        <Bot className="h-12 w-12 text-muted-foreground/40 mb-4" />
+        <h2 className="text-lg font-semibold">No bot selected</h2>
+        <p className="text-sm text-muted-foreground mt-1">Use the bot switcher in the sidebar to create or select a bot.</p>
+      </div>
+    );
+  }
 
   return (
     <ScrollArea className="h-full">

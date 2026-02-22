@@ -17,6 +17,7 @@ const openai = new OpenAI({
 interface BotInstance {
   bot: TelegramBot;
   userId: string;
+  botConfigId: number;
   token: string;
   webhookPath: string;
   botUsername: string;
@@ -166,9 +167,9 @@ async function startSingleBot(config: BotConfig) {
     const me = await bot.getMe();
     log(`Bot started for user ${userId}: @${me.username} (webhook: ${webhookUrl})`, "telegram");
 
-    await storage.upsertConfig(userId, { botName: me.first_name || "Bot" });
+    await storage.updateBotConfig(config.id, { botName: me.first_name || "Bot" });
 
-    const instance: BotInstance = { bot, userId, token, webhookPath, botUsername: me.username || "" };
+    const instance: BotInstance = { bot, userId, botConfigId: config.id, token, webhookPath, botUsername: me.username || "" };
     activeBots.set(token, instance);
 
     bot.on("message", (msg) => handleMessage(msg, instance));
@@ -181,7 +182,7 @@ async function startSingleBot(config: BotConfig) {
 
 async function handleNewMembers(msg: TelegramBot.Message, instance: BotInstance) {
   if (!msg.new_chat_members || !msg.chat) return;
-  const { bot, userId } = instance;
+  const { bot, userId, botConfigId } = instance;
 
   const botInfo = await bot.getMe();
   const botJoined = msg.new_chat_members.some(m => m.id === botInfo.id);
@@ -191,14 +192,14 @@ async function handleNewMembers(msg: TelegramBot.Message, instance: BotInstance)
     const chatTitle = msg.chat.title || "Unknown Group";
     const memberCount = await bot.getChatMemberCount(msg.chat.id).catch(() => 0);
 
-    await storage.upsertGroup(userId, {
+    await storage.upsertGroup(botConfigId, userId, {
       telegramChatId: chatId,
       name: chatTitle,
       memberCount,
       isActive: true,
     });
 
-    await storage.createActivityLog(userId, {
+    await storage.createActivityLog(botConfigId, userId, {
       groupId: null,
       type: "join",
       userName: "Bot",
@@ -214,13 +215,13 @@ async function handleNewMembers(msg: TelegramBot.Message, instance: BotInstance)
 
 async function handleLeftMember(msg: TelegramBot.Message, instance: BotInstance) {
   if (!msg.left_chat_member || !msg.chat) return;
-  const { bot, userId } = instance;
+  const { bot, userId, botConfigId } = instance;
 
   const botInfo = await bot.getMe();
   if (msg.left_chat_member.id === botInfo.id) {
-    const group = await storage.getGroupByChatId(userId, msg.chat.id.toString());
+    const group = await storage.getGroupByChatId(botConfigId, msg.chat.id.toString());
     if (group) {
-      await storage.updateGroup(userId, group.id, { isActive: false });
+      await storage.updateGroup(botConfigId, group.id, { isActive: false });
     }
     log(`Bot removed from group: ${msg.chat.title} (user: ${userId})`, "telegram");
   }
@@ -307,6 +308,7 @@ async function executeScamAction(
   text: string,
   userName: string,
   userId: string,
+  botConfigId: number,
   groupRecord: any,
   reason: string
 ): Promise<boolean> {
@@ -330,7 +332,7 @@ async function executeScamAction(
   }
 
   if (groupRecord) {
-    await storage.createActivityLog(userId, {
+    await storage.createActivityLog(botConfigId, userId, {
       groupId: groupRecord.id,
       type: "report",
       userName,
@@ -481,6 +483,7 @@ async function detectAndHandleScam(
   text: string,
   userName: string,
   userId: string,
+  botConfigId: number,
   config: BotConfig,
   groupRecord: any
 ): Promise<boolean> {
@@ -557,46 +560,46 @@ async function detectAndHandleScam(
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
     hasDmSolicitation || hasScamOffer || hasAggressiveDmSpam || hasPumpPromoSpam;
   if (evasionDetected && hasAnyScamSignal) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
   if (evasionDetected) {
     log(`Homoglyph evasion without scam keywords — escalating to AI check`, "telegram");
   }
   if (isImpersonator && (hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasDmSolicitation)) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Impersonation + scam (name mimics bot/group)");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Impersonation + scam (name mimics bot/group)");
   }
   if (hasMigrationAirdropScam) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Fake migration/airdrop scam");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Fake migration/airdrop scam");
   }
   if (hasPrivateMessageSolicitation || (hasDmSolicitation && hasTxHashRequest)) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "DM solicitation / tx hash phishing");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "DM solicitation / tx hash phishing");
   }
   if (hasFlatteryPitch || hasCryptoServiceKeywords || hasUnsolicitedServiceOffer) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Unsolicited service offer / cold-pitch spam");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Unsolicited service offer / cold-pitch spam");
   }
   if (hasAggressiveDmSpam || hasDmWithUsername) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Aggressive DM solicitation spam");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Aggressive DM solicitation spam");
   }
   if (hasInsiderCallSpam) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Insider trading / paid call scam");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Insider trading / paid call scam");
   }
   if (hasWalletBuyingSelling) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Wallet buying/selling scam");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Wallet buying/selling scam");
   }
   if (hasDmSolicitation && hasScamOffer) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "DM solicitation with scam/promo offer");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "DM solicitation with scam/promo offer");
   }
   if (hasSexualSpam || hasSolicitationSpam) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Solicitation/adult spam");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Solicitation/adult spam");
   }
   if (hasGroupPromoShill || hasUnsolicitedGroupLink) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Telegram group/channel promotion spam");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Telegram group/channel promotion spam");
   }
   if (hasRaidShillSpam || hasPaidServiceSpam) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Raid/shill/paid promotion service offer");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Raid/shill/paid promotion service offer");
   }
   if (hasPumpPromoSpam) {
-    return await executeScamAction(bot, msg, text, userName, userId, groupRecord, "Token pump / paid promotion service offer");
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Token pump / paid promotion service offer");
   }
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
   if (!hasUrl && normalized.length < MIN_SCAM_CHECK_LENGTH && !isImpersonator && !evasionDetected) {
@@ -610,7 +613,7 @@ async function detectAndHandleScam(
   if (!isScam) return false;
 
   const aiReason = isImpersonator ? `AI (impersonator): ${reason}` : `AI: ${reason}`;
-  return await executeScamAction(bot, msg, text, userName, userId, groupRecord, aiReason);
+  return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, aiReason);
 }
 
 async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
@@ -621,12 +624,12 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     }
     if (msg.from?.is_bot) return;
 
-    const { bot, userId } = instance;
-    log(`Message from ${msg.from?.first_name || "Unknown"} in "${msg.chat.title || "?"}" (user: ${userId}): "${msg.text.substring(0, 80)}"`, "telegram");
+    const { bot, userId, botConfigId } = instance;
+    log(`Message from ${msg.from?.first_name || "Unknown"} in "${msg.chat.title || "?"}" (user: ${userId}, bot: ${botConfigId}): "${msg.text.substring(0, 80)}"`, "telegram");
 
-    const config = await storage.getConfig(userId);
+    const config = await storage.getBotConfig(botConfigId);
     if (!config || !config.isActive) {
-      log(`Bot inactive or no config for user ${userId}`, "telegram");
+      log(`Bot inactive or no config for bot ${botConfigId}`, "telegram");
       return;
     }
 
@@ -634,24 +637,24 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     const userName = msg.from?.first_name || msg.from?.username || "Unknown";
     const messageText = msg.text;
 
-    const group = await storage.getGroupByChatId(userId, chatId);
+    const group = await storage.getGroupByChatId(botConfigId, chatId);
     if (!group) {
       const memberCount = await bot.getChatMemberCount(msg.chat.id).catch(() => 0);
-      await storage.upsertGroup(userId, {
+      await storage.upsertGroup(botConfigId, userId, {
         telegramChatId: chatId,
         name: msg.chat.title || "Unknown",
         memberCount,
         isActive: true,
       });
     }
-    const groupRecord = await storage.getGroupByChatId(userId, chatId);
+    const groupRecord = await storage.getGroupByChatId(botConfigId, chatId);
 
     if (messageText.startsWith("/")) {
-      const handled = await handleCommand(bot, msg, config, groupRecord, userId);
+      const handled = await handleCommand(bot, msg, config, groupRecord, userId, botConfigId);
       if (handled) return;
     }
 
-    const scamDetected = await detectAndHandleScam(bot, msg, messageText, userName, userId, config, groupRecord);
+    const scamDetected = await detectAndHandleScam(bot, msg, messageText, userName, userId, botConfigId, config, groupRecord);
     if (scamDetected) {
       log(`Scam detected from ${userName} — handled`, "telegram");
       return;
@@ -662,7 +665,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
 
     const isReport = checkIfReport(messageText, config);
     if (isReport && config.trackReports) {
-      await storage.createActivityLog(userId, {
+      await storage.createActivityLog(botConfigId, userId, {
         groupId: groupRecord?.id || null,
         type: "report",
         userName,
@@ -702,7 +705,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
         replyContext = `${replyAuthor} said: ${msg.reply_to_message.text}`;
       }
 
-      const response = await generateAIResponse(userId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot);
+      const response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot);
       log(`AI response for ${userName}: "${(response || "").substring(0, 60)}..."`, "telegram");
 
       if (response && response.trim() && response.trim() !== "[[SKIP]]") {
@@ -710,7 +713,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
         log(`Reply sent to ${userName} in chat ${chatId}`, "telegram");
         cooldowns.set(cooldownKey, now);
 
-        await storage.createActivityLog(userId, {
+        await storage.createActivityLog(botConfigId, userId, {
           groupId: groupRecord?.id || null,
           type: "response",
           userName,
@@ -772,7 +775,7 @@ async function sendBotMessage(bot: TelegramBot, chatId: number | string, text: s
   }
 }
 
-async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userId: string): Promise<boolean> {
+async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userId: string, botConfigId: number): Promise<boolean> {
   const text = msg.text || "";
   const chatId = msg.chat.id;
   const userName = msg.from?.first_name || msg.from?.username || "Unknown";
@@ -797,7 +800,7 @@ async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, config:
     }
     intro += `\n\nType /help to see what I can do.`;
     await sendBotMessage(bot, chatId, intro, msg.message_id);
-    await storage.createActivityLog(userId, {
+    await storage.createActivityLog(botConfigId, userId, {
       groupId: groupRecord?.id || null,
       type: "command",
       userName,
@@ -821,7 +824,7 @@ async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, config:
 • Reply to my messages to continue a conversation
 • In smart mode, I only respond when mentioned or replied to`;
     await sendBotMessage(bot, chatId, helpText, msg.message_id);
-    await storage.createActivityLog(userId, {
+    await storage.createActivityLog(botConfigId, userId, {
       groupId: groupRecord?.id || null,
       type: "command",
       userName,
@@ -834,14 +837,14 @@ async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, config:
   }
 
   if (command === "report") {
-    await handleReportCommand(bot, msg, config, groupRecord, userName, args, userId);
+    await handleReportCommand(bot, msg, config, groupRecord, userName, args, userId, botConfigId);
     return true;
   }
 
   return false;
 }
 
-async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userName: string, args: string, userId: string) {
+async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userName: string, args: string, userId: string, botConfigId: number) {
   const chatId = msg.chat.id;
   const reportedMsg = msg.reply_to_message;
 
@@ -887,7 +890,7 @@ async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, c
 
     await sendBotMessage(bot, chatId, responseText, msg.message_id);
 
-    await storage.createActivityLog(userId, {
+    await storage.createActivityLog(botConfigId, userId, {
       groupId: groupRecord?.id || null,
       type: "report",
       userName,
@@ -899,7 +902,7 @@ async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, c
   } catch (err: any) {
     log(`Error processing /report: ${err.message}`, "telegram");
     await sendBotMessage(bot, chatId, "Report logged. An admin will review this.", msg.message_id);
-    await storage.createActivityLog(userId, {
+    await storage.createActivityLog(botConfigId, userId, {
       groupId: groupRecord?.id || null,
       type: "report",
       userName,
@@ -993,8 +996,8 @@ async function shouldBotRespond(bot: TelegramBot, msg: TelegramBot.Message, conf
   return false;
 }
 
-async function generateAIResponse(userId: string, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean): Promise<string> {
-  const knowledgeEntries = await storage.getActiveKnowledgeEntries(userId);
+async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean): Promise<string> {
+  const knowledgeEntries = await storage.getActiveKnowledgeEntries(botConfigId);
 
   const MAX_CONTEXT_CHARS = 6000;
   let usedChars = 0;

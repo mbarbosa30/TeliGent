@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bot, Users, BookOpen, Activity, MessageSquare, Shield, TrendingUp, Clock, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
+import { useBot } from "@/hooks/use-bot";
 import type { BotConfig, Group, ActivityLog, KnowledgeBaseEntry } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -36,10 +37,24 @@ function StatCard({ title, value, icon: Icon, description, loading }: {
 }
 
 export default function Dashboard() {
-  const { data: config, isLoading: configLoading } = useQuery<BotConfig>({ queryKey: ["/api/config"] });
-  const { data: groups = [], isLoading: groupsLoading } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
-  const { data: activity = [], isLoading: activityLoading } = useQuery<ActivityLog[]>({ queryKey: ["/api/activity"] });
-  const { data: knowledge = [], isLoading: knowledgeLoading } = useQuery<KnowledgeBaseEntry[]>({ queryKey: ["/api/knowledge"] });
+  const { selectedBotId, selectedBot } = useBot();
+
+  const { data: config, isLoading: configLoading } = useQuery<BotConfig>({
+    queryKey: ["/api/bots", selectedBotId, "config"],
+    enabled: !!selectedBotId,
+  });
+  const { data: groups = [], isLoading: groupsLoading } = useQuery<Group[]>({
+    queryKey: ["/api/bots", selectedBotId, "groups"],
+    enabled: !!selectedBotId,
+  });
+  const { data: activity = [], isLoading: activityLoading } = useQuery<ActivityLog[]>({
+    queryKey: ["/api/bots", selectedBotId, "activity"],
+    enabled: !!selectedBotId,
+  });
+  const { data: knowledge = [], isLoading: knowledgeLoading } = useQuery<KnowledgeBaseEntry[]>({
+    queryKey: ["/api/bots", selectedBotId, "knowledge"],
+    enabled: !!selectedBotId,
+  });
 
   const totalMembers = groups.reduce((sum, g) => sum + (g.memberCount || 0), 0);
   const recentReports = activity.filter(a => a.isReport).length;
@@ -48,6 +63,16 @@ export default function Dashboard() {
     const now = new Date();
     return d.toDateString() === now.toDateString();
   }).length;
+
+  if (!selectedBotId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6">
+        <Bot className="h-12 w-12 text-muted-foreground/40 mb-4" />
+        <h2 className="text-lg font-semibold">No bot selected</h2>
+        <p className="text-sm text-muted-foreground mt-1">Use the bot switcher in the sidebar to create or select a bot.</p>
+      </div>
+    );
+  }
 
   return (
     <ScrollArea className="h-full">

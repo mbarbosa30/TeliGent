@@ -21,11 +21,12 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, BookOpen, Link as LinkIcon, Trash2, Search, ExternalLink, Pencil, FileText } from "lucide-react";
+import { useBot } from "@/hooks/use-bot";
+import { Plus, BookOpen, Link as LinkIcon, Trash2, Search, ExternalLink, Pencil, FileText, Bot } from "lucide-react";
 import type { KnowledgeBaseEntry } from "@shared/schema";
 import { format } from "date-fns";
 
-function AddKnowledgeDialog({ editEntry, onClose }: { editEntry?: KnowledgeBaseEntry | null; onClose?: () => void }) {
+function AddKnowledgeDialog({ botId, editEntry, onClose }: { botId: number; editEntry?: KnowledgeBaseEntry | null; onClose?: () => void }) {
   const [title, setTitle] = useState(editEntry?.title || "");
   const [content, setContent] = useState(editEntry?.content || "");
   const [sourceUrl, setSourceUrl] = useState(editEntry?.sourceUrl || "");
@@ -39,12 +40,12 @@ function AddKnowledgeDialog({ editEntry, onClose }: { editEntry?: KnowledgeBaseE
   const mutation = useMutation({
     mutationFn: async () => {
       if (isEditing) {
-        return apiRequest("PATCH", `/api/knowledge/${editEntry.id}`, { title, content, sourceUrl: sourceUrl || null, category });
+        return apiRequest("PATCH", `/api/bots/${botId}/knowledge/${editEntry.id}`, { title, content, sourceUrl: sourceUrl || null, category });
       }
-      return apiRequest("POST", "/api/knowledge", { title, content, sourceUrl: sourceUrl || null, category });
+      return apiRequest("POST", `/api/bots/${botId}/knowledge`, { title, content, sourceUrl: sourceUrl || null, category });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/knowledge"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", botId, "knowledge"] });
       toast({ title: isEditing ? "Entry updated" : "Entry added", description: `"${title}" has been ${isEditing ? "updated" : "added"} to the knowledge base.` });
       setTitle(""); setContent(""); setSourceUrl(""); setCategory("general");
       setOpen(false);
@@ -116,7 +117,7 @@ function AddKnowledgeDialog({ editEntry, onClose }: { editEntry?: KnowledgeBaseE
   );
 }
 
-function PasteContentDialog() {
+function PasteContentDialog({ botId }: { botId: number }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("general");
@@ -124,9 +125,9 @@ function PasteContentDialog() {
   const { toast } = useToast();
 
   const mutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/knowledge", { title: title || "Imported Content", content, category }),
+    mutationFn: () => apiRequest("POST", `/api/bots/${botId}/knowledge`, { title: title || "Imported Content", content, category }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/knowledge"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", botId, "knowledge"] });
       toast({ title: "Content imported", description: "Your text has been added to the knowledge base." });
       setTitle(""); setContent(""); setCategory("general");
       setOpen(false);
@@ -192,22 +193,27 @@ export default function KnowledgeBase() {
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
   const [editingEntry, setEditingEntry] = useState<KnowledgeBaseEntry | null>(null);
-  const { data: entries = [], isLoading } = useQuery<KnowledgeBaseEntry[]>({ queryKey: ["/api/knowledge"] });
+  const { selectedBotId } = useBot();
   const { toast } = useToast();
 
+  const { data: entries = [], isLoading } = useQuery<KnowledgeBaseEntry[]>({
+    queryKey: ["/api/bots", selectedBotId, "knowledge"],
+    enabled: !!selectedBotId,
+  });
+
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/knowledge/${id}`),
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/bots/${selectedBotId}/knowledge/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/knowledge"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "knowledge"] });
       toast({ title: "Entry deleted" });
     },
   });
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
-      apiRequest("PATCH", `/api/knowledge/${id}`, { isActive }),
+      apiRequest("PATCH", `/api/bots/${selectedBotId}/knowledge/${id}`, { isActive }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/knowledge"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "knowledge"] });
     },
   });
 
@@ -217,7 +223,15 @@ export default function KnowledgeBase() {
     return matchSearch && matchCategory;
   });
 
-  const categories = Array.from(new Set(entries.map(e => e.category)));
+  if (!selectedBotId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6">
+        <Bot className="h-12 w-12 text-muted-foreground/40 mb-4" />
+        <h2 className="text-lg font-semibold">No bot selected</h2>
+        <p className="text-sm text-muted-foreground mt-1">Use the bot switcher in the sidebar to create or select a bot.</p>
+      </div>
+    );
+  }
 
   return (
     <ScrollArea className="h-full">
@@ -228,8 +242,8 @@ export default function KnowledgeBase() {
             <p className="text-sm text-muted-foreground mt-1">Content the bot uses to answer questions</p>
           </div>
           <div className="flex gap-2">
-            <PasteContentDialog />
-            <AddKnowledgeDialog />
+            <PasteContentDialog botId={selectedBotId} />
+            <AddKnowledgeDialog botId={selectedBotId} />
           </div>
         </div>
 
@@ -315,7 +329,7 @@ export default function KnowledgeBase() {
         )}
 
         {editingEntry && (
-          <AddKnowledgeDialog editEntry={editingEntry} onClose={() => setEditingEntry(null)} />
+          <AddKnowledgeDialog botId={selectedBotId} editEntry={editingEntry} onClose={() => setEditingEntry(null)} />
         )}
       </div>
     </ScrollArea>

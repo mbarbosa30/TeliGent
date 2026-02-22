@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Activity, MessageSquare, Shield, Search, UserPlus, LogOut, Bot } from "lucide-react";
+import { useBot } from "@/hooks/use-bot";
 import type { ActivityLog } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -22,7 +23,12 @@ const typeIcons: Record<string, any> = {
 export default function ActivityPage() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
-  const { data: logs = [], isLoading } = useQuery<ActivityLog[]>({ queryKey: ["/api/activity"] });
+  const { selectedBotId } = useBot();
+
+  const { data: logs = [], isLoading } = useQuery<ActivityLog[]>({
+    queryKey: ["/api/bots", selectedBotId, "activity"],
+    enabled: !!selectedBotId,
+  });
 
   const filtered = logs.filter((log) => {
     const matchSearch = !search || (log.userName?.toLowerCase().includes(search.toLowerCase())) ||
@@ -31,6 +37,16 @@ export default function ActivityPage() {
     const matchType = filterType === "all" || log.type === filterType || (filterType === "report" && log.isReport);
     return matchSearch && matchType;
   });
+
+  if (!selectedBotId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6">
+        <Bot className="h-12 w-12 text-muted-foreground/40 mb-4" />
+        <h2 className="text-lg font-semibold">No bot selected</h2>
+        <p className="text-sm text-muted-foreground mt-1">Use the bot switcher in the sidebar to create or select a bot.</p>
+      </div>
+    );
+  }
 
   return (
     <ScrollArea className="h-full">

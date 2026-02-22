@@ -9,6 +9,7 @@ import {
   Bot, MessageSquare, Settings, Shield, BookOpen,
   ExternalLink, CheckCircle2, ArrowRight, Sparkles,
 } from "lucide-react";
+import { useBot } from "@/hooks/use-bot";
 import type { BotConfig } from "@shared/schema";
 
 function StepCard({
@@ -58,10 +59,25 @@ function CodeBlock({ children }: { children: string }) {
 }
 
 export default function SetupGuidePage() {
-  const { data: config } = useQuery<BotConfig>({ queryKey: ["/api/config"] });
+  const { selectedBotId } = useBot();
+  const { data: config } = useQuery<BotConfig>({
+    queryKey: ["/api/bots", selectedBotId, "config"],
+    enabled: !!selectedBotId,
+  });
 
   const hasToken = !!(config?.botToken && config.botToken.trim());
   const hasName = !!(config?.botName && config.botName !== "ContextBot" && config.botName.trim());
+
+  if (!selectedBotId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6">
+        <Bot className="h-12 w-12 text-muted-foreground/40 mb-4" />
+        <h2 className="text-lg font-semibold">No bot selected</h2>
+        <p className="text-sm text-muted-foreground mt-1">Use the bot switcher in the sidebar to create or select a bot.</p>
+      </div>
+    );
+  }
+
   return (
     <ScrollArea className="h-full">
       <div className="max-w-3xl mx-auto p-6 space-y-6">
