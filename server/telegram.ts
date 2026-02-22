@@ -645,8 +645,8 @@ async function detectAndHandleScam(
   const hasScamOffer = /\b(promot|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized);
   const hasCryptoGiveawayScam = /\b(giv(e|ing)\s*(away|out|free|you|them|my))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
     /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,40}\b(giv(e|ing)\s*(away|out|free))\b/i.test(normalized) ||
-    /\b(first\s*\d+\s*(people|person|member|holder|user|follower)s?)\b.{0,60}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|give|free|win|claim|airdrop)\b/i.test(normalized) ||
-    /\b(first\s*\d+\s*(people|person|member|holder|user|follower)s?)\b.{0,60}\b(dm|pm|message|inbox)\b/i.test(normalized) && /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|give|free|airdrop)\b/i.test(normalized) ||
+    /\b(first\s*\d+(\s*(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|give|free|win|claim|airdrop)\b/i.test(normalized) ||
+    /\b(first\s*\d+(\s*(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(dm|pm|message|inbox)\b/i.test(normalized) && /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|give|free|airdrop)\b/i.test(normalized) ||
     /\b(i\s*(will|am|'m)\s*(giv(e|ing)|send(ing)?|distribut(e|ing)|drop(ping)?))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
     /\b(not\s*interested\s*in\s*crypto|don'?t\s*(want|need)\s*(the\s*)?(crypto|sol|eth|btc))\b.{0,60}\b(dm|pm|message|give|free)\b/i.test(normalized);
   const sexualEmojis = ['🍆', '🍑', '💦', '🔥', '🥵', '😈', '💋'];
@@ -655,6 +655,9 @@ async function detectAndHandleScam(
 
   const hasRaidShillSpam = /\b(raid\s*(team|group|squad|crew|service)s?|raid\s*team\s*of\s*\d+|shill(er)?s?\s*(team|group|squad|crew|service)s?|shill(er)?s?\s*to\s*boost|raider(s)?\s*(and|&)\s*shill(er)?s?|verified\s*(raider|shiller)s?|boost(ing)?\s*engag(ement|e)|engag(ement|e)\s*boost(ing|er|service|team|farm)?|free\s*test\s*run|paid\s*(raid|shill|promo|market)|hire\s*(raid|shill|market))\b/i.test(normalized);
   const hasPaidServiceSpam = /\b(growth\s*service|marketing\s*service|promotion\s*service|listing\s*service|trending\s*service|cmc\s*(list|trend)|coingecko\s*(list|trend)|dextools\s*trend|twitter\s*(raid|growth|boost)|telegram\s*(growth|member|boost))\b/i.test(normalized);
+  const hasBoostBotPromo = /@\w*(boost|trend|trending|pump|volume|shill|raid)\w*bot\b/i.test(text) ||
+    /\b(get|getting)\s*(us|a)\s*(a\s*)?(spot|listed|trending|featured)\b.{0,40}\b(bot|service|channel)\b/i.test(normalized) ||
+    /\b(look\s*into|check\s*out|try|use)\b.{0,30}@\w*(boost|trend|pump|shill|raid)\w*/i.test(text);
 
   const hasTelegramLink = /t\.me\/[A-Za-z0-9_]+/i.test(text);
   const hasGroupPromoShill = hasTelegramLink && (
@@ -671,7 +674,7 @@ async function detectAndHandleScam(
 
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
-    hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam;
+    hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam || hasBoostBotPromo;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -711,8 +714,8 @@ async function detectAndHandleScam(
   if (hasGroupPromoShill || hasUnsolicitedGroupLink) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Telegram group/channel promotion spam");
   }
-  if (hasRaidShillSpam || hasPaidServiceSpam) {
-    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Raid/shill/paid promotion service offer");
+  if (hasRaidShillSpam || hasPaidServiceSpam || hasBoostBotPromo) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Raid/shill/boost bot promotion spam");
   }
   if (hasPumpPromoSpam) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Token pump / paid promotion service offer");
