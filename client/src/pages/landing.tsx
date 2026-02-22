@@ -131,7 +131,7 @@ export default function LandingPage() {
             <div className="flex h-8 w-8 items-center justify-center bg-foreground">
               <Bot className="h-4 w-4 text-background" />
             </div>
-            <span className="font-semibold text-lg tracking-tight">ContextBot</span>
+            <span className="font-semibold text-lg tracking-tight">TeliGent</span>
           </div>
           <div className="flex items-center gap-4">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-features">Features</a>
@@ -231,8 +231,8 @@ export default function LandingPage() {
 
       <footer className="border-t py-6 px-6">
         <div className="max-w-6xl mx-auto flex items-center justify-between text-xs text-muted-foreground">
-          <span>ContextBot</span>
-          <span>Powered by AI</span>
+          <span>TeliGent</span>
+          <span>teli.gent</span>
         </div>
       </footer>
     </div>

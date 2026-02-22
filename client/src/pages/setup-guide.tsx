@@ -66,7 +66,7 @@ export default function SetupGuidePage() {
   });
 
   const hasToken = !!(config?.botToken && config.botToken.trim());
-  const hasName = !!(config?.botName && config.botName !== "ContextBot" && config.botName.trim());
+  const hasName = !!(config?.botName && config.botName !== "TeliGent" && config.botName.trim());
 
   if (!selectedBotId) {
     return (
@@ -87,7 +87,7 @@ export default function SetupGuidePage() {
             <h1 className="text-2xl font-bold tracking-tight" data-testid="text-setup-title">Setup Guide</h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            Follow these steps to create your Telegram bot and connect it to ContextBot. The whole process takes about 5 minutes.
+            Follow these steps to create your Telegram bot and connect it to TeliGent. The whole process takes about 5 minutes.
           </p>
         </div>
 
@@ -166,7 +166,7 @@ export default function SetupGuidePage() {
           <StepCard
             step={3}
             title="Paste Your Bot Token"
-            description="Connect your bot to ContextBot by entering the token in Settings."
+            description="Connect your bot to TeliGent by entering the token in Settings."
             completed={hasToken}
           >
             <div className="space-y-3 text-sm">

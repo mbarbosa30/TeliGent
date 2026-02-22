@@ -1,9 +1,11 @@
-# ContextBot - Multi-Tenant Telegram Bot Manager (SaaS)
+# TeliGent - Intelligent Telegram Bot Manager (SaaS)
+## Domain: teli.gent
 
 ## Overview
-A multi-tenant SaaS platform where users sign up with email/password, connect their own Telegram bot tokens, and configure AI-powered group bots. Each user can manage multiple bots, with each bot having isolated data (configs, knowledge base, groups, activity logs). Supports per-user multi-bot instances running concurrently.
+A multi-tenant SaaS platform (branded as **TeliGent**, domain **teli.gent**) where users sign up with email/password, connect their own Telegram bot tokens, and configure AI-powered group bots. Each user can manage multiple bots, with each bot having isolated data (configs, knowledge base, groups, activity logs). Supports per-user multi-bot instances running concurrently.
 
 ## Recent Changes
+- 2026-02-22: **Rebranded to TeliGent** — Platform renamed from ContextBot to TeliGent (teli.gent domain), updated all UI, meta tags, user-agent strings, and internal references
 - 2026-02-22: **Multi-bot architecture** — Users can create/manage multiple bots per account. Bot switcher in sidebar, all data bot-scoped via botConfigId FK. Delete bot with confirmation dialog.
 - 2026-02-22: **Design overhaul — refined minimal aesthetic** — Space Grotesk + JetBrains Mono fonts, zero border-radius, no shadows, monochrome palette, sharp edges, font-mono on stats/timestamps/badges only
 - 2026-02-22: **Replaced Replit Auth with email/password auth** — bcrypt password hashing, session-based auth, register/login forms

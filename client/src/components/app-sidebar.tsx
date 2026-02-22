@@ -156,7 +156,7 @@ export function AppSidebar() {
         )}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="secondary" className="text-xs font-mono">v2.0</Badge>
-          <span>ContextBot</span>
+          <span>TeliGent</span>
         </div>
       </SidebarFooter>
     </Sidebar>

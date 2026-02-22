@@ -35,7 +35,7 @@ async function scrapeUrl(url: string): Promise<string> {
     throw new Error("Internal/private URLs are not allowed");
   }
   const response = await fetch(url, {
-    headers: { "User-Agent": "ContextBot/1.0" },
+    headers: { "User-Agent": "TeliGent/1.0" },
     signal: AbortSignal.timeout(15000),
     redirect: "follow",
   });

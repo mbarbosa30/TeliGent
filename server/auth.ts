@@ -26,7 +26,7 @@ export function setupAuth(app: Express) {
         createTableIfMissing: true,
         tableName: "sessions",
       }),
-      secret: process.env.SESSION_SECRET || "contextbot-secret-key-change-me",
+      secret: process.env.SESSION_SECRET || "telegent-secret-key-change-me",
       resave: false,
       saveUninitialized: false,
       cookie: {

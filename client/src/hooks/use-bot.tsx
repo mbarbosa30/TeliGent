@@ -12,7 +12,7 @@ interface BotContextValue {
 
 const BotContext = createContext<BotContextValue | null>(null);
 
-const STORAGE_KEY = "contextbot_selected_bot";
+const STORAGE_KEY = "telegent_selected_bot";
 
 export function BotProvider({ children }: { children: React.ReactNode }) {
   const { data: bots = [], isLoading } = useQuery<BotConfig[]>({
