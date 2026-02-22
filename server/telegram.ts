@@ -647,7 +647,10 @@ async function detectAndHandleScam(
     /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,40}\b(giv(e|ing)\s*(away|out|free))\b/i.test(normalized) ||
     /\b(first\s*\d+(\s*(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|give|free|win|claim|airdrop)\b/i.test(normalized) ||
     /\b(first\s*\d+(\s*(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(dm|pm|message|inbox)\b/i.test(normalized) && /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|give|free|airdrop)\b/i.test(normalized) ||
-    /\b(i\s*(will|am|'m)\s*(giv(e|ing)|send(ing)?|distribut(e|ing)|drop(ping)?))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
+    /\b(i\s*)?(will|am|'m|want\s*to|wanna|gonna|going\s*to)\s*(giv(e|ing)|send(ing)?|distribut(e|ing)|drop(ping)?)\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
+    /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,60}\b(first\s*\d+(\s*(people|person|member|holder|user|follower)s?)?)\b/i.test(normalized) && /\b(give|send|dm|pm|message|contact|free|claim|win|airdrop)\b/i.test(normalized) ||
+    /\b(giv(e|ing)\s*(some|away|out|free|you|them|my|the))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
+    /\b(contact|reach|hit)\s*me\b.{0,40}\b(sol|eth|btc|bnb|usdt|wallet|address|crypto)\b/i.test(normalized) && /\b(give|free|send|airdrop|first\s*\d+|claim)\b/i.test(normalized) ||
     /\b(not\s*interested\s*in\s*crypto|don'?t\s*(want|need)\s*(the\s*)?(crypto|sol|eth|btc))\b.{0,60}\b(dm|pm|message|give|free)\b/i.test(normalized);
   const sexualEmojis = ['🍆', '🍑', '💦', '🔥', '🥵', '😈', '💋'];
   const hasSexualSpam = sexualEmojis.some(e => text.includes(e)) && /\b(inbox|dm|pm|message|contact|send)\b/i.test(normalized);
