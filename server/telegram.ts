@@ -128,6 +128,19 @@ async function startSingleBot(config: BotConfig) {
     const webhookPath = getWebhookPath(token);
     const secret = getWebhookSecret(token);
 
+    const me = await bot.getMe();
+    const botUsername = me.username || "";
+    log(`Bot info fetched: @${botUsername} for user ${userId}`, "telegram");
+
+    await storage.updateBotConfig(config.id, { botName: me.first_name || "Bot" });
+
+    const instance: BotInstance = { bot, userId, botConfigId: config.id, token, webhookPath, botUsername };
+    activeBots.set(token, instance);
+
+    bot.on("message", (msg) => handleMessage(msg, instance));
+    bot.on("new_chat_members", (msg) => handleNewMembers(msg, instance));
+    bot.on("left_chat_member", (msg) => handleLeftMember(msg, instance));
+
     webhookPathToToken.set(webhookPath, token);
 
     if (!registeredWebhookPaths.has(webhookPath)) {
@@ -135,23 +148,27 @@ async function startSingleBot(config: BotConfig) {
       expressApp.post(capturedPath, (req, res) => {
         const currentToken = webhookPathToToken.get(capturedPath);
         if (!currentToken) {
-          log(`Webhook received but no token mapped for ${capturedPath}`, "telegram");
+          log(`[WEBHOOK] No token mapped for ${capturedPath}`, "telegram");
           res.sendStatus(200);
           return;
         }
         const expectedSecret = getWebhookSecret(currentToken);
         const headerSecret = req.headers["x-telegram-bot-api-secret-token"];
         if (headerSecret !== expectedSecret) {
-          log(`Webhook auth failed for ${capturedPath}`, "telegram");
+          log(`[WEBHOOK] Auth FAILED for ${capturedPath} (header: ${headerSecret ? "present" : "missing"})`, "telegram");
           res.sendStatus(403);
           return;
         }
-        const instance = activeBots.get(currentToken);
-        if (instance) {
-          log(`Webhook update for user ${instance.userId} via ${capturedPath}`, "telegram");
-          instance.bot.processUpdate(req.body);
+        const inst = activeBots.get(currentToken);
+        if (inst) {
+          const body = req.body;
+          const updateType = body.message ? "message" : body.edited_message ? "edited_message" : body.callback_query ? "callback_query" : body.my_chat_member ? "my_chat_member" : body.chat_member ? "chat_member" : "other";
+          const msgText = body.message?.text?.substring(0, 50) || "(no text)";
+          const chatType = body.message?.chat?.type || "unknown";
+          log(`[WEBHOOK] Update for @${inst.botUsername}: type=${updateType}, chat=${chatType}, text="${msgText}"`, "telegram");
+          inst.bot.processUpdate(body);
         } else {
-          log(`Webhook received but no active bot instance for ${capturedPath}`, "telegram");
+          log(`[WEBHOOK] No active bot instance for token at ${capturedPath}`, "telegram");
         }
         res.sendStatus(200);
       });
@@ -163,18 +180,7 @@ async function startSingleBot(config: BotConfig) {
 
     const webhookUrl = `${appUrl}${webhookPath}`;
     await bot.setWebHook(webhookUrl, { secret_token: secret });
-
-    const me = await bot.getMe();
-    log(`Bot started for user ${userId}: @${me.username} (webhook: ${webhookUrl})`, "telegram");
-
-    await storage.updateBotConfig(config.id, { botName: me.first_name || "Bot" });
-
-    const instance: BotInstance = { bot, userId, botConfigId: config.id, token, webhookPath, botUsername: me.username || "" };
-    activeBots.set(token, instance);
-
-    bot.on("message", (msg) => handleMessage(msg, instance));
-    bot.on("new_chat_members", (msg) => handleNewMembers(msg, instance));
-    bot.on("left_chat_member", (msg) => handleLeftMember(msg, instance));
+    log(`Bot started for user ${userId}: @${botUsername} (webhook: ${webhookUrl})`, "telegram");
   } catch (err: any) {
     log(`Failed to start bot for user ${userId}: ${err.message}`, "telegram");
   }
