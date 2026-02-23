@@ -414,10 +414,10 @@ Respond with ONLY valid JSON: {"scam": true, "reason": "brief explanation"} or {
       } catch {}
     }
     log(`AI scam check returned unparseable response: ${content.substring(0, 100)}`, "telegram");
-    return { isScam: false, reason: "" };
+    return { isScam: false, reason: "unparseable" };
   } catch (e: any) {
     log(`AI scam check failed: ${e.message}`, "telegram");
-    return { isScam: false, reason: "" };
+    return { isScam: false, reason: "error" };
   }
 }
 
@@ -683,13 +683,22 @@ async function detectAndHandleScam(
   const hasFlatteryPitch = hasFlattery && hasServicePitch;
 
   const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b|\b(inbox|dm|pm)\b.*\b(for|me)\b|\bshould\s*(dm|pm|message|inbox)\b|\b(dm|pm)\s*(to|for)\s*(discuss|talk|chat|collaborate|partner|detail|info|more|inquir)/i.test(normalized);
+  const hasSoftCollaborationInvite = /\b(let\s*me\s*know|reach\s*out|get\s*in\s*touch|open\s*to)\s*.{0,20}\b(collaborat|partner|work\s*together|discuss|interest)/i.test(normalized) ||
+    /\b(who\s*should\s*i\s*contact|who\s*can\s*i\s*(talk|speak|reach)|who\s*(to|should\s*i)\s*(contact|message|reach))\b/i.test(normalized);
+  const hasFakeExchangeListing = /\b(from|at|represent|with)\s*.{0,20}\b(binance|biconomy|okx|kucoin|bybit|gate\.?io|mexc|huobi|htx|bitget|bitmart|lbank|poloniex|crypto\.?com|coinbase|kraken|gemini)\b/i.test(normalized) &&
+    /\b(list|listing|cooperat|partner|discuss|collaborat)\b/i.test(normalized);
   const serviceMenuKeywordsGlobal = /\b(sticker|logo|banner|meme|gif|emoji|animation|video|website|white\s*paper|whitepaper|buybot|buy\s*bot|drawing|promo|design|nft|mascot|flyer|poster|thumbnail|graphic|branding|merch)s?\b/ig;
   const serviceMenuCount = (normalized.match(serviceMenuKeywordsGlobal) || []).length;
   const hasDmServiceMenu = /\b(dm|pm|inbox|message|contact)\s*.{0,20}@\w+/i.test(normalized) && serviceMenuCount >= 2;
   const hasServiceListSpam = serviceMenuCount >= 3 && /\b(dm|pm|inbox|message|contact|order|hire|available|and\s*more)\b/i.test(normalized);
   const hasScamOffer = /\b(promot|promo\b|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized);
-  const hasChannelManagementPitch = /\b(i\s+|we\s+)?(manage|run|own|lead|operat)\w*\s+\d+\s*(active\s*)?(telegram|twitter|crypto|trading|investor)?\s*(channel|communit|group|chat)/i.test(normalized) &&
-    /\b(engag|volume|growth|grow|mc\b|market\s*cap|investor|support|expan|promot|boost|collaborat|partner)/i.test(normalized);
+  const wordNumbers = /(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred|several|multiple|many|various|numerous|large|huge|big)/i;
+  const channelManagementClaim = /\b(i\s+|we\s+)?(manage|run|own|lead|operat|head|built|have)\w*\s+/i.test(normalized) &&
+    wordNumbers.test(normalized) &&
+    /\b(channel|communit|group|chat|network)\w*\b/i.test(normalized);
+  const channelManagementNoNumber = /\b(i\s+|we\s+)(manage|run|own|lead|operat|head)\w*\s+(active\s+|trusted\s+|large\s+|big\s+|whale\s+|crypto\s+|trading\s+|investor\s+)*(channel|communit|group|chat|network)/i.test(normalized);
+  const marketingBuzzwords = /\b(engag|volume|growth|grow\s*(faster|quick)|mc\b|market\s*cap|investor|serious\s*investor|right\s*audience|sustain|expan|promot|boost|collaborat|partner|listing\s*cooperat)/i.test(normalized);
+  const hasChannelManagementPitch = (channelManagementClaim || channelManagementNoNumber) && marketingBuzzwords;
   const hasColdPitchPromo = /\b(promo|promot(e|ion|ing)|market(ing)?|boost(ing)?|advertis(e|ing)|shill(ing)?)\s*.{0,30}\b(your|ur)\s*(project|token|coin|community|group|channel)\b/i.test(normalized) ||
     /\b(we\s*(will|can|offer|provide|do)|i\s*(will|can|offer|provide|do))\s*(promo|promot(e|ion|ing)|market(ing)?|boost(ing)?|advertis(e|ing)|shill(ing)?|trend(ing)?|list(ing)?)\s*.{0,20}\b(your|ur)\b/i.test(normalized) ||
     /\b(low\s*cost|cheap|affordable|best\s*price|discount|free\s*trial)\b.{0,40}\b(promo|promot|market|boost|advertis|listing|trending)/i.test(normalized) ||
@@ -731,7 +740,7 @@ async function detectAndHandleScam(
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
     hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam || hasBoostBotPromo ||
-    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasChannelManagementPitch;
+    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasChannelManagementPitch || hasFakeExchangeListing;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -758,6 +767,12 @@ async function detectAndHandleScam(
   }
   if (hasChannelManagementPitch) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Channel/community management cold-pitch spam");
+  }
+  if (hasFakeExchangeListing) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Fake exchange listing impersonation scam");
+  }
+  if (hasSoftCollaborationInvite && (hasChannelManagementPitch || hasScamOffer || hasColdPitchPromo)) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Soft collaboration invite with scam/promo pitch");
   }
   if (hasAggressiveDmSpam || hasDmWithUsername) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Aggressive DM solicitation spam");
@@ -802,7 +817,13 @@ async function detectAndHandleScam(
     ? `[SUSPICIOUS: This user's display name "${userName}" closely matches the bot/group name. Non-admins impersonating official accounts is a common scam tactic. Be extra vigilant.]\n\n${normalized}`
     : normalized;
   const { isScam, reason } = await aiScamCheck(aiContext, "regular_user");
-  if (!isScam) return false;
+  if (!isScam) {
+    if ((reason === "unparseable" || reason === "error") && (hasSoftCollaborationInvite || hasDmSolicitation || hasFakeExchangeListing || hasChannelManagementPitch)) {
+      log(`AI failed but strong scam signals present — flagging as scam`, "telegram");
+      return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "AI unavailable + strong scam signals detected");
+    }
+    return false;
+  }
 
   const aiReason = isImpersonator ? `AI (impersonator): ${reason}` : `AI: ${reason}`;
   return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, aiReason);
