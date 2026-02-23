@@ -704,6 +704,7 @@ async function detectAndHandleScam(
     /\b(look\s*into|check\s*out|try|use)\b.{0,30}@\w*(boost|trend|pump|shill|raid)\w*/i.test(text);
 
   const hasTelegramLink = /t\.me\/[A-Za-z0-9_]+/i.test(text);
+  const hasTelegramInviteLink = /(?:t\.me|telegram\.me)\/(\+|joinchat\/)[A-Za-z0-9_-]+/i.test(text);
   const hasGroupPromoShill = hasTelegramLink && (
     /\b(join|check\s*out|visit|come\s*to|head\s*to|look\s*at)\b/i.test(normalized) &&
     /\b(tag|follow|support|help|pls|please|guys|fam|fren|ape)\b/i.test(normalized)
@@ -761,6 +762,9 @@ async function detectAndHandleScam(
   }
   if (hasSexualSpam || hasSolicitationSpam) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Solicitation/adult spam");
+  }
+  if (hasTelegramInviteLink) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Unsolicited Telegram invite link spam");
   }
   if (hasGroupPromoShill || hasUnsolicitedGroupLink) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Telegram group/channel promotion spam");
