@@ -11,6 +11,7 @@ const PgSession = connectPg(session);
 declare module "express-session" {
   interface SessionData {
     userId?: string;
+    adminAuthenticated?: boolean;
   }
 }
 
@@ -46,13 +47,9 @@ export function isAuthenticated(req: Request, res: Response, next: NextFunction)
   res.status(401).json({ message: "Unauthorized" });
 }
 
-export async function isAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!req.session?.userId) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-  const [user] = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ message: "Forbidden" });
+export function isAdminAuthenticated(req: Request, res: Response, next: NextFunction) {
+  if (!req.session?.adminAuthenticated) {
+    return res.status(401).json({ message: "Admin access required" });
   }
   next();
 }
@@ -76,14 +73,11 @@ export function registerAuthRoutes(app: Express) {
       }
 
       const passwordHash = await bcrypt.hash(password, 12);
-      const existingUsers = await db.select({ id: users.id }).from(users).limit(1);
-      const isFirstUser = existingUsers.length === 0;
       const [user] = await db.insert(users).values({
         email: emailLower,
         passwordHash,
         firstName: firstName?.trim() || null,
         lastName: lastName?.trim() || null,
-        isAdmin: isFirstUser,
       }).returning();
 
       req.session.userId = user.id;
@@ -161,5 +155,49 @@ export function registerAuthRoutes(app: Express) {
       res.clearCookie("connect.sid");
       res.json({ message: "Logged out" });
     });
+  });
+
+  app.post("/api/admin/login", (req: Request, res: Response) => {
+    const { passphrase } = req.body;
+    const adminPassphrase = process.env.ADMIN_PASSPHRASE;
+
+    if (!adminPassphrase) {
+      return res.status(503).json({ message: "Admin access is not configured" });
+    }
+
+    if (!passphrase || passphrase !== adminPassphrase) {
+      return res.status(401).json({ message: "Invalid passphrase" });
+    }
+
+    req.session.regenerate((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Session error" });
+      }
+      req.session.adminAuthenticated = true;
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          return res.status(500).json({ message: "Session error" });
+        }
+        res.json({ authenticated: true });
+      });
+    });
+  });
+
+  app.get("/api/admin/check", (req: Request, res: Response) => {
+    res.json({ authenticated: !!req.session?.adminAuthenticated });
+  });
+
+  app.post("/api/admin/logout", (req: Request, res: Response) => {
+    if (req.session) {
+      req.session.adminAuthenticated = false;
+      req.session.save((err) => {
+        if (err) {
+          return res.status(500).json({ message: "Logout failed" });
+        }
+        res.json({ message: "Admin logged out" });
+      });
+    } else {
+      res.json({ message: "Admin logged out" });
+    }
   });
 }

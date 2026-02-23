@@ -1,16 +1,17 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Users, Bot, Activity, Shield, MessageSquare, Search,
-  Globe, Clock, AlertTriangle,
+  Globe, Clock, AlertTriangle, Lock, LogOut,
 } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
 import { format } from "date-fns";
 
 interface AdminStats {
@@ -26,7 +27,6 @@ interface AdminUser {
   email: string;
   firstName: string | null;
   lastName: string | null;
-  isAdmin: boolean;
   createdAt: string | null;
 }
 
@@ -73,41 +73,104 @@ function StatCard({ title, value, icon: Icon, loading }: {
   );
 }
 
-export default function AdminPage() {
-  const { user } = useAuth();
-  const [search, setSearch] = useState("");
+function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
+  const [passphrase, setPassphrase] = useState("");
+  const [error, setError] = useState("");
 
-  const isAdminUser = !!user?.isAdmin;
+  const loginMutation = useMutation({
+    mutationFn: async (pass: string) => {
+      const res = await apiRequest("POST", "/api/admin/login", { passphrase: pass });
+      return res.json();
+    },
+    onSuccess: () => {
+      setError("");
+      onSuccess();
+    },
+    onError: () => {
+      setError("Invalid passphrase");
+    },
+  });
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-background">
+      <Card className="w-full max-w-sm mx-4">
+        <CardHeader className="text-center space-y-2">
+          <div className="flex justify-center">
+            <div className="h-12 w-12 bg-foreground flex items-center justify-center">
+              <Lock className="h-6 w-6 text-background" />
+            </div>
+          </div>
+          <CardTitle className="text-lg">Admin Access</CardTitle>
+          <p className="text-sm text-muted-foreground">Enter the admin passphrase to continue.</p>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (passphrase.trim()) {
+                loginMutation.mutate(passphrase.trim());
+              }
+            }}
+            className="space-y-4"
+          >
+            <Input
+              type="password"
+              placeholder="Passphrase"
+              value={passphrase}
+              onChange={(e) => { setPassphrase(e.target.value); setError(""); }}
+              autoFocus
+              data-testid="input-admin-passphrase"
+            />
+            {error && (
+              <p className="text-sm text-destructive" data-testid="text-admin-error">{error}</p>
+            )}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loginMutation.isPending || !passphrase.trim()}
+              data-testid="button-admin-login"
+            >
+              {loginMutation.isPending ? "Verifying..." : "Enter"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AdminDashboard() {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState("");
 
   const { data: stats, isLoading: statsLoading } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
-    enabled: isAdminUser,
   });
 
   const { data: allUsers = [], isLoading: usersLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
-    enabled: isAdminUser,
   });
 
   const { data: allBots = [], isLoading: botsLoading } = useQuery<AdminBot[]>({
     queryKey: ["/api/admin/bots"],
-    enabled: isAdminUser,
   });
 
   const { data: allActivity = [], isLoading: activityLoading } = useQuery<AdminActivityLog[]>({
     queryKey: ["/api/admin/activity"],
-    enabled: isAdminUser,
   });
 
-  if (!user?.isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-6">
-        <Shield className="h-12 w-12 text-muted-foreground/40 mb-4" />
-        <h2 className="text-lg font-semibold">Access Denied</h2>
-        <p className="text-sm text-muted-foreground mt-1">You don't have admin access.</p>
-      </div>
-    );
-  }
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/admin/logout");
+    },
+    onSuccess: () => {
+      queryClient.setQueryData(["/api/admin/check"], { authenticated: false });
+      queryClient.removeQueries({ queryKey: ["/api/admin/stats"] });
+      queryClient.removeQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.removeQueries({ queryKey: ["/api/admin/bots"] });
+      queryClient.removeQueries({ queryKey: ["/api/admin/activity"] });
+    },
+  });
 
   const filteredUsers = allUsers.filter(u =>
     !search || u.email.toLowerCase().includes(search.toLowerCase()) ||
@@ -128,16 +191,28 @@ export default function AdminPage() {
   const scamLogs = allActivity.filter(a => a.type === "scam_detected");
 
   return (
-    <ScrollArea className="h-full">
+    <ScrollArea className="h-screen">
       <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-admin-title">Admin Dashboard</h1>
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-muted-foreground" />
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-admin-title">Admin Dashboard</h1>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Platform overview across all users and bots.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Platform overview across all users and bots.
-          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+            data-testid="button-admin-logout"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Exit Admin
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -176,24 +251,16 @@ export default function AdminPage() {
               <p className="text-sm text-muted-foreground text-center py-8">No users found.</p>
             ) : (
               <div className="space-y-1">
-                <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-4 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
+                <div className="grid grid-cols-[1fr_1fr_auto] gap-4 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
                   <span>Email</span>
                   <span>Name</span>
-                  <span>Role</span>
                   <span>Joined</span>
                 </div>
                 {filteredUsers.map((u) => (
-                  <div key={u.id} className="grid grid-cols-[1fr_1fr_auto_auto] gap-4 px-3 py-3 border-b border-border/50 items-center" data-testid={`row-user-${u.id}`}>
+                  <div key={u.id} className="grid grid-cols-[1fr_1fr_auto] gap-4 px-3 py-3 border-b border-border/50 items-center" data-testid={`row-user-${u.id}`}>
                     <span className="text-sm truncate font-mono">{u.email}</span>
                     <span className="text-sm text-muted-foreground truncate">
                       {u.firstName ? `${u.firstName} ${u.lastName || ""}`.trim() : "—"}
-                    </span>
-                    <span>
-                      {u.isAdmin ? (
-                        <Badge variant="default" className="text-xs">Admin</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-xs">User</Badge>
-                      )}
                     </span>
                     <span className="text-xs font-mono text-muted-foreground">
                       {u.createdAt ? format(new Date(u.createdAt), "MMM d, yyyy") : "—"}
@@ -258,6 +325,34 @@ export default function AdminPage() {
       </div>
     </ScrollArea>
   );
+}
+
+export default function AdminPage() {
+  const queryClient = useQueryClient();
+
+  const { data: adminCheck, isLoading } = useQuery<{ authenticated: boolean }>({
+    queryKey: ["/api/admin/check"],
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="h-8 w-8 border-2 border-foreground border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!adminCheck?.authenticated) {
+    return (
+      <AdminLogin
+        onSuccess={() => {
+          queryClient.setQueryData(["/api/admin/check"], { authenticated: true });
+        }}
+      />
+    );
+  }
+
+  return <AdminDashboard />;
 }
 
 function ActivityList({ logs, loading }: { logs: AdminActivityLog[]; loading: boolean }) {

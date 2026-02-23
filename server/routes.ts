@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
 import { startBotEngine, getWebhookStatus } from "./telegram";
-import { isAuthenticated, isAdmin } from "./auth";
+import { isAuthenticated, isAdminAuthenticated } from "./auth";
 
 function getUserId(req: any): string {
   return req.session?.userId;
@@ -233,7 +233,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/stats", isAdmin, async (req, res) => {
+  app.get("/api/admin/stats", isAdminAuthenticated, async (req, res) => {
     try {
       const stats = await storage.adminGetStats();
       res.json(stats);
@@ -242,7 +242,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/users", isAdmin, async (req, res) => {
+  app.get("/api/admin/users", isAdminAuthenticated, async (req, res) => {
     try {
       const allUsers = await storage.adminGetAllUsers();
       res.json(allUsers);
@@ -251,7 +251,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/bots", isAdmin, async (req, res) => {
+  app.get("/api/admin/bots", isAdminAuthenticated, async (req, res) => {
     try {
       const allBots = await storage.adminGetAllBots();
       res.json(allBots);
@@ -260,7 +260,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/activity", isAdmin, async (req, res) => {
+  app.get("/api/admin/activity", isAdminAuthenticated, async (req, res) => {
     try {
       const logs = await storage.adminGetAllActivityLogs(500);
       res.json(logs);

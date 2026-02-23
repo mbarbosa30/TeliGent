@@ -121,7 +121,6 @@ export class DatabaseStorage implements IStorage {
       firstName: users.firstName,
       lastName: users.lastName,
       profileImageUrl: users.profileImageUrl,
-      isAdmin: users.isAdmin,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     }).from(users).orderBy(desc(users.createdAt));

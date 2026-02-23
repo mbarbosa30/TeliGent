@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -28,7 +28,6 @@ function Router() {
       <Route path="/reports" component={ReportsPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/setup" component={SetupGuidePage} />
-      <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -61,7 +60,12 @@ function AuthenticatedApp() {
 }
 
 function AppContent() {
+  const [location] = useLocation();
   const { user, isLoading } = useAuth();
+
+  if (location === "/admin") {
+    return <AdminPage />;
+  }
 
   if (isLoading) {
     return (

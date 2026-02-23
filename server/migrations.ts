@@ -16,28 +16,6 @@ export async function runMigrations() {
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
     const hasBotConfigIdOnLogs = await columnExists(client, "activity_logs", "bot_config_id");
-    const hasIsAdmin = await columnExists(client, "users", "is_admin");
-
-    if (!hasIsAdmin) {
-      log("Adding is_admin column to users table...");
-      await client.query(`ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT false`);
-      const { rows: firstUser } = await client.query(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`);
-      if (firstUser.length > 0) {
-        await client.query(`UPDATE users SET is_admin = true WHERE id = $1`, [firstUser[0].id]);
-        log(`Set first user ${firstUser[0].id} as admin`);
-      }
-      log("Added is_admin to users");
-    } else {
-      const { rows: adminCheck } = await client.query(`SELECT COUNT(*) as count FROM users WHERE is_admin = true`);
-      if (parseInt(adminCheck[0].count) === 0) {
-        const { rows: firstUser } = await client.query(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`);
-        if (firstUser.length > 0) {
-          await client.query(`UPDATE users SET is_admin = true WHERE id = $1`, [firstUser[0].id]);
-          log(`No admin found — promoted first user ${firstUser[0].id} to admin`);
-        }
-      }
-    }
-
     if (hasBotConfigIdOnKB && hasBotConfigIdOnGroups && hasBotConfigIdOnLogs) {
       await backfillBotConfigIds(client);
       log("Migration check complete — all columns present");
