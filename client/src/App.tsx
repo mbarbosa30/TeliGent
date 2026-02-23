@@ -17,6 +17,7 @@ import ReportsPage from "@/pages/reports";
 import SettingsPage from "@/pages/settings";
 import LandingPage from "@/pages/landing";
 import SetupGuidePage from "@/pages/setup-guide";
+import AdminPage from "@/pages/admin";
 
 function Router() {
   return (
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/reports" component={ReportsPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/setup" component={SetupGuidePage} />
+      <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
   );

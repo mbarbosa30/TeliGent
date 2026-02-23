@@ -46,6 +46,17 @@ export function isAuthenticated(req: Request, res: Response, next: NextFunction)
   res.status(401).json({ message: "Unauthorized" });
 }
 
+export async function isAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session?.userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  const [user] = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
+  if (!user || !user.isAdmin) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  next();
+}
+
 export function registerAuthRoutes(app: Express) {
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
@@ -65,11 +76,14 @@ export function registerAuthRoutes(app: Express) {
       }
 
       const passwordHash = await bcrypt.hash(password, 12);
+      const existingUsers = await db.select({ id: users.id }).from(users).limit(1);
+      const isFirstUser = existingUsers.length === 0;
       const [user] = await db.insert(users).values({
         email: emailLower,
         passwordHash,
         firstName: firstName?.trim() || null,
         lastName: lastName?.trim() || null,
+        isAdmin: isFirstUser,
       }).returning();
 
       req.session.userId = user.id;

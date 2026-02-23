@@ -1,7 +1,7 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { botConfigs, knowledgeBase, groups, activityLogs, users } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User } from "@shared/schema";
+import { eq, desc, and, sql, count } from "drizzle-orm";
 
 export interface IStorage {
   getBotConfigs(userId: string): Promise<BotConfig[]>;
@@ -24,6 +24,11 @@ export interface IStorage {
 
   getActivityLogs(botConfigId: number, limit?: number): Promise<ActivityLog[]>;
   createActivityLog(botConfigId: number, userId: string, log: Omit<InsertActivityLog, "userId" | "botConfigId">): Promise<ActivityLog>;
+
+  adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]>;
+  adminGetAllBots(): Promise<(BotConfig & { userEmail?: string })[]>;
+  adminGetAllActivityLogs(limit?: number): Promise<(ActivityLog & { botName?: string })[]>;
+  adminGetStats(): Promise<{ totalUsers: number; totalBots: number; totalGroups: number; totalLogs: number; totalScams: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -107,6 +112,55 @@ export class DatabaseStorage implements IStorage {
   async createActivityLog(botConfigId: number, userId: string, log: Omit<InsertActivityLog, "userId" | "botConfigId">): Promise<ActivityLog> {
     const [created] = await db.insert(activityLogs).values({ ...log, userId, botConfigId }).returning();
     return created;
+  }
+
+  async adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]> {
+    const rows = await db.select({
+      id: users.id,
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      profileImageUrl: users.profileImageUrl,
+      isAdmin: users.isAdmin,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+    }).from(users).orderBy(desc(users.createdAt));
+    return rows;
+  }
+
+  async adminGetAllBots(): Promise<(BotConfig & { userEmail?: string })[]> {
+    const rows = await db.select({
+      bot: botConfigs,
+      userEmail: users.email,
+    }).from(botConfigs).leftJoin(users, eq(botConfigs.userId, users.id)).orderBy(desc(botConfigs.createdAt));
+    return rows.map(r => ({
+      ...r.bot,
+      botToken: r.bot.botToken ? "••••••" : "",
+      userEmail: r.userEmail ?? undefined,
+    }));
+  }
+
+  async adminGetAllActivityLogs(limit = 200): Promise<(ActivityLog & { botName?: string })[]> {
+    const rows = await db.select({
+      log: activityLogs,
+      botName: botConfigs.botName,
+    }).from(activityLogs).leftJoin(botConfigs, eq(activityLogs.botConfigId, botConfigs.id)).orderBy(desc(activityLogs.createdAt)).limit(limit);
+    return rows.map(r => ({ ...r.log, botName: r.botName ?? undefined }));
+  }
+
+  async adminGetStats(): Promise<{ totalUsers: number; totalBots: number; totalGroups: number; totalLogs: number; totalScams: number }> {
+    const [userCount] = await db.select({ count: count() }).from(users);
+    const [botCount] = await db.select({ count: count() }).from(botConfigs);
+    const [groupCount] = await db.select({ count: count() }).from(groups);
+    const [logCount] = await db.select({ count: count() }).from(activityLogs);
+    const [scamCount] = await db.select({ count: count() }).from(activityLogs).where(eq(activityLogs.type, "scam_detected"));
+    return {
+      totalUsers: userCount.count,
+      totalBots: botCount.count,
+      totalGroups: groupCount.count,
+      totalLogs: logCount.count,
+      totalScams: scamCount.count,
+    };
   }
 }
 
