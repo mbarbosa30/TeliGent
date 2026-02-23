@@ -5,6 +5,7 @@
 A multi-tenant SaaS platform (branded as **TeliGent**, domain **teli.gent**) where users sign up with email/password, connect their own Telegram bot tokens, and configure AI-powered group bots. Each user can manage multiple bots, with each bot having isolated data (configs, knowledge base, groups, activity logs). Supports per-user multi-bot instances running concurrently.
 
 ## Recent Changes
+- 2026-02-23: **Scam detection: channel management cold-pitch** — New pattern detects "I manage X channels/communities" paired with marketing buzzwords (engagement, volume, MC, growth). Expanded DM solicitation to catch "DM to discuss/collaborate". Hashtag stripping in normalizer (#Telegram→Telegram). New `hasChannelManagementPitch` detection rule.
 - 2026-02-23: **Admin dashboard (standalone)** — Separate admin page at /admin with passphrase-based access (ADMIN_PASSPHRASE env secret). Not tied to user accounts. Shows all users, bots, activity, and scam stats across the platform. Bot tokens masked in admin view.
 - 2026-02-23: **Scam detection: punctuation insertion evasion** — Normalizer now strips dots/commas between letters (D.m→DM, air.drop→airdrop). Added V2/V3 token relaunch scam, DM-with-proof phishing, and Telegram invite link spam patterns.
 - 2026-02-22: **Rebranded to TeliGent** — Platform renamed from ContextBot to TeliGent (teli.gent domain), updated all UI, meta tags, user-agent strings, and internal references
