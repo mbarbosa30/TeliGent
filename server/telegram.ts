@@ -559,6 +559,7 @@ function normalizeUnicode(text: string): string {
   }
   result = result.replace(/\s{2,}/g, ' ').trim();
   result = result.replace(/\b([A-Za-z])\s+(?=[A-Za-z]\b)/g, '$1');
+  result = result.replace(/(?<=[A-Za-z0-9])[.,;:!?]+(?=[A-Za-z0-9])/g, '');
   result = fixHomoglyphWords(result);
   return result;
 }
@@ -652,7 +653,14 @@ async function detectAndHandleScam(
 
   const hasMigrationAirdropScam = /\b(migrat(ion|ing|e)|airdrop(ping|s)?)\b.{0,60}\b(holder|hoIder|volume|voIume|loss|Ioss|recover|boost|all)\b/i.test(normalized) ||
     /\b(recover|boost)\b.{0,30}\b(loss|volume|price)\b/i.test(normalized) ||
-    /\b(working\s*on|announcing|starting)\s*(a\s*)?(migration|airdrop|token\s*swap|contract\s*change)\b/i.test(normalized);
+    /\b(working\s*on|announcing|starting)\s*(a\s*)?(migration|airdrop|token\s*swap|contract\s*change)\b/i.test(normalized) ||
+    /\b(re\s*launch|relaunch)(ing)?\b.{0,40}\b(token|contract|v2|v3)\b/i.test(normalized) ||
+    /\b(v2|v3)\s*(token|contract|launch|version)\b.{0,40}\b(swap|migrat|airdrop|claim|new\s*ca|clean\s*ca)\b/i.test(normalized) ||
+    /\b(swap|exchange|convert)\s*(your\s*)?(old\s*)?(token|holding)\b.{0,40}\b(new|v2|v3|airdrop|claim)\b/i.test(normalized) ||
+    /\b(new|clean)\s*(ca|contract\s*address)\b.{0,40}\b(swap|migrat|airdrop|token|claim|hold)\b/i.test(normalized) ||
+    /\b(dm|pm|message|inbox|send)\b.{0,30}\b(proof|screenshot|address|wallet)\b.{0,30}\b(hold|token|airdrop|swap|claim)\b/i.test(normalized) ||
+    /\b(hold|token|airdrop)\b.{0,30}\b(dm|pm|message|inbox|send)\b.{0,30}\b(proof|screenshot|address|wallet)\b/i.test(normalized) ||
+    /\b(send|show|share)\b.{0,20}\b(screenshot|proof|address)\b.{0,30}\b(token|hold|buy|purchase|airdrop)\b/i.test(normalized);
 
   const hasPrivateMessageSolicitation = /\b(private\s*message|send\s*me\s*(a\s*)?(message|msg)|drop\s*(me\s*)?(a\s*)?(message|msg|line|dm|pm)|reach\s*out\s*to\s*me|contact\s*me\s*(privately|directly)|write\s*me\s*(a\s*)?(message|privately|directly))\b/i.test(normalized) ||
     /\b(private|direct)\s*(message|msg|chat)\b.{0,20}\b(with|your|tx|hash|screenshot|purchase)\b/i.test(normalized);
