@@ -769,8 +769,8 @@ async function detectAndHandleScam(
   const hasUnsolicitedGroupLink = hasTelegramLink && /\b(join\s*(us|our|my|this|the)|come\s*join|check\s*(this|my|our)|new\s*(group|channel|community))\b/i.test(normalized);
 
   const hasMultiplierClaim = /\b(\d{2,})\s*[-–—]?\s*(\d+)?\s*x\b|\b\d+x\s*(gain|return|profit|potential|move|play|from\s*here)\b/i.test(normalized);
-  const hasPumpHypeLanguage = /\b(low[\s-]*cap\s*(gem|play|pick|token|coin)|hidden\s*gem|next\s*\d+x|moon\s*(shot|play|bag)|whale|rotate|rotating|accumulating|load(ing|ed)\s*(up|bag)|eye(ing)?\s*(a\s*few|some|these)|ape\s*(in|into|now|early|before)|degen\s*(play|call|move)|don'?t\s*(miss|sleep|fade)|early\s*(entry|bird|call)|bag\s*(these|this|it|now)|about\s*to\s*(pop|explode|moon|pump|rip|run|send|fly|break\s*out))\b/i.test(normalized);
-  const hasFomoUrgency = /🔥.*💸|💸.*🔥|🚀.*💰|💰.*🚀|\b(before\s*(it'?s?\s*too\s*late|the\s*pump|whales|liftoff|breakout)|still\s*early|not\s*too\s*late|thank\s*me\s*later|you'?ll\s*regret|mark\s*my\s*words|remember\s*(this|i\s*told)|nfa\s*(but|tho|though)|this\s*is\s*(it|the\s*one))\b/i.test(normalized);
+  const hasPumpHypeLanguage = /\b(low[\s-]*cap\s*(gem|play|pick|token|coin)|hidden\s*gem|next\s*\d+x|moon\s*(shot|play|bag)|whale|rotate|rotating|accumulating|load(ing|ed)\s*(up|bag)|eye(ing)?\s*(a\s*few|some|these)|ape[ds]?\s*(in|into|now|early|before|this|it)|degen\s*(play|call|move)|don'?t\s*(miss|sleep|fade)|early\s*(entry|bird|call)|bag\s*(these|this|it|now)|about\s*to\s*(pop|explode|moon|pump|rip|run|send|fly|break\s*out)|fill\s*(your|ur)\s*bag|lfg+\b|something\s*(huge|big|massive)\s*(is\s*)?(coming|brewing|loading|cooking)|get\s*ready\s*(folk|guy|fam|fren|every))\b/i.test(normalized);
+  const hasFomoUrgency = /🔥.*💸|💸.*🔥|🚀.*💰|💰.*🚀|🚀\s*🚀|\b(before\s*(it'?s?\s*too\s*late|the\s*(pump|train|bus|ship)|whales|liftoff|breakout|everyone)|still\s*early|not\s*too\s*late|thank\s*me\s*later|you'?ll\s*regret|mark\s*my\s*words|remember\s*(this|i\s*told)|nfa\s*(but|tho|though)|this\s*is\s*(it|the\s*one)|train\s*leav(es|ing))\b/i.test(normalized);
   const hasFinancialShillHype = (hasMultiplierClaim && hasPumpHypeLanguage) ||
     (hasMultiplierClaim && hasFomoUrgency) ||
     (hasPumpHypeLanguage && hasFomoUrgency);
@@ -780,11 +780,16 @@ async function detectAndHandleScam(
   const hasAggressiveDmSpam = /\b(dm\s*now|dm\s*me\s*now|send\s*(a\s*)?dm|check\s*(my\s*)?dm|kindly\s*(send|dm)|holders?\s*dm|dm\s*if\s*you|dm\s*for\s*(promo|promotion|detail|info|offer|deal|signal|call))\b/i.test(normalized);
   const hasWalletBuyingSelling = /\b(buy|sell|get|need|want|pay)\b.{0,30}\b(wallet|account)\b.{0,30}\b(history|transaction|old|empty|aged|month|year)\b/i.test(normalized) || /\b(old|empty|aged)\s*(wallet|account)\b.{0,30}\b(pay|buy|sell|solana|sol|eth|usdt|btc)\b/i.test(normalized) || /\b(wallet|account)\s*(with|that\s*has)\s*.{0,20}(transaction|history|activit)/i.test(normalized);
   const hasPumpPromoSpam = /\b(pump|boost)\s*(your|ur)\s*(token|project|coin|mc|market\s*cap)\b/i.test(normalized) || /\b(i\s*(can|will)\s*(pump|boost|promote))\b.{0,40}\b(token|project|coin|mc|market\s*cap|profit)\b/i.test(normalized) || /\bpromotion\s*on\s*my\s*(telegram|channel|group)\b/i.test(normalized) || /\b(investor|holder)s?\s*(who\s*will|that\s*will|to)\s*(pump|buy|invest)/i.test(normalized) || /\b(contact|message|reach)\s*(me|us)\s*(in\s*)?(my\s*)?(inbox|dm|pm)\b.{0,30}\b(pump|promo|boost)/i.test(normalized);
+  const hasInvestmentServicePitch =
+    (/\b(i\s*help|we\s*help|i\s*connect|we\s*connect|we\s*unlock|i\s*unlock)\b/i.test(normalized) && /\b(otc|capital|fund(ing|s)?|institutional|strategic\s*(investor|buyer)|liquidity|market\s*disruption)\b/i.test(normalized)) ||
+    /\b(are\s*you\s*open\s*(for|to))\b.{0,40}\b(otc|invest|capital|fund|partner)/i.test(normalized) ||
+    /\b(otc\s*(capital|deal|invest|round|fund|buy|service|partner|opportunit))/i.test(normalized) && /\b(unlock|access|enabl|private|institutional|strategic)\b/i.test(normalized) ||
+    /\b(unlock|access|secur)\b.{0,20}\$?\d+[km]?\s*[-–—]?\s*\$?\d*[km]?\s*(in\s*)?(capital|fund|invest|otc|liquidity)/i.test(normalized);
 
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
     hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam || hasBoostBotPromo ||
-    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype;
+    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype || hasInvestmentServicePitch;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -851,6 +856,9 @@ async function detectAndHandleScam(
   if (hasFinancialShillHype) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Financial shill / pump hype spam (multiplier claims + hype language)");
   }
+  if (hasInvestmentServicePitch) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Unsolicited OTC / investment service pitch");
+  }
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
   const hasCryptoKeywords = /\b(sol|eth|btc|bnb|usdt|usdc|crypto|token|coin|nft|wallet|airdrop|giveaway|give\s*away|migration|migrat(e|ing)|swap|dex|defi|staking|stake|yield|liquidity|rug|pump|dump|shill|raid|shitcoin|memecoin|meme\s*coin|presale|pre\s*sale|whitelist|white\s*list|seed\s*phrase|private\s*key|contract\s*address|ca\b|mint|bridge|chain|blockchain|web3|solana|ethereum|bitcoin|tether|binance|phantom|metamask|ledger|trezor)\b/i.test(normalized);
   const hasDmKeywords = /\b(dm|pm|inbox|private\s*message|contact\s*me|reach\s*out|message\s*me|send\s*me|write\s*me|hit\s*me\s*up)\b/i.test(normalized);
@@ -865,7 +873,7 @@ async function detectAndHandleScam(
     : normalized;
   const { isScam, reason } = await aiScamCheck(aiContext, "regular_user");
   if (!isScam) {
-    if ((reason === "unparseable" || reason === "error") && (hasSoftCollaborationInvite || hasDmSolicitation || hasFakeExchangeListing || hasChannelManagementPitch || hasFinancialShillHype)) {
+    if ((reason === "unparseable" || reason === "error") && (hasSoftCollaborationInvite || hasDmSolicitation || hasFakeExchangeListing || hasChannelManagementPitch || hasFinancialShillHype || hasInvestmentServicePitch)) {
       log(`AI failed but strong scam signals present — flagging as scam`, "telegram");
       return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "AI unavailable + strong scam signals detected");
     }
