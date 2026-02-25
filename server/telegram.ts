@@ -359,6 +359,7 @@ A message IS a SCAM/SPAM if it does ANY of these:
 - Offers guaranteed returns, paid promotions, or investment services
 - Creates false urgency (act now, limited time, within X hours)
 - Promotes other tokens/projects unsolicited (shilling)
+- Posts pump hype / financial shill content: multiplier claims (50x, 100x), "low-cap gems", "whales rotating in", "plays loading", "about to moon/explode", FOMO language — regular users don't post unsolicited investment hype
 - Shares links to other Telegram groups, channels, or bots
 - Offers services like "I can get you investors/listings/volume"
 - Offers ANY unsolicited services: design, animation, NFTs, logos, banners, stickers, GIFs, marketing, promotion, community management, development, etc.
@@ -386,6 +387,8 @@ EXAMPLES OF SCAMS (flag these):
 - "I can design NFTs, logos, banners for your project" → SCAM (unsolicited service pitch)
 - "Great project! DM me for promotion services" → SCAM (flattery + service pitch)
 - "I'm giving away 1000 USDT to the first 10 people who message me" → SCAM (giveaway scam)
+- "I'm eyeing a few low-cap gems that could 50-100x once the whales start rotating in" → SCAM (pump hype / financial shill)
+- "New plays loading… don't sleep on this one, about to explode 🔥💸" → SCAM (pump hype / FOMO)
 
 A message is NOT a scam if it's:
 - A normal question or discussion about the project
@@ -731,6 +734,13 @@ async function detectAndHandleScam(
   );
   const hasUnsolicitedGroupLink = hasTelegramLink && /\b(join\s*(us|our|my|this|the)|come\s*join|check\s*(this|my|our)|new\s*(group|channel|community))\b/i.test(normalized);
 
+  const hasMultiplierClaim = /\b(\d{2,})\s*[-–—]?\s*(\d+)?\s*x\b|\b\d+x\s*(gain|return|profit|potential|move|play|from\s*here)\b/i.test(normalized);
+  const hasPumpHypeLanguage = /\b(low[\s-]*cap\s*(gem|play|pick|token|coin)|hidden\s*gem|next\s*\d+x|moon\s*(shot|play|bag)|whale|rotate|rotating|accumulating|load(ing|ed)\s*(up|bag)|eye(ing)?\s*(a\s*few|some|these)|ape\s*(in|into|now|early|before)|degen\s*(play|call|move)|don'?t\s*(miss|sleep|fade)|early\s*(entry|bird|call)|bag\s*(these|this|it|now)|about\s*to\s*(pop|explode|moon|pump|rip|run|send|fly|break\s*out))\b/i.test(normalized);
+  const hasFomoUrgency = /🔥.*💸|💸.*🔥|🚀.*💰|💰.*🚀|\b(before\s*(it'?s?\s*too\s*late|the\s*pump|whales|liftoff|breakout)|still\s*early|not\s*too\s*late|thank\s*me\s*later|you'?ll\s*regret|mark\s*my\s*words|remember\s*(this|i\s*told)|nfa\s*(but|tho|though)|this\s*is\s*(it|the\s*one))\b/i.test(normalized);
+  const hasFinancialShillHype = (hasMultiplierClaim && hasPumpHypeLanguage) ||
+    (hasMultiplierClaim && hasFomoUrgency) ||
+    (hasPumpHypeLanguage && hasFomoUrgency);
+
   const hasDmWithUsername = /\b(dm|pm)\s*.{0,5}@\w+/i.test(normalized) && /\b(call|signal|insider|profit|trade|print|miss|join|part|sticker|logo|banner|design|animation|website|promo|nft|mascot|gif|emoji|video|meme|drawing|whitepaper|white\s*paper|branding|graphic)s?\b/i.test(normalized);
   const hasInsiderCallSpam = (/\b(insider|my\s*(call|signal)|vip\s*(call|group|channel|access)|paid\s*(call|group|signal)|fading\s*me)\b/i.test(normalized) && /\b(dm|pm)\s*.{0,10}@\w+/i.test(normalized)) || /\binsider\b.{0,20}\b(cook|member|call|signal|group)s?\b.{0,30}(print|profit|money|gain|earning)/i.test(normalized) || /\bdrop\s*(cook|call|signal)s?\b.{0,20}(print|profit|member)/i.test(normalized) || /\b(inner\s*circle|private\s*circle)\b.{0,40}(print|profit|\dx|\d+x\b|money|earning|gain)/i.test(normalized) || /\d+(\.\d+)?x\s*(done|profit|gain|made)\b.{0,30}\b(inner|circle|member|private)/i.test(normalized);
   const hasAggressiveDmSpam = /\b(dm\s*now|dm\s*me\s*now|send\s*(a\s*)?dm|check\s*(my\s*)?dm|kindly\s*(send|dm)|holders?\s*dm|dm\s*if\s*you|dm\s*for\s*(promo|promotion|detail|info|offer|deal|signal|call))\b/i.test(normalized);
@@ -740,7 +750,7 @@ async function detectAndHandleScam(
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
     hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam || hasBoostBotPromo ||
-    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasChannelManagementPitch || hasFakeExchangeListing;
+    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -804,6 +814,9 @@ async function detectAndHandleScam(
   if (hasPumpPromoSpam) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Token pump / paid promotion service offer");
   }
+  if (hasFinancialShillHype) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Financial shill / pump hype spam (multiplier claims + hype language)");
+  }
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
   const hasCryptoKeywords = /\b(sol|eth|btc|bnb|usdt|usdc|crypto|token|coin|nft|wallet|airdrop|giveaway|give\s*away|migration|migrat(e|ing)|swap|dex|defi|staking|stake|yield|liquidity|rug|pump|dump|shill|raid|shitcoin|memecoin|meme\s*coin|presale|pre\s*sale|whitelist|white\s*list|seed\s*phrase|private\s*key|contract\s*address|ca\b|mint|bridge|chain|blockchain|web3|solana|ethereum|bitcoin|tether|binance|phantom|metamask|ledger|trezor)\b/i.test(normalized);
   const hasDmKeywords = /\b(dm|pm|inbox|private\s*message|contact\s*me|reach\s*out|message\s*me|send\s*me|write\s*me|hit\s*me\s*up)\b/i.test(normalized);
@@ -818,7 +831,7 @@ async function detectAndHandleScam(
     : normalized;
   const { isScam, reason } = await aiScamCheck(aiContext, "regular_user");
   if (!isScam) {
-    if ((reason === "unparseable" || reason === "error") && (hasSoftCollaborationInvite || hasDmSolicitation || hasFakeExchangeListing || hasChannelManagementPitch)) {
+    if ((reason === "unparseable" || reason === "error") && (hasSoftCollaborationInvite || hasDmSolicitation || hasFakeExchangeListing || hasChannelManagementPitch || hasFinancialShillHype)) {
       log(`AI failed but strong scam signals present — flagging as scam`, "telegram");
       return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "AI unavailable + strong scam signals detected");
     }
