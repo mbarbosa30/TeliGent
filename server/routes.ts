@@ -269,6 +269,25 @@ export async function registerRoutes(
     }
   });
 
+  let cachedPublicStats: any = null;
+  let cachedPublicStatsAt = 0;
+  const STATS_CACHE_MS = 5 * 60 * 1000;
+
+  app.get("/api/public/stats", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (cachedPublicStats && now - cachedPublicStatsAt < STATS_CACHE_MS) {
+        return res.json(cachedPublicStats);
+      }
+      const stats = await storage.getPublicStats();
+      cachedPublicStats = stats;
+      cachedPublicStatsAt = now;
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   await startBotEngine(app);
 
   return httpServer;

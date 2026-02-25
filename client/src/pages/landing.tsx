@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bot, Shield, Brain, Zap, Users, Globe, Loader2 } from "lucide-react";
+import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 function AuthForm() {
@@ -122,6 +123,77 @@ function AuthForm() {
   );
 }
 
+function AnimatedCounter({ value, duration = 1500 }: { value: number; duration?: number }) {
+  const [display, setDisplay] = useState(0);
+  const ref = useRef<HTMLSpanElement>(null);
+  const hasAnimated = useRef(false);
+
+  useEffect(() => {
+    if (!value || hasAnimated.current) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !hasAnimated.current) {
+          hasAnimated.current = true;
+          const start = performance.now();
+          const animate = (now: number) => {
+            const elapsed = now - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            setDisplay(Math.round(eased * value));
+            if (progress < 1) requestAnimationFrame(animate);
+          };
+          requestAnimationFrame(animate);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.3 }
+    );
+
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [value, duration]);
+
+  const formatted = display >= 1000 ? `${(display / 1000).toFixed(1)}k`.replace('.0k', 'k') : String(display);
+  return <span ref={ref}>{formatted}</span>;
+}
+
+function MetricsSection() {
+  const { data: stats } = useQuery<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }>({
+    queryKey: ["/api/public/stats"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (!stats) return null;
+  const hasData = stats.scamsCaught > 0 || stats.conversationsHandled > 0 || stats.groupsProtected > 0;
+  if (!hasData) return null;
+
+  const metrics = [
+    { label: "Scams Blocked", value: stats.scamsCaught, icon: ShieldCheck },
+    { label: "AI Conversations", value: stats.conversationsHandled, icon: MessageCircle },
+    { label: "Groups Protected", value: stats.groupsProtected, icon: Users },
+    { label: "Active Bots", value: stats.botsActive, icon: Radio },
+  ].filter(m => m.value > 0);
+
+  return (
+    <section className="py-12 px-6 border-t">
+      <div className="max-w-4xl mx-auto">
+        <div className={`grid grid-cols-2 ${metrics.length === 4 ? 'md:grid-cols-4' : metrics.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
+          {metrics.map((m) => (
+            <div key={m.label} className="text-center space-y-1" data-testid={`stat-${m.label.toLowerCase().replace(/\s+/g, '-')}`}>
+              <m.icon className="h-4 w-4 mx-auto text-muted-foreground mb-2" />
+              <p className="text-3xl sm:text-4xl font-bold font-mono tracking-tight">
+                <AnimatedCounter value={m.value} />
+              </p>
+              <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{m.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
@@ -159,6 +231,8 @@ export default function LandingPage() {
           <p className="text-xs text-muted-foreground">No credit card required. Bring your own Telegram bot token.</p>
         </div>
       </section>
+
+      <MetricsSection />
 
       <section id="features" className="py-16 px-6 border-t">
         <div className="max-w-5xl mx-auto space-y-10">

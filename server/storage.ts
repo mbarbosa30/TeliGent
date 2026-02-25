@@ -26,6 +26,7 @@ export interface IStorage {
   createActivityLog(botConfigId: number, userId: string, log: Omit<InsertActivityLog, "userId" | "botConfigId">): Promise<ActivityLog>;
   getScamCountForUser(botConfigId: number, telegramUserId: string): Promise<number>;
 
+  getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }>;
   adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]>;
   adminGetAllBots(): Promise<(BotConfig & { userEmail?: string })[]>;
   adminGetAllActivityLogs(limit?: number): Promise<(ActivityLog & { botName?: string })[]>;
@@ -124,6 +125,19 @@ export class DatabaseStorage implements IStorage {
       )
     );
     return result.count;
+  }
+
+  async getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }> {
+    const [scamResult] = await db.select({ count: count() }).from(activityLogs).where(eq(activityLogs.isReport, true));
+    const [groupResult] = await db.select({ count: count() }).from(groups);
+    const [botResult] = await db.select({ count: count() }).from(botConfigs).where(and(eq(botConfigs.isActive, true), sql`${botConfigs.botToken} != ''`));
+    const [convResult] = await db.select({ count: count() }).from(activityLogs).where(and(eq(activityLogs.isReport, false), sql`${activityLogs.botResponse} IS NOT NULL AND ${activityLogs.botResponse} != ''`));
+    return {
+      scamsCaught: scamResult.count,
+      groupsProtected: groupResult.count,
+      botsActive: botResult.count,
+      conversationsHandled: convResult.count,
+    };
   }
 
   async adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]> {
