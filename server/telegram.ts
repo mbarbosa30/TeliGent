@@ -436,6 +436,8 @@ async function executeScamAction(
 ): Promise<boolean> {
   log(`SCAM DETECTED from ${userName} (${reason}): ${text.substring(0, 100)}`, "telegram");
 
+  const tgUserId = msg.from?.id ? String(msg.from.id) : undefined;
+
   let deleted = false;
   try {
     await bot.deleteMessage(msg.chat.id, msg.message_id);
@@ -457,12 +459,40 @@ async function executeScamAction(
     await storage.createActivityLog(botConfigId, userId, {
       groupId: groupRecord.id,
       type: "report",
+      telegramUserId: tgUserId,
       userName,
       userMessage: text,
       botResponse: deleted ? "(silently deleted)" : "(warned — could not delete)",
       isReport: true,
       metadata: { autoDetected: true, reason },
     });
+  }
+
+  if (tgUserId && deleted) {
+    try {
+      const config = await storage.getBotConfig(botConfigId);
+      if (config && config.autoBanThreshold > 0) {
+        const scamCount = await storage.getScamCountForUser(botConfigId, tgUserId);
+        if (scamCount >= config.autoBanThreshold) {
+          await bot.banChatMember(msg.chat.id, Number(tgUserId));
+          log(`AUTO-BANNED user ${userName} (tgId: ${tgUserId}) after ${scamCount} scam deletions (threshold: ${config.autoBanThreshold})`, "telegram");
+          if (groupRecord) {
+            await storage.createActivityLog(botConfigId, userId, {
+              groupId: groupRecord.id,
+              type: "report",
+              telegramUserId: tgUserId,
+              userName,
+              userMessage: `Auto-banned after ${scamCount} scam messages`,
+              botResponse: "(user banned)",
+              isReport: true,
+              metadata: { autoDetected: true, reason: `Auto-ban: ${scamCount} scam deletions reached threshold of ${config.autoBanThreshold}` },
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      log(`Auto-ban check/action failed for ${userName}: ${e.message}`, "telegram");
+    }
   }
 
   return true;

@@ -24,6 +24,7 @@ export interface IStorage {
 
   getActivityLogs(botConfigId: number, limit?: number): Promise<ActivityLog[]>;
   createActivityLog(botConfigId: number, userId: string, log: Omit<InsertActivityLog, "userId" | "botConfigId">): Promise<ActivityLog>;
+  getScamCountForUser(botConfigId: number, telegramUserId: string): Promise<number>;
 
   adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]>;
   adminGetAllBots(): Promise<(BotConfig & { userEmail?: string })[]>;
@@ -112,6 +113,17 @@ export class DatabaseStorage implements IStorage {
   async createActivityLog(botConfigId: number, userId: string, log: Omit<InsertActivityLog, "userId" | "botConfigId">): Promise<ActivityLog> {
     const [created] = await db.insert(activityLogs).values({ ...log, userId, botConfigId }).returning();
     return created;
+  }
+
+  async getScamCountForUser(botConfigId: number, telegramUserId: string): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(activityLogs).where(
+      and(
+        eq(activityLogs.botConfigId, botConfigId),
+        eq(activityLogs.telegramUserId, telegramUserId),
+        eq(activityLogs.isReport, true)
+      )
+    );
+    return result.count;
   }
 
   async adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]> {

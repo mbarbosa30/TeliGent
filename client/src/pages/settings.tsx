@@ -43,6 +43,7 @@ const settingsSchema = z.object({
   isActive: z.boolean(),
   onlyRespondWhenMentioned: z.boolean(),
   respondToReplies: z.boolean(),
+  autoBanThreshold: z.number().min(0).max(100),
   trackReports: z.boolean(),
   reportKeywords: z.array(z.string()),
 });
@@ -72,6 +73,7 @@ export default function SettingsPage() {
       isActive: true,
       onlyRespondWhenMentioned: false,
       respondToReplies: true,
+      autoBanThreshold: 0,
       trackReports: true,
       reportKeywords: ["report", "issue", "bug", "problem", "broken"],
     },
@@ -91,6 +93,7 @@ export default function SettingsPage() {
         isActive: config.isActive,
         onlyRespondWhenMentioned: config.onlyRespondWhenMentioned,
         respondToReplies: config.respondToReplies,
+        autoBanThreshold: config.autoBanThreshold ?? 0,
         trackReports: config.trackReports,
         reportKeywords: config.reportKeywords || ["report", "issue", "bug", "problem", "broken"],
       });
@@ -380,6 +383,15 @@ export default function SettingsPage() {
                     <FormControl>
                       <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-respond-replies" />
                     </FormControl>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="autoBanThreshold" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Auto-Ban Threshold</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} min={0} max={100} data-testid="input-auto-ban-threshold" />
+                    </FormControl>
+                    <FormDescription>Ban user after this many auto-deleted scam messages (0 = disabled)</FormDescription>
                   </FormItem>
                 )} />
               </CardContent>
