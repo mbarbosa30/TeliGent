@@ -702,10 +702,14 @@ async function detectAndHandleScam(
   const hasTxHashRequest = /\b(tx\s*hash|transaction\s*hash|screenshot\s*of\s*(your\s*)?(purchase|transaction|buy|tx)|proof\s*of\s*(purchase|transaction|buy))\b/i.test(normalized);
 
   const hasUnsolicitedServiceOffer =
-    /\b(i('d| would)?\s*(love|like)\s*to\s*(create|make|design|build|develop|offer))\b/i.test(normalized) ||
+    /\b(i('d| would)?\s*(love|like)\s*to\s*(create|make|design|build|develop|offer|support|help|assist|handle|manage))\b/i.test(normalized) ||
     /\b(i\s*(can|will|offer|provide|specialize|do)\s*(create|make|design|build|develop|custom|professional))\b/i.test(normalized) ||
+    /\b(i\s*speciali[sz]e\s*in)\b.{0,40}\b(engag|moderat|communit|management|growth|fud|support|marketing|promot|discussion|organiz)/i.test(normalized) ||
     /\b(hire\s*me|my\s*services|my\s*portfolio|check\s*my\s*(work|portfolio|profile))\b/i.test(normalized) ||
-    /\b(looking\s*for\s*(a\s*)?(designer|developer|animator|artist|creator)\s*\?\s*i)\b/i.test(normalized);
+    /\b(looking\s*for\s*(a\s*)?(designer|developer|animator|artist|creator)\s*\?\s*i)\b/i.test(normalized) ||
+    /\b(alongside\s*your\s*(bot|team|mod|admin))\b/i.test(normalized) ||
+    /\b(turn(ing)?\s*(passive|quiet|inactive)\s*(member|user|viewer)s?\s*into\s*(active|engag))/i.test(normalized) ||
+    /\b(maximize|increase|drive|boost)\s*(engag|trust|growth|retention|activit)/i.test(normalized) && /\b(your\s*(community|group|project|channel)|i('d| would| can| will))\b/i.test(normalized);
 
   const hasCryptoServiceKeywords = /\b(nft|logo|banner|sticker|gif|animation|mascot|meme\s*(coin|token|animation)|dex\s*banner|coin\s*logo|token\s*logo|2d|3d)\b/i.test(normalized) &&
     /\b(creat|design|make|build|custom|your\s*(project|token|coin|mascot))\b/i.test(normalized);
