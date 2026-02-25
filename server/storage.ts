@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern } from "@shared/schema";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 
 export interface IStorage {
@@ -25,6 +25,9 @@ export interface IStorage {
   getActivityLogs(botConfigId: number, limit?: number): Promise<ActivityLog[]>;
   createActivityLog(botConfigId: number, userId: string, log: Omit<InsertActivityLog, "userId" | "botConfigId">): Promise<ActivityLog>;
   getScamCountForUser(botConfigId: number, telegramUserId: string): Promise<number>;
+
+  getReportedScamPatterns(botConfigId: number): Promise<ReportedScamPattern[]>;
+  createReportedScamPattern(botConfigId: number, pattern: string, originalText?: string): Promise<ReportedScamPattern>;
 
   getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }>;
   adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]>;
@@ -125,6 +128,19 @@ export class DatabaseStorage implements IStorage {
       )
     );
     return result.count;
+  }
+
+  async getReportedScamPatterns(botConfigId: number): Promise<ReportedScamPattern[]> {
+    return db.select().from(reportedScamPatterns).where(eq(reportedScamPatterns.botConfigId, botConfigId)).orderBy(desc(reportedScamPatterns.createdAt));
+  }
+
+  async createReportedScamPattern(botConfigId: number, pattern: string, originalText?: string): Promise<ReportedScamPattern> {
+    const existing = await db.select().from(reportedScamPatterns).where(
+      and(eq(reportedScamPatterns.botConfigId, botConfigId), eq(reportedScamPatterns.pattern, pattern))
+    ).limit(1);
+    if (existing.length > 0) return existing[0];
+    const [created] = await db.insert(reportedScamPatterns).values({ botConfigId, pattern, originalText: originalText || null, source: "report" }).returning();
+    return created;
   }
 
   async getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }> {

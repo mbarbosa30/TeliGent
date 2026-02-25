@@ -65,6 +65,15 @@ export const activityLogs = pgTable("activity_logs", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const reportedScamPatterns = pgTable("reported_scam_patterns", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").references(() => botConfigs.id, { onDelete: "cascade" }).notNull(),
+  pattern: text("pattern").notNull(),
+  originalText: text("original_text"),
+  source: text("source").notNull().default("report"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export const insertBotConfigSchema = createInsertSchema(botConfigs).omit({
   id: true,
   createdAt: true,
@@ -86,6 +95,11 @@ export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({
   createdAt: true,
 });
 
+export const insertReportedScamPatternSchema = createInsertSchema(reportedScamPatterns).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type BotConfig = typeof botConfigs.$inferSelect;
 export type InsertBotConfig = z.infer<typeof insertBotConfigSchema>;
 export type KnowledgeBaseEntry = typeof knowledgeBase.$inferSelect;
@@ -94,3 +108,5 @@ export type Group = typeof groups.$inferSelect;
 export type InsertGroup = z.infer<typeof insertGroupSchema>;
 export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+export type ReportedScamPattern = typeof reportedScamPatterns.$inferSelect;
+export type InsertReportedScamPattern = z.infer<typeof insertReportedScamPatternSchema>;

@@ -336,6 +336,47 @@ async function handleLeftMember(msg: TelegramBot.Message, instance: BotInstance)
 
 const MIN_SCAM_CHECK_LENGTH = 30;
 
+const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "through", "during", "before", "after", "above", "below", "between", "out", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "just", "and", "but", "or", "if", "while", "that", "this", "these", "those", "i", "me", "my", "we", "our", "you", "your", "he", "him", "his", "she", "her", "it", "its", "they", "them", "their", "what", "which", "who", "whom"]);
+
+function extractKeyPhrases(normalizedText: string): string[] {
+  const words = normalizedText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+  if (words.length < 2) return words.length > 0 ? [words.join(" ")] : [];
+  const phrases: string[] = [];
+  for (let i = 0; i <= words.length - 2; i++) {
+    phrases.push(words.slice(i, i + 2).join(" "));
+  }
+  const unique = [...new Set(phrases)];
+  return unique.slice(0, 15);
+}
+
+const learnedPatternsCache = new Map<number, { patterns: string[]; expiry: number }>();
+
+function clearLearnedPatternsCache(botConfigId: number) {
+  learnedPatternsCache.delete(botConfigId);
+}
+
+async function getLearnedPatterns(botConfigId: number): Promise<string[]> {
+  const cached = learnedPatternsCache.get(botConfigId);
+  if (cached && Date.now() < cached.expiry) return cached.patterns;
+  const records = await storage.getReportedScamPatterns(botConfigId);
+  const patterns = records.map(r => r.pattern);
+  learnedPatternsCache.set(botConfigId, { patterns, expiry: Date.now() + 5 * 60 * 1000 });
+  return patterns;
+}
+
+function checkLearnedPatterns(normalizedText: string, patterns: string[]): boolean {
+  if (patterns.length === 0) return false;
+  const lower = normalizedText.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+  let matchCount = 0;
+  for (const pattern of patterns) {
+    if (lower.includes(pattern)) {
+      matchCount++;
+      if (matchCount >= 3) return true;
+    }
+  }
+  return false;
+}
+
 async function aiScamCheck(text: string, senderRole: string): Promise<{ isScam: boolean; reason: string }> {
   try {
     const controller = new AbortController();
@@ -688,7 +729,9 @@ async function detectAndHandleScam(
   const hasMigrationAirdropScam = /\b(migrat(ion|ing|e)|airdrop(ping|s)?)\b.{0,60}\b(holder|hoIder|volume|voIume|loss|Ioss|recover|boost|all)\b/i.test(normalized) ||
     /\b(recover|boost)\b.{0,30}\b(loss|volume|price)\b/i.test(normalized) ||
     /\b(working\s*on|announcing|starting)\s*(a\s*)?(migration|airdrop|token\s*swap|contract\s*change)\b/i.test(normalized) ||
-    /\b(re\s*launch|relaunch)(ing)?\b.{0,40}\b(token|contract|v2|v3)\b/i.test(normalized) ||
+    /\b(re\s*launch|relaunch)(ed|ing)?\b.{0,40}\b(token|contract|v2|v3)\b/i.test(normalized) ||
+    (/1\s*:\s*1/.test(text) && /\btoken/i.test(text) && /\b(relaunch|re.?launch|recieve|receive|swap|migrat|airdrop|claim)\b/i.test(text)) ||
+    (/\b(halt|apologiz|ceas|shut.?down|wind.?down|discontinu)\b/i.test(text) && /\btoken/i.test(text) && /\b(relaunch|re.?launch|recieve|receive|fairness|1\s*:\s*1)\b/i.test(text)) ||
     /\b(v2|v3)\s*(token|contract|launch|version)\b.{0,40}\b(swap|migrat|airdrop|claim|new\s*ca|clean\s*ca)\b/i.test(normalized) ||
     /\b(swap|exchange|convert)\s*(your\s*)?(old\s*)?(token|holding)\b.{0,40}\b(new|v2|v3|airdrop|claim)\b/i.test(normalized) ||
     /\b(new|clean)\s*(ca|contract\s*address)\b.{0,40}\b(swap|migrat|airdrop|token|claim|hold)\b/i.test(normalized) ||
@@ -786,10 +829,13 @@ async function detectAndHandleScam(
     /\b(otc\s*(capital|deal|invest|round|fund|buy|service|partner|opportunit))/i.test(normalized) && /\b(unlock|access|enabl|private|institutional|strategic)\b/i.test(normalized) ||
     /\b(unlock|access|secur)\b.{0,20}\$?\d+[km]?\s*[-–—]?\s*\$?\d*[km]?\s*(in\s*)?(capital|fund|invest|otc|liquidity)/i.test(normalized);
 
+  const learnedPatterns = await getLearnedPatterns(botConfigId);
+  const hasLearnedPatternMatch = checkLearnedPatterns(normalized, learnedPatterns);
+
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
     hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasPumpPromoSpam || hasBoostBotPromo ||
-    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype || hasInvestmentServicePitch;
+    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype || hasInvestmentServicePitch || hasLearnedPatternMatch;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -858,6 +904,9 @@ async function detectAndHandleScam(
   }
   if (hasInvestmentServicePitch) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Unsolicited OTC / investment service pitch");
+  }
+  if (hasLearnedPatternMatch) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Matched previously reported scam pattern (learned from /report)");
   }
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
   const hasCryptoKeywords = /\b(sol|eth|btc|bnb|usdt|usdc|crypto|token|coin|nft|wallet|airdrop|giveaway|give\s*away|migration|migrat(e|ing)|swap|dex|defi|staking|stake|yield|liquidity|rug|pump|dump|shill|raid|shitcoin|memecoin|meme\s*coin|presale|pre\s*sale|whitelist|white\s*list|seed\s*phrase|private\s*key|contract\s*address|ca\b|mint|bridge|chain|blockchain|web3|solana|ethereum|bitcoin|tether|binance|phantom|metamask|ledger|trezor)\b/i.test(normalized);
@@ -1167,6 +1216,22 @@ async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, c
       isReport: true,
       metadata: JSON.stringify({ reportedAuthor, actionTaken, assessment: assessment.category }),
     });
+
+    if (assessment.category !== "LEGITIMATE") {
+      try {
+        const normalizedReported = normalizeUnicode(reportedText);
+        const phrases = extractKeyPhrases(normalizedReported);
+        for (const phrase of phrases) {
+          await storage.createReportedScamPattern(botConfigId, phrase, reportedText.slice(0, 500));
+        }
+        if (phrases.length > 0) {
+          clearLearnedPatternsCache(botConfigId);
+          log(`Learned ${phrases.length} patterns from /report for bot ${botConfigId}`, "telegram");
+        }
+      } catch (learnErr: any) {
+        log(`Failed to learn from report: ${learnErr.message}`, "telegram");
+      }
+    }
   } catch (err: any) {
     log(`Error processing /report: ${err.message}`, "telegram");
     await sendBotMessage(bot, chatId, "Report logged. An admin will review this.", msg.message_id);
