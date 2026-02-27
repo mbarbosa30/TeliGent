@@ -811,12 +811,14 @@ async function detectAndHandleScam(
   );
   const hasUnsolicitedGroupLink = hasTelegramLink && /\b(join\s*(us|our|my|this|the)|come\s*join|check\s*(this|my|our)|new\s*(group|channel|community))\b/i.test(normalized);
 
-  const hasMultiplierClaim = /\b(\d{2,})\s*[-–—]?\s*(\d+)?\s*x\b|\b\d+x\s*(gain|return|profit|potential|move|play|from\s*here)\b/i.test(normalized);
-  const hasPumpHypeLanguage = /\b(low[\s-]*cap\s*(gem|play|pick|token|coin)|hidden\s*gem|next\s*\d+x|moon\s*(shot|play|bag)|whale|rotate|rotating|accumulating|load(ing|ed)\s*(up|bag)|eye(ing)?\s*(a\s*few|some|these)|ape[ds]?\s*(in|into|now|early|before|this|it)|degen\s*(play|call|move)|don'?t\s*(miss|sleep|fade)|early\s*(entry|bird|call)|bag\s*(these|this|it|now)|about\s*to\s*(pop|explode|moon|pump|rip|run|send|fly|break\s*out)|fill\s*(your|ur)\s*bag|lfg+\b|something\s*(huge|big|massive)\s*(is\s*)?(coming|brewing|loading|cooking)|get\s*ready\s*(folk|guy|fam|fren|every))\b/i.test(normalized);
-  const hasFomoUrgency = /🔥.*💸|💸.*🔥|🚀.*💰|💰.*🚀|🚀\s*🚀|\b(before\s*(it'?s?\s*too\s*late|the\s*(pump|train|bus|ship)|whales|liftoff|breakout|everyone)|still\s*early|not\s*too\s*late|thank\s*me\s*later|you'?ll\s*regret|mark\s*my\s*words|remember\s*(this|i\s*told)|nfa\s*(but|tho|though)|this\s*is\s*(it|the\s*one)|train\s*leav(es|ing))\b/i.test(normalized);
+  const hasMultiplierClaim = /\b(\d{2,})\s*[-–—]?\s*(\d+)?\s*x\b|\b\d+x\s*(gain|return|profit|potential|move|play|gem|from\s*here)\b/i.test(text);
+  const hasPumpHypeLanguage = /\b(low[\s-]*(cap|mc)\s*(gem|play|pick|token|coin)?|hidden\s*gems?|new\s*gems?|found\s*.{0,10}gems?|next\s*\d+x|next\s*(play|move|call|gem)|moon\s*(shot|play|bag)|whale|rotate|rotating|accumulating|load(ing|ed)\s*(up|bag)|eye(ing)?\s*(a\s*few|some|these)|ape[ds]?\s*(in|into|now|early|before|this|it)|degen\s*(play|call|move)|don'?t\s*(sleep|fade)|early\s*(entry|bird|call)|bag\s*(these|this|it|now)|about\s*to\s*(pop|explode|moon|pump|rip|run|send|fly|break\s*out)|fill\s*(your|ur)\s*bag|lfg+\b|something\s*(huge|big|massive)\s*(is\s*)?(coming|brewing|loading|cooking)|get\s*ready)\b/i.test(normalized);
+  const hasFomoUrgency = /🔥.*💸|💸.*🔥|🚀.*💰|💰.*🚀|🚀\s*🚀|🔥\s*🔥|\b(before\s*(it'?s?\s*too\s*late|the\s*(pump|train|bus|ship)|whales|liftoff|breakout|everyone)|still\s*early|not\s*too\s*late|thank\s*me\s*later|you'?ll\s*regret|mark\s*my\s*words|remember\s*(this|i\s*told)|nfa\s*(but|tho|though)|this\s*is\s*(it|the\s*one)|train\s*leav(es|ing)|make\s*sure.{0,20}don'?t\s*miss)\b/i.test(normalized) || /🔥\s*🔥/i.test(text) || /\b(in\s*private)\b.{0,20}\b\d+x\b/i.test(text);
+  const hasLowMcGemShill = /\b(low[\s-]*(cap|mc)|gems?)\b/i.test(normalized) && /\b(found|new|hidden|just\s*launched|launched)\b/i.test(normalized) && /\b(gem|mc|cap)\b/i.test(normalized);
   const hasFinancialShillHype = (hasMultiplierClaim && hasPumpHypeLanguage) ||
     (hasMultiplierClaim && hasFomoUrgency) ||
-    (hasPumpHypeLanguage && hasFomoUrgency);
+    (hasPumpHypeLanguage && hasFomoUrgency) ||
+    hasLowMcGemShill;
 
   const hasDmWithUsername = /\b(dm|pm)\s*.{0,5}@\w+/i.test(normalized) && /\b(call|signal|insider|profit|trade|print|miss|join|part|sticker|logo|banner|design|animation|website|promo|nft|mascot|gif|emoji|video|meme|drawing|whitepaper|white\s*paper|branding|graphic)s?\b/i.test(normalized);
   const hasInsiderCallSpam = (/\b(insider|my\s*(call|signal)|vip\s*(call|group|channel|access)|paid\s*(call|group|signal)|fading\s*me)\b/i.test(normalized) && /\b(dm|pm)\s*.{0,10}@\w+/i.test(normalized)) || /\binsider\b.{0,20}\b(cook|member|call|signal|group)s?\b.{0,30}(print|profit|money|gain|earning)/i.test(normalized) || /\bdrop\s*(cook|call|signal)s?\b.{0,20}(print|profit|member)/i.test(normalized) || /\b(inner\s*circle|private\s*circle)\b.{0,40}(print|profit|\dx|\d+x\b|money|earning|gain)/i.test(normalized) || /\d+(\.\d+)?x\s*(done|profit|gain|made)\b.{0,30}\b(inner|circle|member|private)/i.test(normalized);
@@ -935,14 +937,15 @@ async function detectAndHandleScam(
 
 async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
   try {
-    if (!msg.text || !msg.chat || msg.chat.type === "private") {
+    const msgText = msg.text || msg.caption;
+    if (!msgText || !msg.chat || msg.chat.type === "private") {
       log(`Message skipped: no text, no chat, or private chat`, "telegram");
       return;
     }
     if (msg.from?.is_bot) return;
 
     const { bot, userId, botConfigId } = instance;
-    log(`Message from ${msg.from?.first_name || "Unknown"} in "${msg.chat.title || "?"}" (user: ${userId}, bot: ${botConfigId}): "${msg.text.substring(0, 80)}"`, "telegram");
+    log(`Message from ${msg.from?.first_name || "Unknown"}${msg.forward_date ? " [forwarded]" : ""} in "${msg.chat.title || "?"}" (user: ${userId}, bot: ${botConfigId}): "${msgText.substring(0, 80)}"`, "telegram");
 
     const config = await storage.getBotConfig(botConfigId);
     if (!config || !config.isActive) {
@@ -952,7 +955,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
 
     const chatId = msg.chat.id.toString();
     const userName = msg.from?.first_name || msg.from?.username || "Unknown";
-    const messageText = msg.text;
+    const messageText = msgText;
 
     const group = await storage.getGroupByChatId(botConfigId, chatId);
     if (!group) {
