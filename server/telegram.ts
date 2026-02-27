@@ -764,9 +764,17 @@ async function detectAndHandleScam(
 
   const hasDmSolicitation = /\b(dm|pm|inbox|message|contact)\s*(me|us)\b|\bsend\s*(me\s*)?(a\s*)?(dm|pm|message)\b|\b(inbox|dm|pm)\b.*\b(for|me)\b|\bshould\s*(dm|pm|message|inbox)\b|\b(dm|pm)\s*(to|for)\s*(discuss|talk|chat|collaborate|partner|detail|info|more|inquir)/i.test(normalized);
   const hasSoftCollaborationInvite = /\b(let\s*me\s*know|reach\s*out|get\s*in\s*touch|open\s*to)\s*.{0,20}\b(collaborat|partner|work\s*together|discuss|interest)/i.test(normalized) ||
-    /\b(who\s*should\s*i\s*contact|who\s*can\s*i\s*(talk|speak|reach)|who\s*(to|should\s*i)\s*(contact|message|reach))\b/i.test(normalized);
-  const hasFakeExchangeListing = /\b(from|at|represent|with)\s*.{0,20}\b(binance|biconomy|okx|kucoin|bybit|gate\.?io|mexc|huobi|htx|bitget|bitmart|lbank|poloniex|crypto\.?com|coinbase|kraken|gemini)\b/i.test(normalized) &&
-    /\b(list|listing|cooperat|partner|discuss|collaborat)\b/i.test(normalized);
+    /\b(who(m)?\s*should\s*i\s*contact|who(m)?\s*can\s*i\s*(talk|speak|reach)|who(m)?\s*(to|should\s*i)\s*(contact|message|reach))\b/i.test(normalized);
+  const exchangeNames = /\b(binance|biconomy|okx|kucoin|bybit|gate\.?io|mexc|huobi|htx|bitget|bitmart|lbank|poloniex|crypto\.?com|coinbase|kraken|gemini|weex|xt\.?com|phemex|upbit|bithumb|bitfinex)\b/i;
+  const hasFakeExchangeListing = (
+    /\b(official\s*represent\w*|represent\w*\s*(of|from)|partner\s*(of|from)|agent\s*(of|from)|ambassador\s*(of|for|from)|(i'?m|we'?re|i\s*am|we\s*are)\s*.{0,15}(from|at|with))\b/i.test(normalized) && exchangeNames.test(normalized)
+  ) || (
+    exchangeNames.test(normalized) && /\b(listing\s*(proposal|cooperat|opportunit))\b/i.test(normalized) &&
+    /\b(contact|whom|who|reach|discuss|dm|pm)\b/i.test(normalized)
+  ) || (
+    /\bverify\b.{0,30}\b(bio|identity)\b/i.test(normalized) && exchangeNames.test(normalized) &&
+    /\b(official|represent\w*|partner|agent|ambassador|listing|contact)\b/i.test(normalized)
+  );
   const serviceMenuKeywordsGlobal = /\b(sticker|logo|banner|meme|gif|emoji|animation|video|website|white\s*paper|whitepaper|buybot|buy\s*bot|drawing|promo|design|nft|mascot|flyer|poster|thumbnail|graphic|branding|merch)s?\b/ig;
   const serviceMenuCount = (normalized.match(serviceMenuKeywordsGlobal) || []).length;
   const hasDmServiceMenu = /\b(dm|pm|inbox|message|contact)\s*.{0,20}@\w+/i.test(normalized) && serviceMenuCount >= 2;
