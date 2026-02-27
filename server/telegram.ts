@@ -831,7 +831,7 @@ async function detectAndHandleScam(
   const hasDmWithUsername = /\b(dm|pm)\s*.{0,5}@\w+/i.test(normalized) && /\b(call|signal|insider|profit|trade|print|miss|join|part|sticker|logo|banner|design|animation|website|promo|nft|mascot|gif|emoji|video|meme|drawing|whitepaper|white\s*paper|branding|graphic)s?\b/i.test(normalized);
   const hasInsiderCallSpam = (/\b(insider|my\s*(call|signal)|vip\s*(call|group|channel|access)|paid\s*(call|group|signal)|fading\s*me)\b/i.test(normalized) && /\b(dm|pm)\s*.{0,10}@\w+/i.test(normalized)) || /\binsider\b.{0,20}\b(cook|member|call|signal|group)s?\b.{0,30}(print|profit|money|gain|earning)/i.test(normalized) || /\bdrop\s*(cook|call|signal)s?\b.{0,20}(print|profit|member)/i.test(normalized) || /\b(inner\s*circle|private\s*circle)\b.{0,40}(print|profit|\dx|\d+x\b|money|earning|gain)/i.test(normalized) || /\d+(\.\d+)?x\s*(done|profit|gain|made)\b.{0,30}\b(inner|circle|member|private)/i.test(normalized);
   const hasAggressiveDmSpam = /\b(dm\s*now|dm\s*me\s*now|send\s*(a\s*)?dm|check\s*(my\s*)?dm|kindly\s*(send|dm)|holders?\s*dm|dm\s*if\s*you|dm\s*for\s*(promo|promotion|detail|info|offer|deal|signal|call))\b/i.test(normalized);
-  const hasWalletBuyingSelling = /\b(buy|sell|get|need|want|pay)\b.{0,30}\b(wallet|account)\b.{0,30}\b(history|transaction|old|empty|aged|month|year)\b/i.test(normalized) || /\b(old|empty|aged)\s*(wallet|account)\b.{0,30}\b(pay|buy|sell|solana|sol|eth|usdt|btc)\b/i.test(normalized) || /\b(wallet|account)\s*(with|that\s*has)\s*.{0,20}(transaction|history|activit)/i.test(normalized);
+  const hasWalletBuyingSelling = (/\b(buy|sell|pay)\b.{0,30}\b(wall+et|account)\b.{0,30}\b(history|transactions?|old|empty|aged|month|year)\b/i.test(normalized)) || (/\b(need|want|looking\s*for)\b.{0,15}\b(wall+et|account)\b.{0,30}\b(history|transactions?|old|empty|aged|month|year)\b/i.test(normalized) && /\b(pay|buy|sol|eth|usdt|write\s*me|contact|dm|pm|\dsol|\deth)\b/i.test(normalized)) || /\b(old|empty|aged)\s*(wall+et|account)\b.{0,30}\b(pay|buy|sell|solana|sol|eth|usdt|btc)\b/i.test(normalized) || (/\b(wall+et|account)\s*(with|that\s*(has|have))\s*.{0,30}(transactions?|history|activit)/i.test(normalized) && /\b(pay|buy|sell|sol|eth|usdt|write\s*me|contact|dm|pm|\dsol|\deth|need|want)\b/i.test(normalized)) || (/\b(need|want|looking\s*for|buy)\b.{0,30}\b(solana|sol|eth|ethereum|crypto|btc|bitcoin)\b.{0,20}\b(wall+et|account)\b/i.test(normalized) && /\b(pay|buy|\dsol|\deth|write\s*me|contact|dm|pm)\b/i.test(normalized));
   const hasPumpPromoSpam = /\b(pump|boost)\s*(your|ur)\s*(token|project|coin|mc|market\s*cap)\b/i.test(normalized) || /\b(i\s*(can|will)\s*(pump|boost|promote))\b.{0,40}\b(token|project|coin|mc|market\s*cap|profit)\b/i.test(normalized) || /\bpromotion\s*on\s*my\s*(telegram|channel|group)\b/i.test(normalized) || /\b(investor|holder)s?\s*(who\s*will|that\s*will|to)\s*(pump|buy|invest)/i.test(normalized) || /\b(contact|message|reach)\s*(me|us)\s*(in\s*)?(my\s*)?(inbox|dm|pm)\b.{0,30}\b(pump|promo|boost)/i.test(normalized);
   const hasInvestmentServicePitch =
     (/\b(i\s*help|we\s*help|i\s*connect|we\s*connect|we\s*unlock|i\s*unlock)\b/i.test(normalized) && /\b(otc|capital|fund(ing|s)?|institutional|strategic\s*(investor|buyer)|liquidity|market\s*disruption)\b/i.test(normalized)) ||
@@ -1172,6 +1172,38 @@ async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, config:
   return false;
 }
 
+function runDeterministicScamCheck(text: string): { isScam: boolean; reason: string } {
+  const normalized = normalizeUnicode(text);
+
+  if ((/\b(buy|sell|pay)\b.{0,30}\b(wall+et|account)\b.{0,30}\b(history|transactions?|old|empty|aged|month|year)\b/i.test(normalized)) || (/\b(need|want|looking\s*for)\b.{0,15}\b(wall+et|account)\b.{0,30}\b(history|transactions?|old|empty|aged|month|year)\b/i.test(normalized) && /\b(pay|buy|sol|eth|usdt|write\s*me|contact|dm|pm|\dsol|\deth)\b/i.test(normalized)) || /\b(old|empty|aged)\s*(wall+et|account)\b.{0,30}\b(pay|buy|sell|solana|sol|eth|usdt|btc)\b/i.test(normalized) || (/\b(wall+et|account)\s*(with|that\s*(has|have))\s*.{0,30}(transactions?|history|activit)/i.test(normalized) && /\b(pay|buy|sell|sol|eth|usdt|write\s*me|contact|dm|pm|\dsol|\deth|need|want)\b/i.test(normalized)) || (/\b(need|want|looking\s*for|buy)\b.{0,30}\b(solana|sol|eth|ethereum|crypto|btc|bitcoin)\b.{0,20}\b(wall+et|account)\b/i.test(normalized) && /\b(pay|buy|\dsol|\deth|write\s*me|contact|dm|pm)\b/i.test(normalized))) {
+    return { isScam: true, reason: "Wallet buying/selling scam — attempting to purchase crypto wallets with transaction history" };
+  }
+
+  if (/\b(airdrop|claim|free\s*(token|coin|nft|crypto)|migration|connect\s*(your\s*)?wallet)\b/i.test(normalized) && /https?:\/\//i.test(text)) {
+    return { isScam: true, reason: "Airdrop/migration scam with suspicious link" };
+  }
+
+  const exchangeNames = /\b(binance|biconomy|okx|kucoin|bybit|gate\.?io|mexc|huobi|htx|bitget|bitmart|lbank|poloniex|crypto\.?com|coinbase|kraken|gemini|weex|xt\.?com|phemex|upbit|bithumb|bitfinex)\b/i;
+  if ((/\b(official\s*represent\w*|represent\w*\s*(of|from)|partner\s*(of|from)|agent\s*(of|from)|ambassador\s*(of|for|from))\b/i.test(normalized) && exchangeNames.test(normalized)) ||
+      (exchangeNames.test(normalized) && /\b(listing\s*(proposal|cooperat|opportunit))\b/i.test(normalized) && /\b(contact|whom|who|reach|discuss|dm|pm)\b/i.test(normalized))) {
+    return { isScam: true, reason: "Fake exchange listing impersonation" };
+  }
+
+  if (/\b(dm|pm|inbox|message|contact)\s*(me|us)\b/i.test(normalized) && (/\b(promo|market|boost|pump|shill|volume|listing|invest|fund|capital|otc)\b/i.test(normalized) || /\b(i\s*(can|will)\s*(help|boost|promote|pump|grow|increase))\b/i.test(normalized))) {
+    return { isScam: true, reason: "Unsolicited service offer with DM solicitation" };
+  }
+
+  if (/\b(i\s*manage|managing)\b.{0,20}\b(channel|communit|group)s?\b/i.test(normalized) && /\b(engag|growth|volume|mc|market\s*cap|member|organic|promot)\b/i.test(normalized)) {
+    return { isScam: true, reason: "Channel management cold-pitch spam" };
+  }
+
+  if (/\b(send|give|transfer)\b.{0,15}\b(sol|eth|btc|usdt|crypto|token|nft)\b.{0,30}\b(receive|get|back|return|double|triple)\b/i.test(normalized)) {
+    return { isScam: true, reason: "Crypto doubling/advance fee scam" };
+  }
+
+  return { isScam: false, reason: "" };
+}
+
 async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userName: string, args: string, userId: string, botConfigId: number) {
   const chatId = msg.chat.id;
   const reportedMsg = msg.reply_to_message;
@@ -1192,7 +1224,17 @@ async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, c
   const reportReason = args || "No reason provided";
 
   try {
-    const assessment = await evaluateReportedMessage(reportedText, reportedAuthor, config, groupRecord?.name || "Unknown", reportReason);
+    const deterministicCheck = runDeterministicScamCheck(reportedText);
+
+    let assessment: { shouldDelete: boolean; reason: string; category: string };
+    if (deterministicCheck.isScam) {
+      assessment = { shouldDelete: true, reason: deterministicCheck.reason, category: "SCAM_PROMOTION" };
+    } else {
+      assessment = await evaluateReportedMessage(reportedText, reportedAuthor, config, groupRecord?.name || "Unknown", reportReason);
+      if (assessment.category === "UNKNOWN") {
+        assessment = { shouldDelete: true, reason: "Reported by group member — removed for review", category: "REPORTED" };
+      }
+    }
 
     let actionTaken = "flagged";
     if (assessment.shouldDelete) {
