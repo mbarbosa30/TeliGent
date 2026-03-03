@@ -823,14 +823,16 @@ async function detectAndHandleScam(
   );
   const hasUnsolicitedGroupLink = hasTelegramLink && /\b(join\s*(us|our|my|this|the)|come\s*join|check\s*(this|my|our)|new\s*(group|channel|community))\b/i.test(normalized);
 
-  const hasMultiplierClaim = /\b(\d{2,})\s*[-–—]?\s*(\d+)?\s*x\b|\b\d+x\s*(gain|return|profit|potential|move|play|gem|from\s*here)\b/i.test(text);
-  const hasPumpHypeLanguage = /\b(low[\s-]*(cap|mc)\s*(gem|play|pick|token|coin)?|hidden\s*gems?|new\s*gems?|found\s*.{0,10}gems?|next\s*\d+x|next\s*(play|move|call|gem)|moon\s*(shot|play|bag)|whale|rotate|rotating|accumulating|load(ing|ed)\s*(up|bag)|eye(ing)?\s*(a\s*few|some|these)|ape[ds]?\s*(in|into|now|early|before|this|it)|degen\s*(play|call|move)|don'?t\s*(sleep|fade)|early\s*(entry|bird|call)|bag\s*(these|this|it|now)|about\s*to\s*(pop|explode|moon|pump|rip|run|send|fly|break\s*out)|fill\s*(your|ur)\s*bag|lfg+\b|something\s*(huge|big|massive)\s*(is\s*)?(coming|brewing|loading|cooking)|get\s*ready)\b/i.test(normalized);
-  const hasFomoUrgency = /🔥.*💸|💸.*🔥|🚀.*💰|💰.*🚀|🚀\s*🚀|🔥\s*🔥|\b(before\s*(it'?s?\s*too\s*late|the\s*(pump|train|bus|ship)|whales|liftoff|breakout|everyone)|still\s*early|not\s*too\s*late|thank\s*me\s*later|you'?ll\s*regret|mark\s*my\s*words|remember\s*(this|i\s*told)|nfa\s*(but|tho|though)|this\s*is\s*(it|the\s*one)|train\s*leav(es|ing)|make\s*sure.{0,20}don'?t\s*miss)\b/i.test(normalized) || /🔥\s*🔥/i.test(text) || /\b(in\s*private)\b.{0,20}\b\d+x\b/i.test(text);
+  const hasMultiplierClaim = /\b(\d{2,})\s*[-–—]?\s*(\d+)?\s*[xхΧχ×](?=\s|$|[^\w])|\b\d+[xхΧχ×]\s*(gain|return|profit|potential|move|play|gem|from\s*here)\b/i.test(text);
+  const hasPumpHypeLanguage = /\b(low[\s-]*(cap|mc)\s*(gem|play|pick|token|coin)?|hidden\s*gems?|new\s*gems?|found\s*.{0,10}gems?|next\s*\d+x|next\s*(play|move|call|gem)|moon\s*(shot|play|bag)|whale|rotate|rotating|accumulating|load(ing|ed)\s*(up|bag)|eye(ing)?\s*(a\s*few|some|these)|ape[ds]?\s*(in|into|now|early|before|this|it)|degen\s*(play|call|move)|don'?t\s*(sleep|fade)|early\s*(entry|bird|call)|bag\s*(these|this|it|now)|about\s*to\s*(pop|explode|moon|pump|rip|run|send|fly|break\s*out)|fill\s*(your|ur)\s*bag|lfg+\b|something\s*(huge|big|massive)\s*(is\s*)?(coming|brewing|loading|cooking)|get\s*ready|plays?\s*loading|print(ing)?\s*(money|gains?)|gonna\s*(be\s*)?print(ing)?)\b/i.test(normalized);
+  const hasFomoUrgency = /🔥.*💸|💸.*🔥|🚀.*💰|💰.*🚀|🚀\s*🚀|🔥\s*🔥|\b(before\s*(it'?s?\s*too\s*late|the\s*(pump|train|bus|ship)|whales|liftoff|breakout|everyone)|still\s*early|not\s*too\s*late|thank\s*me\s*later|you'?ll\s*regret|mark\s*my\s*words|remember\s*(this|i\s*told)|nfa\s*(but|tho|though)|this\s*is\s*(it|the\s*one)|train\s*leav(es|ing)|make\s*sure.{0,20}don'?t\s*miss|don'?t\s*miss\s*out)\b/i.test(normalized) || /🔥\s*🔥/i.test(text) || /\b(in\s*private)\b.{0,20}\b\d+x\b/i.test(text);
+  const isForwardedMessage = !!msg.forward_date;
   const hasLowMcGemShill = /\b(low[\s-]*(cap|mc)|gems?)\b/i.test(normalized) && /\b(found|new|hidden|just\s*launched|launched)\b/i.test(normalized) && /\b(gem|mc|cap)\b/i.test(normalized);
   const hasFinancialShillHype = (hasMultiplierClaim && hasPumpHypeLanguage) ||
     (hasMultiplierClaim && hasFomoUrgency) ||
     (hasPumpHypeLanguage && hasFomoUrgency) ||
-    hasLowMcGemShill;
+    hasLowMcGemShill ||
+    (isForwardedMessage && (hasMultiplierClaim || hasPumpHypeLanguage || hasFomoUrgency));
 
   const hasDmWithUsername = /\b(dm|pm)\s*.{0,5}@\w+/i.test(normalized) && /\b(call|signal|insider|profit|trade|print|miss|join|part|sticker|logo|banner|design|animation|website|promo|nft|mascot|gif|emoji|video|meme|drawing|whitepaper|white\s*paper|branding|graphic)s?\b/i.test(normalized);
   const hasInsiderCallSpam = (/\b(insider|my\s*(call|signal)|vip\s*(call|group|channel|access)|paid\s*(call|group|signal)|fading\s*me)\b/i.test(normalized) && /\b(dm|pm)\s*.{0,10}@\w+/i.test(normalized)) || /\binsider\b.{0,20}\b(cook|member|call|signal|group)s?\b.{0,30}(print|profit|money|gain|earning)/i.test(normalized) || /\bdrop\s*(cook|call|signal)s?\b.{0,20}(print|profit|member)/i.test(normalized) || /\b(inner\s*circle|private\s*circle)\b.{0,40}(print|profit|\dx|\d+x\b|money|earning|gain)/i.test(normalized) || /\d+(\.\d+)?x\s*(done|profit|gain|made)\b.{0,30}\b(inner|circle|member|private)/i.test(normalized);
@@ -914,7 +916,8 @@ async function detectAndHandleScam(
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Token pump / paid promotion service offer");
   }
   if (hasFinancialShillHype) {
-    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Financial shill / pump hype spam (multiplier claims + hype language)");
+    const fwdTag = isForwardedMessage ? " [forwarded]" : "";
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, `Financial shill / pump hype spam${fwdTag} (multiplier claims + hype language)`);
   }
   if (hasInvestmentServicePitch) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Unsolicited OTC / investment service pitch");
@@ -925,7 +928,7 @@ async function detectAndHandleScam(
   const hasUrl = /https?:\/\/|t\.me\//i.test(text);
   const hasCryptoKeywords = /\b(sol|eth|btc|bnb|usdt|usdc|crypto|token|coin|nft|wallet|airdrop|giveaway|give\s*away|migration|migrat(e|ing)|swap|dex|defi|staking|stake|yield|liquidity|rug|pump|dump|shill|raid|shitcoin|memecoin|meme\s*coin|presale|pre\s*sale|whitelist|white\s*list|seed\s*phrase|private\s*key|contract\s*address|ca\b|mint|bridge|chain|blockchain|web3|solana|ethereum|bitcoin|tether|binance|phantom|metamask|ledger|trezor)\b/i.test(normalized);
   const hasDmKeywords = /\b(dm|pm|inbox|private\s*message|contact\s*me|reach\s*out|message\s*me|send\s*me|write\s*me|hit\s*me\s*up)\b/i.test(normalized);
-  const hasFinancialKeywords = /\b(invest|profit|trading|signal|call|insider|roi|return|earn|income|passive|guarantee|risk\s*free|double\s*your|triple\s*your|x\d+|\d+x\b|moon|lambo)\b/i.test(normalized);
+  const hasFinancialKeywords = /\b(invest|profit|trading|signal|call|insider|roi|return|earn|income|passive|guarantee|risk\s*free|double\s*your|triple\s*your|x\d+|\d+[xхΧχ×]\b|moon|lambo)\b/i.test(normalized);
   const needsAiCheck = hasUrl || hasCryptoKeywords || hasDmKeywords || hasFinancialKeywords || isImpersonator || evasionDetected;
   if (!needsAiCheck && normalized.length < MIN_SCAM_CHECK_LENGTH) {
     return false;
