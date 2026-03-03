@@ -794,17 +794,18 @@ async function detectAndHandleScam(
     /\b(top|best|big|major)\s*(channel|group|platform)s?\b.{0,30}\b(low\s*cost|cheap|affordable|promo|promot|advertis)/i.test(normalized);
   const hasCryptoGiveawayScam = /\b(giv(e|ing)\s*(away|out|free|you|them|my))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
     /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,40}\b(giv(e|ing)\s*(away|out|free))\b/i.test(normalized) ||
-    /\b(first\s*\d+(\s*(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|give|free|win|claim|airdrop)\b/i.test(normalized) ||
-    /\b(first\s*\d+(\s*(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(dm|pm|message|inbox)\b/i.test(normalized) && /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|give|free|airdrop)\b/i.test(normalized) ||
+    /\b(first\s*\d+(\s*(lucky\s*)?(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|give|free|win|claim|airdrop)\b/i.test(text) ||
+    (/\b(first\s*\d+(\s*(lucky\s*)?(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(dm|pm|message|inbox)\b/i.test(text) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|give|free|airdrop)\b/i.test(normalized) || /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
     /\b(i\s*)?(will|am|'m|want\s*to|wanna|gonna|going\s*to)\s*(giv(e|ing)|send(ing)?|distribut(e|ing)|drop(ping)?)\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
-    /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,60}\b(first\s*\d+(\s*(people|person|member|holder|user|follower)s?)?)\b/i.test(normalized) && /\b(give|send|dm|pm|message|contact|free|claim|win|airdrop)\b/i.test(normalized) ||
+    (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,60}\b(first\s*\d+(\s*(lucky\s*)?(people|person|member|holder|user|follower)s?)?)\b/i.test(text) && /\b(give|send|dm|pm|message|contact|free|claim|win|airdrop)\b/i.test(normalized)) ||
     /\b(giv(e|ing)\s*(some|away|out|free|you|them|my|the))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
-    /\b(contact|reach|hit)\s*me\b.{0,40}\b(sol|eth|btc|bnb|usdt|wallet|address|crypto)\b/i.test(normalized) && /\b(give|free|send|airdrop|first\s*\d+|claim)\b/i.test(normalized) ||
+    /\b(contact|reach|hit)\s*me\b.{0,40}\b(sol|eth|btc|bnb|usdt|wallet|address|crypto)\b/i.test(normalized) && /\b(give|free|send|airdrop|first\s*\d+|claim)\b/i.test(text) ||
     /\b(not\s*interested\s*in\s*crypto|don'?t\s*(want|need)\s*(the\s*)?(crypto|sol|eth|btc))\b.{0,60}\b(dm|pm|message|give|free)\b/i.test(normalized) ||
-    (/\bgiveaway\b/i.test(normalized) && /\b(dm|pm|message|inbox)\b/i.test(normalized) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) || /\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
-    (/\b(dm|pm|message)\b/i.test(normalized) && /\b(get|receive|claim|win)\b/i.test(normalized) && /\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text)) ||
-    (/\b(first|frist)\s*(to\s*)?(dm|pm|message)\b/i.test(normalized) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|free|giveaway|give)\b/i.test(normalized) || /\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
-    (/\b(free|giveaway)\b/i.test(normalized) && /\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text));
+    (/\bgiveaway\b/i.test(normalized) && /\b(dm|pm|message|inbox)\b/i.test(normalized) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) || /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
+    (/\b(dm|pm|message)\b/i.test(normalized) && /\b(get|gets|receive|claim|win)\b/i.test(normalized) && /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text)) ||
+    (/\b(first|frist)\s*(to\s*)?(dm|pm|message)\b/i.test(normalized) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|free|giveaway|give)\b/i.test(normalized) || /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
+    (/\b(first\s*\d+)\b.{0,40}\b(dm|pm|message)\b/i.test(text) && /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text)) ||
+    (/\b(free|giveaway)\b/i.test(normalized) && /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text));
   const sexualEmojis = ['🍆', '🍑', '💦', '🔥', '🥵', '😈', '💋'];
   const hasSexualSpam = sexualEmojis.some(e => text.includes(e)) && /\b(inbox|dm|pm|message|contact|send)\b/i.test(normalized);
   const hasSolicitationSpam = /\b(inbox|dm|pm)\b/i.test(normalized) && /\b(fun|service|interest|offer|available)\b/i.test(normalized);
@@ -1209,10 +1210,12 @@ function runDeterministicScamCheck(text: string): { isScam: boolean; reason: str
     return { isScam: true, reason: "Crypto doubling/advance fee scam" };
   }
 
-  if ((/\bgiveaway\b/i.test(normalized) && /\b(dm|pm|message|inbox)\b/i.test(normalized) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) || /\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
-      (/\b(dm|pm|message)\b/i.test(normalized) && /\b(get|receive|claim|win)\b/i.test(normalized) && /\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text)) ||
-      (/\b(first|frist)\s*(to\s*)?(dm|pm|message)\b/i.test(normalized) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|free|giveaway|give)\b/i.test(normalized) || /\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
-      (/\b(free|giveaway)\b/i.test(normalized) && /\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) {
+  if ((/\bgiveaway\b/i.test(normalized) && /\b(dm|pm|message|inbox)\b/i.test(normalized) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) || /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
+      (/\b(dm|pm|message)\b/i.test(normalized) && /\b(get|gets|receive|claim|win)\b/i.test(normalized) && /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text)) ||
+      (/\b(first|frist)\s*(to\s*)?(dm|pm|message)\b/i.test(normalized) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|free|giveaway|give)\b/i.test(normalized) || /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
+      (/\b(first\s*\d+)\b.{0,40}\b(dm|pm|message)\b/i.test(text) && /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text)) ||
+      (/\b(first\s*\d+(\s*(lucky\s*)?(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(dm|pm|message|inbox)\b/i.test(text) && (/\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft|give|free|airdrop)\b/i.test(normalized) || /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) ||
+      (/\b(free|giveaway)\b/i.test(normalized) && /\$?\d+\s*(sol|eth|btc|bnb|usdt)\b/i.test(text))) {
     return { isScam: true, reason: "Fake crypto giveaway scam — DM solicitation with free crypto lure" };
   }
 
