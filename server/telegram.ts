@@ -793,7 +793,15 @@ async function detectAndHandleScam(
     /\b(we\s*(will|can|offer|provide|do)|i\s*(will|can|offer|provide|do))\s*(promo|promot(e|ion|ing)|market(ing)?|boost(ing)?|advertis(e|ing)|shill(ing)?|trend(ing)?|list(ing)?)\s*.{0,20}\b(your|ur)\b/i.test(normalized) ||
     /\b(low\s*cost|cheap|affordable|best\s*price|discount|free\s*trial)\b.{0,40}\b(promo|promot|market|boost|advertis|listing|trending)/i.test(normalized) ||
     /\b(promo|promot|market|boost|advertis|listing|trending)\b.{0,40}\b(low\s*cost|cheap|affordable|best\s*price|discount|free\s*trial)/i.test(normalized) ||
-    /\b(top|best|big|major)\s*(channel|group|platform)s?\b.{0,30}\b(low\s*cost|cheap|affordable|promo|promot|advertis)/i.test(normalized);
+    /\b(top|best|big|major)\s*(channel|group|platform)s?\b.{0,30}\b(low\s*cost|cheap|affordable|promo|promot|advertis)/i.test(normalized) ||
+    (/\b(crypto\s*project|your\s*(project|token|coin|brand))\b/i.test(normalized) && /\b(growth|exposure|followers?|campaign|media\s*kit|viral)\b/i.test(normalized)) ||
+    (/\b(elevat|grow|scale|skyrocket|supercharg|amplif|maximiz)\w*\s*(your|ur)\s*(crypto|project|token|coin|brand|community)\b/i.test(normalized)) ||
+    (/\b(media\s*kit|rate\s*card|pricing\s*sheet)\b/i.test(normalized) && /\b(campaign|promo|promot|advertis|partner|collaborat)\b/i.test(normalized)) ||
+    (/\b(partner\s*with)\b/i.test(normalized) && /\b(growth|exposure|followers?|viral|engag|massive|authentic)\b/i.test(normalized) && /\b(crypto|tiktok|twitter|youtube|influenc)\b/i.test(normalized)) ||
+    (/\b\d+[\s,]*\d*(?:[kKmM])?\+?\s*(followers?|subscribers?|members?|audience|enthusiasts?)\b/i.test(text) && /\b(crypto|project|token|coin|campaign|promo|growth|exposure)\b/i.test(normalized) && /\b(partner|collaborat|promot|advertis|offer|provide|elevat|grow|boost|media\s*kit|campaign|viral|drop\s*(us|me)\s*(a\s*)?message)\b/i.test(normalized));
+  const hasVolumeServiceSpam = (/\b(i\s*(will|can)|we\s*(will|can))\s*(provide|offer|deliver|generate|create|make|do|give|bring|get)\b/i.test(normalized) && /\b(volume|liquidity|trading|holders?|pin\s*post)\b/i.test(normalized) && /\b(my\s*(community|channel|group)|check\s*out|support)\b/i.test(normalized)) ||
+    (/\b(i\s*(will|can)|we\s*(will|can))\s*(provide|offer|deliver|generate)\b.{0,30}\b\d+[-–—]\d+k?\s*(volume|liquidity|holders?)\b/i.test(text)) ||
+    (/\b(pin\s*post|pinned\s*post)\b/i.test(normalized) && /\b(my\s*(community|channel|group))\b/i.test(normalized) && /\b(volume|support|promo|boost|service)\b/i.test(normalized));
   const hasCryptoGiveawayScam = /\b(giv(e|ing)\s*(away|out|free|you|them|my))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
     /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,40}\b(giv(e|ing)\s*(away|out|free))\b/i.test(normalized) ||
     /\b(first\s*\d+(\s*(lucky\s*)?(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|give|free|win|claim|airdrop)\b/i.test(text) ||
@@ -856,7 +864,7 @@ async function detectAndHandleScam(
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
     hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasEmojiDmSolicitation || hasPumpPromoSpam || hasBoostBotPromo ||
-    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype || hasInvestmentServicePitch || hasLearnedPatternMatch;
+    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasVolumeServiceSpam || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype || hasInvestmentServicePitch || hasLearnedPatternMatch;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -880,6 +888,9 @@ async function detectAndHandleScam(
   }
   if (hasColdPitchPromo) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Cold-pitch promotion / paid promo service offer");
+  }
+  if (hasVolumeServiceSpam) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Volume/liquidity service spam (unsolicited paid service)");
   }
   if (hasChannelManagementPitch) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Channel/community management cold-pitch spam");
@@ -1207,6 +1218,20 @@ function runDeterministicScamCheck(text: string): { isScam: boolean; reason: str
 
   if (/\b(i\s*manage|managing)\b.{0,20}\b(channel|communit|group)s?\b/i.test(normalized) && /\b(engag|growth|volume|mc|market\s*cap|member|organic|promot)\b/i.test(normalized)) {
     return { isScam: true, reason: "Channel management cold-pitch spam" };
+  }
+
+  if ((/\b(crypto\s*project|your\s*(project|token|coin|brand))\b/i.test(normalized) && /\b(growth|exposure|followers?|campaign|media\s*kit|viral)\b/i.test(normalized)) ||
+      (/\b(elevat|grow|scale|skyrocket|supercharg|amplif|maximiz)\w*\s*(your|ur)\s*(crypto|project|token|coin|brand|community)\b/i.test(normalized)) ||
+      (/\b(media\s*kit|rate\s*card|pricing\s*sheet)\b/i.test(normalized) && /\b(campaign|promo|promot|advertis|partner|collaborat)\b/i.test(normalized)) ||
+      (/\b(partner\s*with)\b/i.test(normalized) && /\b(growth|exposure|followers?|viral|engag|massive|authentic)\b/i.test(normalized) && /\b(crypto|tiktok|twitter|youtube|influenc)\b/i.test(normalized)) ||
+      (/\b\d+[\s,]*\d*(?:[kKmM])?\+?\s*(followers?|subscribers?|members?|audience|enthusiasts?)\b/i.test(text) && /\b(crypto|project|token|coin|campaign|promo|growth|exposure)\b/i.test(normalized) && /\b(partner|collaborat|promot|advertis|offer|provide|elevat|grow|boost|media\s*kit|campaign|viral|drop\s*(us|me)\s*(a\s*)?message)\b/i.test(normalized))) {
+    return { isScam: true, reason: "Cold-pitch promotion / paid promo service offer" };
+  }
+
+  if ((/\b(i\s*(will|can)|we\s*(will|can))\s*(provide|offer|deliver|generate|create|make|do|give|bring|get)\b/i.test(normalized) && /\b(volume|liquidity|trading|holders?|pin\s*post)\b/i.test(normalized) && /\b(my\s*(community|channel|group)|check\s*out|support)\b/i.test(normalized)) ||
+      (/\b(i\s*(will|can)|we\s*(will|can))\s*(provide|offer|deliver|generate)\b.{0,30}\b\d+[-–—]\d+k?\s*(volume|liquidity|holders?)\b/i.test(text)) ||
+      (/\b(pin\s*post|pinned\s*post)\b/i.test(normalized) && /\b(my\s*(community|channel|group))\b/i.test(normalized) && /\b(volume|support|promo|boost|service)\b/i.test(normalized))) {
+    return { isScam: true, reason: "Volume/liquidity service spam — unsolicited paid service offer" };
   }
 
   if (/\b(send|give|transfer)\b.{0,15}\b(sol|eth|btc|usdt|crypto|token|nft)\b.{0,30}\b(receive|get|back|return|double|triple)\b/i.test(normalized)) {

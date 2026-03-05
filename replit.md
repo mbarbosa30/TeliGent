@@ -21,6 +21,9 @@ I prefer simple language and detailed explanations. I want iterative development
     - **Report-based Learning**: Allows the bot to learn new scam patterns from user reports, extracting and storing key phrase bigrams to auto-flag future matching messages.
     - **Auto-ban Feature**: Configurable per-bot, automatically bans Telegram users after a set number of auto-deleted scam messages.
 
+## Recent Changes
+- 2026-03-05: **Scam detection: cold pitch promo & volume service spam** — New `hasColdPitchPromo` patterns catch TikTok/influencer promo pitches: "crypto project" + growth/exposure/followers/campaign/media kit, "elevate/grow your project", "media kit" + campaign, "partner with" + growth + platform, N+ followers + crypto context. New `hasVolumeServiceSpam` detects "I will provide volume" + my community/support, numeric volume ranges on raw text, and "pin post" + "my community" + volume combo. Both added to `hasAnyScamSignal` and `runDeterministicScamCheck()`.
+
 ## External Dependencies
 - **PostgreSQL**: Primary database for all application and session data.
 - **OpenAI (GPT-5-mini)**: Integrated via Replit AI Integrations for AI-powered scam detection and bot responses.
