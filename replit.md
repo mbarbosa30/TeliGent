@@ -22,6 +22,7 @@ I prefer simple language and detailed explanations. I want iterative development
     - **Auto-ban Feature**: Configurable per-bot, automatically bans Telegram users after a set number of auto-deleted scam messages.
 
 ## Recent Changes
+- 2026-03-06: **Scam detection: token call card spam** — New `hasTokenCallCard` catches formatted token shill posts (contract address + market data like Vol/MC/Liq, percentage gains, safety scores). Patterns: (1) 0x hex address + Vol/MC/Liq keywords, (2) 0x address + percentage + safety/score, (3) Vol+MC + Liq + percentage combo without address, (4) CA/contract label + address + market data. Added to `hasAnyScamSignal` and `runDeterministicScamCheck()`.
 - 2026-03-05: **Scam detection: cold pitch promo & volume service spam** — New `hasColdPitchPromo` patterns catch TikTok/influencer promo pitches: "crypto project" + growth/exposure/followers/campaign/media kit, "elevate/grow your project", "media kit" + campaign, "partner with" + growth + platform, N+ followers + crypto context. New `hasVolumeServiceSpam` detects "I will provide volume" + my community/support, numeric volume ranges on raw text, and "pin post" + "my community" + volume combo. Both added to `hasAnyScamSignal` and `runDeterministicScamCheck()`.
 
 ## External Dependencies

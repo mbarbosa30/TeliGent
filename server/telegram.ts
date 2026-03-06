@@ -802,6 +802,10 @@ async function detectAndHandleScam(
   const hasVolumeServiceSpam = (/\b(i\s*(will|can)|we\s*(will|can))\s*(provide|offer|deliver|generate|create|make|do|give|bring|get)\b/i.test(normalized) && /\b(volume|liquidity|trading|holders?|pin\s*post)\b/i.test(normalized) && /\b(my\s*(community|channel|group)|check\s*out|support)\b/i.test(normalized)) ||
     (/\b(i\s*(will|can)|we\s*(will|can))\s*(provide|offer|deliver|generate)\b.{0,30}\b\d+[-–—]\d+k?\s*(volume|liquidity|holders?)\b/i.test(text)) ||
     (/\b(pin\s*post|pinned\s*post)\b/i.test(normalized) && /\b(my\s*(community|channel|group))\b/i.test(normalized) && /\b(volume|support|promo|boost|service)\b/i.test(normalized));
+  const hasTokenCallCard = (/0x[a-f0-9]{40}/i.test(text) && /\b(vol|volume|mc|market\s*cap|liq|liquidity)\b/i.test(text)) ||
+    (/0x[a-f0-9]{40}/i.test(text) && /[+\-]\d+[\d.]*%/.test(text) && /\b(safety|score|audit)\b/i.test(text)) ||
+    (/\b(vol|volume)\b.{0,15}\b(mc|market\s*cap)\b/i.test(text) && /\b(liq|liquidity)\b/i.test(text) && /[+\-]\d+[\d.]*%/.test(text) && (/0x[a-f0-9]{40}/i.test(text) || /[📊💹💰📋🔗]/.test(text))) ||
+    (/\b(CA|contract)\b.{0,20}(0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})/i.test(text) && /\b(vol|volume|mc|market\s*cap|liq|liquidity|pump)\b/i.test(text));
   const hasCryptoGiveawayScam = /\b(giv(e|ing)\s*(away|out|free|you|them|my))\b.{0,40}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b/i.test(normalized) ||
     /\b(sol|eth|btc|bnb|usdt|crypto|token|coin|nft)\b.{0,40}\b(giv(e|ing)\s*(away|out|free))\b/i.test(normalized) ||
     /\b(first\s*\d+(\s*(lucky\s*)?(people|person|member|holder|user|follower)s?)?)\b.{0,60}\b(sol|eth|btc|bnb|usdt|crypto|token|coin|give|free|win|claim|airdrop)\b/i.test(text) ||
@@ -864,7 +868,7 @@ async function detectAndHandleScam(
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
     hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasEmojiDmSolicitation || hasPumpPromoSpam || hasBoostBotPromo ||
-    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasVolumeServiceSpam || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype || hasInvestmentServicePitch || hasLearnedPatternMatch;
+    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasVolumeServiceSpam || hasTokenCallCard || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype || hasInvestmentServicePitch || hasLearnedPatternMatch;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -891,6 +895,9 @@ async function detectAndHandleScam(
   }
   if (hasVolumeServiceSpam) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Volume/liquidity service spam (unsolicited paid service)");
+  }
+  if (hasTokenCallCard) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Token call card spam (contract address + market data shill)");
   }
   if (hasChannelManagementPitch) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Channel/community management cold-pitch spam");
@@ -1232,6 +1239,13 @@ function runDeterministicScamCheck(text: string): { isScam: boolean; reason: str
       (/\b(i\s*(will|can)|we\s*(will|can))\s*(provide|offer|deliver|generate)\b.{0,30}\b\d+[-–—]\d+k?\s*(volume|liquidity|holders?)\b/i.test(text)) ||
       (/\b(pin\s*post|pinned\s*post)\b/i.test(normalized) && /\b(my\s*(community|channel|group))\b/i.test(normalized) && /\b(volume|support|promo|boost|service)\b/i.test(normalized))) {
     return { isScam: true, reason: "Volume/liquidity service spam — unsolicited paid service offer" };
+  }
+
+  if ((/0x[a-f0-9]{40}/i.test(text) && /\b(vol|volume|mc|market\s*cap|liq|liquidity)\b/i.test(text)) ||
+      (/0x[a-f0-9]{40}/i.test(text) && /[+\-]\d+[\d.]*%/.test(text) && /\b(safety|score|audit)\b/i.test(text)) ||
+      (/\b(vol|volume)\b.{0,15}\b(mc|market\s*cap)\b/i.test(text) && /\b(liq|liquidity)\b/i.test(text) && /[+\-]\d+[\d.]*%/.test(text) && (/0x[a-f0-9]{40}/i.test(text) || /[📊💹💰📋🔗]/.test(text))) ||
+      (/\b(CA|contract)\b.{0,20}(0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})/i.test(text) && /\b(vol|volume|mc|market\s*cap|liq|liquidity|pump)\b/i.test(text))) {
+    return { isScam: true, reason: "Token call card spam — contract address + market data shill" };
   }
 
   if (/\b(send|give|transfer)\b.{0,15}\b(sol|eth|btc|usdt|crypto|token|nft)\b.{0,30}\b(receive|get|back|return|double|triple)\b/i.test(normalized)) {
