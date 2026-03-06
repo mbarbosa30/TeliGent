@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -25,7 +25,10 @@ export const botConfigs = pgTable("bot_configs", {
   reportKeywords: text("report_keywords").array().notNull().default(sql`ARRAY['report', 'issue', 'bug', 'problem', 'broken']`),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+}, (table) => [
+  index("idx_bot_configs_user_id").on(table.userId),
+  index("idx_bot_configs_is_active").on(table.isActive),
+]);
 
 export const knowledgeBase = pgTable("knowledge_base", {
   id: serial("id").primaryKey(),
@@ -37,7 +40,9 @@ export const knowledgeBase = pgTable("knowledge_base", {
   category: text("category").notNull().default("general"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+}, (table) => [
+  index("idx_knowledge_base_bot_config_id").on(table.botConfigId),
+]);
 
 export const groups = pgTable("groups", {
   id: serial("id").primaryKey(),
@@ -48,7 +53,9 @@ export const groups = pgTable("groups", {
   memberCount: integer("member_count").default(0),
   isActive: boolean("is_active").notNull().default(true),
   joinedAt: timestamp("joined_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+}, (table) => [
+  index("idx_groups_bot_config_chat").on(table.botConfigId, table.telegramChatId),
+]);
 
 export const activityLogs = pgTable("activity_logs", {
   id: serial("id").primaryKey(),
@@ -63,7 +70,10 @@ export const activityLogs = pgTable("activity_logs", {
   isReport: boolean("is_report").notNull().default(false),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+}, (table) => [
+  index("idx_activity_logs_bot_config_created").on(table.botConfigId, table.createdAt),
+  index("idx_activity_logs_telegram_user").on(table.botConfigId, table.telegramUserId),
+]);
 
 export const reportedScamPatterns = pgTable("reported_scam_patterns", {
   id: serial("id").primaryKey(),
@@ -72,7 +82,9 @@ export const reportedScamPatterns = pgTable("reported_scam_patterns", {
   originalText: text("original_text"),
   source: text("source").notNull().default("report"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
+}, (table) => [
+  index("idx_reported_scam_patterns_bot_config_id").on(table.botConfigId),
+]);
 
 export const insertBotConfigSchema = createInsertSchema(botConfigs).omit({
   id: true,

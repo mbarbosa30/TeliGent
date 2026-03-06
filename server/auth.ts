@@ -8,6 +8,38 @@ import { eq } from "drizzle-orm";
 
 const PgSession = connectPg(session);
 
+function createRateLimiter(windowMs: number, maxAttempts: number, message: string) {
+  const store = new Map<string, { count: number; resetAt: number }>();
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of store) {
+      if (now >= entry.resetAt) {
+        store.delete(key);
+      }
+    }
+  }, 60 * 1000);
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const entry = store.get(ip);
+
+    if (entry && now < entry.resetAt) {
+      if (entry.count >= maxAttempts) {
+        const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+        res.set("Retry-After", String(retryAfter));
+        return res.status(429).json({ message });
+      }
+      entry.count++;
+    } else {
+      store.set(ip, { count: 1, resetAt: now + windowMs });
+    }
+
+    next();
+  };
+}
+
 declare module "express-session" {
   interface SessionData {
     userId?: string;
@@ -55,7 +87,10 @@ export function isAdminAuthenticated(req: Request, res: Response, next: NextFunc
 }
 
 export function registerAuthRoutes(app: Express) {
-  app.post("/api/auth/register", async (req: Request, res: Response) => {
+  const authRateLimit = createRateLimiter(15 * 60 * 1000, 10, "Too many attempts. Please try again in 15 minutes.");
+  const adminRateLimit = createRateLimiter(15 * 60 * 1000, 5, "Too many attempts. Please try again in 15 minutes.");
+
+  app.post("/api/auth/register", authRateLimit, async (req: Request, res: Response) => {
     try {
       const { email, password, firstName, lastName } = req.body;
 
@@ -95,7 +130,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.post("/api/auth/login", async (req: Request, res: Response) => {
+  app.post("/api/auth/login", authRateLimit, async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body;
 
@@ -157,7 +192,7 @@ export function registerAuthRoutes(app: Express) {
     });
   });
 
-  app.post("/api/admin/login", (req: Request, res: Response) => {
+  app.post("/api/admin/login", adminRateLimit, (req: Request, res: Response) => {
     const { passphrase } = req.body;
     const adminPassphrase = process.env.ADMIN_PASSPHRASE;
 

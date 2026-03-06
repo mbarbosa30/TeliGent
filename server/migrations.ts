@@ -18,6 +18,7 @@ export async function runMigrations() {
     const hasBotConfigIdOnLogs = await columnExists(client, "activity_logs", "bot_config_id");
     if (hasBotConfigIdOnKB && hasBotConfigIdOnGroups && hasBotConfigIdOnLogs) {
       await backfillBotConfigIds(client);
+      await createIndexes(client);
       log("Migration check complete — all columns present");
       return;
     }
@@ -44,6 +45,7 @@ export async function runMigrations() {
     await client.query("COMMIT");
 
     await backfillBotConfigIds(client);
+    await createIndexes(client);
 
     log("Schema migration complete");
   } catch (err: any) {
@@ -109,6 +111,31 @@ async function backfillBotConfigIds(client: any) {
   await client.query("COMMIT");
 
   log("Backfill complete");
+}
+
+async function createIndexes(client: any) {
+  const indexes = [
+    { name: "idx_bot_configs_user_id", sql: "CREATE INDEX IF NOT EXISTS idx_bot_configs_user_id ON bot_configs (user_id)" },
+    { name: "idx_bot_configs_is_active", sql: "CREATE INDEX IF NOT EXISTS idx_bot_configs_is_active ON bot_configs (is_active)" },
+    { name: "idx_knowledge_base_bot_config_id", sql: "CREATE INDEX IF NOT EXISTS idx_knowledge_base_bot_config_id ON knowledge_base (bot_config_id)" },
+    { name: "idx_groups_bot_config_chat", sql: "CREATE INDEX IF NOT EXISTS idx_groups_bot_config_chat ON groups (bot_config_id, telegram_chat_id)" },
+    { name: "idx_activity_logs_bot_config_created", sql: "CREATE INDEX IF NOT EXISTS idx_activity_logs_bot_config_created ON activity_logs (bot_config_id, created_at)" },
+    { name: "idx_activity_logs_telegram_user", sql: "CREATE INDEX IF NOT EXISTS idx_activity_logs_telegram_user ON activity_logs (bot_config_id, telegram_user_id)" },
+    { name: "idx_reported_scam_patterns_bot_config_id", sql: "CREATE INDEX IF NOT EXISTS idx_reported_scam_patterns_bot_config_id ON reported_scam_patterns (bot_config_id)" },
+  ];
+
+  let created = 0;
+  for (const idx of indexes) {
+    try {
+      await client.query(idx.sql);
+      created++;
+    } catch (err: any) {
+      log(`Index ${idx.name} error: ${err.message}`);
+    }
+  }
+  if (created > 0) {
+    log(`Ensured ${created} database indexes exist`);
+  }
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {
