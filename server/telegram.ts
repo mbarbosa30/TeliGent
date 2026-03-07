@@ -783,9 +783,9 @@ async function detectAndHandleScam(
   const hasServiceListSpam = serviceMenuCount >= 3 && /\b(dm|pm|inbox|message|contact|order|hire|available|and\s*more)\b/i.test(normalized);
   const hasScamOffer = /\b(promot|promo\b|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized);
   const wordNumbers = /(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred|several|multiple|many|various|numerous|large|huge|big)/i;
-  const channelManagementClaim = /\b(i\s+|we\s+)?(manage|run|own|lead|operat|head|built|have)\w*\s+/i.test(normalized) &&
-    wordNumbers.test(normalized) &&
-    /\b(channel|communit|group|chat|network)\w*\b/i.test(normalized);
+  const channelManagementClaim = /\b(i\s+|we\s+)(manage|run|lead|operat|head|built)\w*\s+/i.test(normalized) &&
+    (wordNumbers.test(normalized) || /\d+/.test(text)) &&
+    /\b(channel|communit|group|chat)\w*\b/i.test(normalized);
   const channelManagementNoNumber = /\b(i\s+|we\s+)(manage|run|own|lead|operat|head)\w*\s+(active\s+|trusted\s+|large\s+|big\s+|whale\s+|crypto\s+|trading\s+|investor\s+)*(channel|communit|group|chat|network)/i.test(normalized);
   const marketingBuzzwords = /\b(engag|volume|growth|grow\s*(faster|quick)|mc\b|market\s*cap|investor|serious\s*investor|right\s*audience|sustain|expan|promot|boost|collaborat|partner|listing\s*cooperat)/i.test(normalized);
   const hasChannelManagementPitch = (channelManagementClaim || channelManagementNoNumber) && marketingBuzzwords;
