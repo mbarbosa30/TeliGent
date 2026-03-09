@@ -786,7 +786,7 @@ async function detectAndHandleScam(
   const channelManagementClaim = /\b(i\s+|we\s+)(manage|run|lead|operat|head|built)\w*\s+/i.test(normalized) &&
     (wordNumbers.test(normalized) || /\d+/.test(text)) &&
     /\b(channel|communit|group|chat)\w*\b/i.test(normalized);
-  const channelManagementNoNumber = /\b(i\s+|we\s+)(manage|run|own|lead|operat|head)\w*\s+(active\s+|trusted\s+|large\s+|big\s+|whale\s+|crypto\s+|trading\s+|investor\s+)*(channel|communit|group|chat|network)/i.test(normalized);
+  const channelManagementNoNumber = /\b(i\s+|we\s+)(manage|run|lead|operat|head)\w*\s+(active\s+|trusted\s+|large\s+|big\s+|whale\s+|crypto\s+|trading\s+|investor\s+)*(channel|communit|group|chat)/i.test(normalized);
   const marketingBuzzwords = /\b(engag|volume|growth|grow\s*(faster|quick)|mc\b|market\s*cap|investor|serious\s*investor|right\s*audience|sustain|expan|promot|boost|collaborat|partner|listing\s*cooperat)/i.test(normalized);
   const hasChannelManagementPitch = (channelManagementClaim || channelManagementNoNumber) && marketingBuzzwords;
   const hasColdPitchPromo = /\b(promo|promot(e|ion|ing)|market(ing)?|boost(ing)?|advertis(e|ing)|shill(ing)?)\s*.{0,30}\b(your|ur)\s*(project|token|coin|community|group|channel)\b/i.test(normalized) ||
@@ -862,13 +862,22 @@ async function detectAndHandleScam(
     /\b(otc\s*(capital|deal|invest|round|fund|buy|service|partner|opportunit))/i.test(normalized) && /\b(unlock|access|enabl|private|institutional|strategic)\b/i.test(normalized) ||
     /\b(unlock|access|secur)\b.{0,20}\$?\d+[km]?\s*[-–—]?\s*\$?\d*[km]?\s*(in\s*)?(capital|fund|invest|otc|liquidity)/i.test(normalized);
 
+  const percentages = text.match(/\d+\s*%%?/g) || [];
+  const hasAtHandleAtEnd = /@\w{3,}\s*$/.test(text.trim());
+  const multiLine = text.split(/\n/).length >= 3;
+  const hasRevenueSplitScam =
+    (percentages.length >= 2 && hasAtHandleAtEnd && multiLine) ||
+    (/\d+\s*(a|to|-|–|—)\s*\d+\s*(?:k|mil)\b/i.test(text) && percentages.length >= 1 && hasAtHandleAtEnd && multiLine);
+  const checkmarkCount = (text.match(/✅/g) || []).length;
+  const hasFormattedPitchScam = checkmarkCount >= 3 && hasAtHandleAtEnd && /[🚨💰⚠️❗]/.test(text) && multiLine;
+
   const learnedPatterns = await getLearnedPatterns(botConfigId);
   const hasLearnedPatternMatch = checkLearnedPatterns(normalized, learnedPatterns);
 
   const hasAnyScamSignal = hasMigrationAirdropScam || hasPrivateMessageSolicitation || hasTxHashRequest ||
     hasUnsolicitedServiceOffer || hasCryptoServiceKeywords || hasFlatteryPitch ||
     hasDmSolicitation || hasScamOffer || hasCryptoGiveawayScam || hasAggressiveDmSpam || hasEmojiDmSolicitation || hasPumpPromoSpam || hasBoostBotPromo ||
-    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasVolumeServiceSpam || hasTokenCallCard || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype || hasInvestmentServicePitch || hasLearnedPatternMatch;
+    hasDmServiceMenu || hasServiceListSpam || hasColdPitchPromo || hasVolumeServiceSpam || hasTokenCallCard || hasChannelManagementPitch || hasFakeExchangeListing || hasFinancialShillHype || hasInvestmentServicePitch || hasRevenueSplitScam || hasFormattedPitchScam || hasLearnedPatternMatch;
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
   }
@@ -944,6 +953,12 @@ async function detectAndHandleScam(
   }
   if (hasInvestmentServicePitch) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Unsolicited OTC / investment service pitch");
+  }
+  if (hasRevenueSplitScam) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Revenue split scam — percentage split pitch with contact handle");
+  }
+  if (hasFormattedPitchScam) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Formatted scam pitch — checkmark bullet list with urgency emojis and contact handle");
   }
   if (hasLearnedPatternMatch) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Matched previously reported scam pattern (learned from /report)");
@@ -1246,6 +1261,18 @@ function runDeterministicScamCheck(text: string): { isScam: boolean; reason: str
       (/\b(vol|volume)\b.{0,15}\b(mc|market\s*cap)\b/i.test(text) && /\b(liq|liquidity)\b/i.test(text) && /[+\-]\d+[\d.]*%/.test(text) && (/0x[a-f0-9]{40}/i.test(text) || /[📊💹💰📋🔗]/.test(text))) ||
       (/\b(CA|contract)\b.{0,20}(0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})/i.test(text) && /\b(vol|volume|mc|market\s*cap|liq|liquidity|pump)\b/i.test(text))) {
     return { isScam: true, reason: "Token call card spam — contract address + market data shill" };
+  }
+
+  const detPercentages = text.match(/\d+\s*%%?/g) || [];
+  const detHasAtEnd = /@\w{3,}\s*$/.test(text.trim());
+  const detMultiLine = text.split(/\n/).length >= 3;
+  if (((detPercentages.length >= 2 && detHasAtEnd && detMultiLine) ||
+      (/\d+\s*(a|to|-|–|—)\s*\d+\s*(?:k|mil)\b/i.test(text) && detPercentages.length >= 1 && detHasAtEnd && detMultiLine))) {
+    return { isScam: true, reason: "Revenue split scam — percentage split pitch with contact handle" };
+  }
+  const detCheckmarks = (text.match(/✅/g) || []).length;
+  if (detCheckmarks >= 3 && detHasAtEnd && /[🚨💰⚠️❗]/.test(text) && detMultiLine) {
+    return { isScam: true, reason: "Formatted scam pitch — checkmark bullet list with urgency emojis and contact handle" };
   }
 
   if (/\b(send|give|transfer)\b.{0,15}\b(sol|eth|btc|usdt|crypto|token|nft)\b.{0,30}\b(receive|get|back|return|double|triple)\b/i.test(normalized)) {
