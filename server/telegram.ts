@@ -237,7 +237,9 @@ async function startSingleBot(config: BotConfig) {
           return;
         }
         if (!headerSecret) {
-          log(`[WEBHOOK] Warning: no secret_token header for ${capturedPath} — accepting anyway`, "telegram");
+          log(`[WEBHOOK] Rejected: no secret_token header for ${capturedPath}`, "telegram");
+          res.sendStatus(401);
+          return;
         }
         const inst = activeBots.get(currentToken);
         if (inst) {

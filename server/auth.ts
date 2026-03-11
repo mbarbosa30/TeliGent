@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { db } from "./db";
 import { users, sessions } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -59,7 +60,13 @@ export function setupAuth(app: Express) {
         createTableIfMissing: true,
         tableName: "sessions",
       }),
-      secret: process.env.SESSION_SECRET || "telegent-secret-key-change-me",
+      secret: (() => {
+        const secret = process.env.SESSION_SECRET;
+        if (!secret && process.env.NODE_ENV === "production") {
+          throw new Error("SESSION_SECRET environment variable must be set in production");
+        }
+        return secret || "telegent-dev-secret-key";
+      })(),
       resave: false,
       saveUninitialized: false,
       cookie: {
@@ -97,6 +104,18 @@ export function registerAuthRoutes(app: Express) {
       if (!email || !password) {
         return res.status(400).json({ message: "Email and password are required" });
       }
+      if (typeof email !== "string" || email.length > 255) {
+        return res.status(400).json({ message: "Email must be 255 characters or fewer" });
+      }
+      if (typeof password !== "string" || password.length > 128) {
+        return res.status(400).json({ message: "Password must be 128 characters or fewer" });
+      }
+      if (firstName && (typeof firstName !== "string" || firstName.length > 100)) {
+        return res.status(400).json({ message: "First name must be 100 characters or fewer" });
+      }
+      if (lastName && (typeof lastName !== "string" || lastName.length > 100)) {
+        return res.status(400).json({ message: "Last name must be 100 characters or fewer" });
+      }
       if (password.length < 6) {
         return res.status(400).json({ message: "Password must be at least 6 characters" });
       }
@@ -111,8 +130,8 @@ export function registerAuthRoutes(app: Express) {
       const [user] = await db.insert(users).values({
         email: emailLower,
         passwordHash,
-        firstName: firstName?.trim() || null,
-        lastName: lastName?.trim() || null,
+        firstName: firstName?.trim().slice(0, 100) || null,
+        lastName: lastName?.trim().slice(0, 100) || null,
       }).returning();
 
       req.session.userId = user.id;
@@ -200,7 +219,13 @@ export function registerAuthRoutes(app: Express) {
       return res.status(503).json({ message: "Admin access is not configured" });
     }
 
-    if (!passphrase || passphrase !== adminPassphrase) {
+    if (!passphrase || typeof passphrase !== "string") {
+      return res.status(401).json({ message: "Invalid passphrase" });
+    }
+    const inputBuf = Buffer.from(passphrase, "utf8");
+    const expectedBuf = Buffer.from(adminPassphrase, "utf8");
+    if (inputBuf.byteLength !== expectedBuf.byteLength ||
+        !crypto.timingSafeEqual(inputBuf, expectedBuf)) {
       return res.status(401).json({ message: "Invalid passphrase" });
     }
 
