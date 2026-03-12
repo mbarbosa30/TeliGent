@@ -5,9 +5,41 @@ import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema
 import { startBotEngine, getWebhookStatus } from "./telegram";
 import { isAuthenticated, isAdminAuthenticated } from "./auth";
 
+const MAX_BOTS_PER_USER = 10;
+
 function getUserId(req: any): string {
   return req.session?.userId;
 }
+
+function createApiRateLimiter(windowMs: number, maxRequests: number) {
+  const store = new Map<string, { count: number; resetAt: number }>();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of store) {
+      if (now >= entry.resetAt) store.delete(key);
+    }
+  }, 60 * 1000);
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const key = req.session?.userId || req.ip || "unknown";
+    const now = Date.now();
+    const entry = store.get(key);
+    if (entry && now < entry.resetAt) {
+      if (entry.count >= maxRequests) {
+        const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+        res.set("Retry-After", String(retryAfter));
+        return res.status(429).json({ error: "Too many requests. Please slow down." });
+      }
+      entry.count++;
+    } else {
+      store.set(key, { count: 1, resetAt: now + windowMs });
+    }
+    next();
+  };
+}
+
+const apiRateLimit = createApiRateLimiter(60 * 1000, 60);
+const scrapeRateLimit = createApiRateLimiter(60 * 1000, 5);
 
 async function requireBotOwnership(req: Request, res: Response, next: NextFunction) {
   const userId = getUserId(req);
@@ -105,7 +137,11 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.get("/api/bots", isAuthenticated, async (req, res) => {
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  app.get("/api/bots", isAuthenticated, apiRateLimit, async (req, res) => {
     try {
       const userId = getUserId(req);
       const bots = await storage.getBotConfigs(userId);
@@ -115,9 +151,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bots", isAuthenticated, async (req, res) => {
+  app.post("/api/bots", isAuthenticated, apiRateLimit, async (req, res) => {
     try {
       const userId = getUserId(req);
+      const existing = await storage.getBotConfigs(userId);
+      if (existing.length >= MAX_BOTS_PER_USER) {
+        return res.status(400).json({ error: `You can create up to ${MAX_BOTS_PER_USER} bots.` });
+      }
       const { botName } = req.body;
       const config = await storage.createBotConfig(userId, { botName: botName || "My Bot" });
       res.status(201).json(config);
@@ -236,7 +276,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bots/:botId/scrape-website", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.post("/api/bots/:botId/scrape-website", isAuthenticated, requireBotOwnership, scrapeRateLimit, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const { url } = req.body;
@@ -263,11 +303,26 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bots/:botId/activity", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.get("/api/bots/:botId/activity", isAuthenticated, requireBotOwnership, apiRateLimit, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
-      const logs = await storage.getActivityLogs(botId, 200);
+      const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
+      const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+      const logs = await storage.getActivityLogs(botId, limit, offset);
       res.json(logs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/reports", isAuthenticated, requireBotOwnership, apiRateLimit, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
+      const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+      const logs = await storage.getActivityLogs(botId, limit, offset);
+      const reports = logs.filter(l => l.isReport);
+      res.json(reports);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

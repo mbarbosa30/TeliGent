@@ -18,6 +18,7 @@ export async function runMigrations() {
     const hasBotConfigIdOnLogs = await columnExists(client, "activity_logs", "bot_config_id");
     if (hasBotConfigIdOnKB && hasBotConfigIdOnGroups && hasBotConfigIdOnLogs) {
       await backfillBotConfigIds(client);
+      await addNotNullConstraints(client);
       await createIndexes(client);
       log("Migration check complete — all columns present");
       return;
@@ -45,6 +46,7 @@ export async function runMigrations() {
     await client.query("COMMIT");
 
     await backfillBotConfigIds(client);
+    await addNotNullConstraints(client);
     await createIndexes(client);
 
     log("Schema migration complete");
@@ -111,6 +113,38 @@ async function backfillBotConfigIds(client: any) {
   await client.query("COMMIT");
 
   log("Backfill complete");
+}
+
+async function addNotNullConstraints(client: any) {
+  const tables = [
+    { table: "knowledge_base", column: "bot_config_id" },
+    { table: "groups", column: "bot_config_id" },
+    { table: "activity_logs", column: "bot_config_id" },
+  ];
+  for (const { table, column } of tables) {
+    try {
+      const { rows } = await client.query(
+        `SELECT COUNT(*) as count FROM ${table} WHERE ${column} IS NULL`
+      );
+      if (parseInt(rows[0].count) > 0) {
+        log(`Skipping NOT NULL on ${table}.${column}: ${rows[0].count} null rows remain`);
+        continue;
+      }
+      await client.query(`ALTER TABLE ${table} ALTER COLUMN ${column} SET NOT NULL`);
+    } catch (err: any) {
+      if (!err.message.includes("is already")) {
+        log(`NOT NULL constraint on ${table}.${column}: ${err.message}`);
+      }
+    }
+  }
+
+  try {
+    await client.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_bot_config_chat_unique ON groups (bot_config_id, telegram_chat_id)`
+    );
+  } catch (err: any) {
+    log(`Unique constraint on groups: ${err.message}`);
+  }
 }
 
 async function createIndexes(client: any) {

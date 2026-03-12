@@ -11,7 +11,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, BookOpen, Settings, Activity, Bot, Shield, LogOut, Sparkles, Plus, ChevronDown } from "lucide-react";
+import { LayoutDashboard, BookOpen, Settings, Activity, Bot, Shield, LogOut, Sparkles, Plus, ChevronDown, UserCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -145,9 +145,11 @@ export function AppSidebar() {
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate" data-testid="text-user-name">
-                {user.firstName ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}` : user.email || "User"}
-              </p>
+              <Link href="/account" data-testid="link-nav-account">
+                <p className="text-xs font-medium truncate hover:underline cursor-pointer" data-testid="text-user-name">
+                  {user.firstName ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}` : user.email || "User"}
+                </p>
+              </Link>
             </div>
             <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => logout()} data-testid="button-logout">
               <LogOut className="h-3.5 w-3.5" />

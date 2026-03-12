@@ -243,6 +243,87 @@ export function registerAuthRoutes(app: Express) {
     });
   });
 
+  app.patch("/api/auth/user", async (req: Request, res: Response) => {
+    if (!req.session?.userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    try {
+      const { firstName, lastName, email } = req.body;
+      const updates: Record<string, any> = {};
+      if (firstName !== undefined) {
+        if (typeof firstName !== "string" || firstName.length > 100) {
+          return res.status(400).json({ message: "First name must be 100 characters or fewer" });
+        }
+        updates.firstName = firstName.trim().slice(0, 100) || null;
+      }
+      if (lastName !== undefined) {
+        if (typeof lastName !== "string" || lastName.length > 100) {
+          return res.status(400).json({ message: "Last name must be 100 characters or fewer" });
+        }
+        updates.lastName = lastName.trim().slice(0, 100) || null;
+      }
+      if (email !== undefined) {
+        if (typeof email !== "string" || email.length > 255) {
+          return res.status(400).json({ message: "Email must be 255 characters or fewer" });
+        }
+        const emailLower = email.toLowerCase().trim();
+        if (!emailLower || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
+          return res.status(400).json({ message: "Please enter a valid email address" });
+        }
+        const existing = await db.select().from(users).where(eq(users.email, emailLower)).limit(1);
+        if (existing.length > 0 && existing[0].id !== req.session.userId) {
+          return res.status(409).json({ message: "An account with this email already exists" });
+        }
+        updates.email = emailLower;
+      }
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No fields to update" });
+      }
+      updates.updatedAt = new Date();
+      const [updated] = await db.update(users).set(updates).where(eq(users.id, req.session.userId)).returning();
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { passwordHash: _, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (err: any) {
+      console.error("Update user error:", err);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  app.patch("/api/auth/password", async (req: Request, res: Response) => {
+    if (!req.session?.userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current and new password are required" });
+      }
+      if (typeof newPassword !== "string" || newPassword.length < 6) {
+        return res.status(400).json({ message: "New password must be at least 6 characters" });
+      }
+      if (typeof newPassword !== "string" || newPassword.length > 128) {
+        return res.status(400).json({ message: "New password must be 128 characters or fewer" });
+      }
+      const [user] = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!valid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+      const newHash = await bcrypt.hash(newPassword, 12);
+      await db.update(users).set({ passwordHash: newHash, updatedAt: new Date() }).where(eq(users.id, req.session.userId));
+      res.json({ message: "Password updated" });
+    } catch (err: any) {
+      console.error("Password update error:", err);
+      res.status(500).json({ message: "Failed to update password" });
+    }
+  });
+
   app.get("/api/admin/check", (req: Request, res: Response) => {
     res.json({ authenticated: !!req.session?.adminAuthenticated });
   });

@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./auth";
 import { runMigrations } from "./migrations";
+import { storage } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -93,6 +94,17 @@ app.use((req, res, next) => {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
+
+  setInterval(async () => {
+    try {
+      const deleted = await storage.cleanOldActivityLogs(90);
+      if (deleted > 0) {
+        log(`Activity log cleanup: removed ${deleted} entries older than 90 days`);
+      }
+    } catch (err: any) {
+      log(`Activity log cleanup error: ${err.message}`);
+    }
+  }, 24 * 60 * 60 * 1000);
 
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(

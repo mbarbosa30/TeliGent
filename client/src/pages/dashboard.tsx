@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, Users, BookOpen, Activity, MessageSquare, Shield, TrendingUp, Clock, AlertTriangle } from "lucide-react";
+import { Bot, Users, BookOpen, Activity, MessageSquare, Shield, TrendingUp, Clock, AlertTriangle, Webhook } from "lucide-react";
 import { Link } from "wouter";
 import { useBot } from "@/hooks/use-bot";
 import type { BotConfig, Group, ActivityLog, KnowledgeBaseEntry } from "@shared/schema";
@@ -154,6 +154,17 @@ export default function Dashboard() {
                     <span className="text-sm text-muted-foreground">Respond to Replies</span>
                     <span className="text-sm font-mono">{config.respondToReplies ? "Yes" : "No"}</span>
                   </div>
+                  {config.botToken?.trim() && (
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                        <Webhook className="h-3.5 w-3.5" />
+                        Connection
+                      </span>
+                      <Badge variant={config.isActive ? "default" : "secondary"} data-testid="badge-webhook-status">
+                        {config.isActive ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">No configuration found</p>

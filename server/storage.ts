@@ -22,9 +22,10 @@ export interface IStorage {
   upsertGroup(botConfigId: number, userId: string, data: Omit<InsertGroup, "userId" | "botConfigId">): Promise<Group>;
   updateGroup(botConfigId: number, id: number, data: Partial<InsertGroup>): Promise<Group | undefined>;
 
-  getActivityLogs(botConfigId: number, limit?: number): Promise<ActivityLog[]>;
+  getActivityLogs(botConfigId: number, limit?: number, offset?: number): Promise<ActivityLog[]>;
   createActivityLog(botConfigId: number, userId: string, log: Omit<InsertActivityLog, "userId" | "botConfigId">): Promise<ActivityLog>;
   getScamCountForUser(botConfigId: number, telegramUserId: string): Promise<number>;
+  cleanOldActivityLogs(retentionDays?: number): Promise<number>;
 
   getReportedScamPatterns(botConfigId: number): Promise<ReportedScamPattern[]>;
   createReportedScamPattern(botConfigId: number, pattern: string, originalText?: string): Promise<ReportedScamPattern>;
@@ -110,8 +111,14 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getActivityLogs(botConfigId: number, limit = 100): Promise<ActivityLog[]> {
-    return db.select().from(activityLogs).where(eq(activityLogs.botConfigId, botConfigId)).orderBy(desc(activityLogs.createdAt)).limit(limit);
+  async getActivityLogs(botConfigId: number, limit = 100, offset = 0): Promise<ActivityLog[]> {
+    return db.select().from(activityLogs).where(eq(activityLogs.botConfigId, botConfigId)).orderBy(desc(activityLogs.createdAt)).limit(limit).offset(offset);
+  }
+
+  async cleanOldActivityLogs(retentionDays = 90): Promise<number> {
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const result = await db.delete(activityLogs).where(sql`${activityLogs.createdAt} < ${cutoff}`);
+    return result.rowCount ?? 0;
   }
 
   async createActivityLog(botConfigId: number, userId: string, log: Omit<InsertActivityLog, "userId" | "botConfigId">): Promise<ActivityLog> {
@@ -124,7 +131,8 @@ export class DatabaseStorage implements IStorage {
       and(
         eq(activityLogs.botConfigId, botConfigId),
         eq(activityLogs.telegramUserId, telegramUserId),
-        eq(activityLogs.isReport, true)
+        eq(activityLogs.isReport, true),
+        sql`${activityLogs.metadata}->>'autoDetected' = 'true'`
       )
     );
     return result.count;
@@ -194,7 +202,9 @@ export class DatabaseStorage implements IStorage {
     const [botCount] = await db.select({ count: count() }).from(botConfigs);
     const [groupCount] = await db.select({ count: count() }).from(groups);
     const [logCount] = await db.select({ count: count() }).from(activityLogs);
-    const [scamCount] = await db.select({ count: count() }).from(activityLogs).where(eq(activityLogs.type, "scam_detected"));
+    const [scamCount] = await db.select({ count: count() }).from(activityLogs).where(
+      and(eq(activityLogs.isReport, true), sql`${activityLogs.metadata}->>'autoDetected' = 'true'`)
+    );
     return {
       totalUsers: userCount.count,
       totalBots: botCount.count,

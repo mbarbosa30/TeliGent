@@ -21,6 +21,7 @@ interface BotInstance {
   token: string;
   webhookPath: string;
   botUsername: string;
+  botTelegramId: number;
 }
 
 const activeBots = new Map<string, BotInstance>();
@@ -29,6 +30,7 @@ const registeredWebhookPaths = new Set<string>();
 const webhookPathToToken = new Map<string, string>();
 let engineStarted = false;
 let expressApp: Express | null = null;
+let cooldownCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 function getWebhookPath(token: string): string {
   const hash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
@@ -146,14 +148,19 @@ export async function startBotEngine(app?: Express) {
       }
     }
 
-    for (const config of dedupedConfigs) {
-      if (activeBots.has(config.botToken)) continue;
-      await startSingleBot(config);
+    const botsToStart = dedupedConfigs.filter(c => !activeBots.has(c.botToken));
+    if (botsToStart.length > 0) {
+      const results = await Promise.allSettled(botsToStart.map(c => startSingleBot(c)));
+      const failed = results.filter(r => r.status === "rejected");
+      if (failed.length > 0) {
+        log(`Bot startup: ${botsToStart.length - failed.length} succeeded, ${failed.length} failed`, "telegram");
+      }
     }
 
     engineStarted = true;
 
     startWebhookHealthCheck();
+    startCooldownCleanup();
   } catch (err: any) {
     log(`Bot engine error: ${err.message}\n${err.stack || ""}`, "telegram");
   }
@@ -190,6 +197,25 @@ function startWebhookHealthCheck() {
   log("Webhook health check started (every 5 minutes)", "telegram");
 }
 
+function startCooldownCleanup() {
+  if (cooldownCleanupInterval) return;
+  const CLEANUP_INTERVAL = 10 * 60 * 1000;
+  cooldownCleanupInterval = setInterval(() => {
+    const now = Date.now();
+    let cleaned = 0;
+    for (const [key, timestamp] of cooldowns) {
+      if (now - timestamp > 3600 * 1000) {
+        cooldowns.delete(key);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      log(`Cooldown cleanup: removed ${cleaned} stale entries (${cooldowns.size} remaining)`, "telegram");
+    }
+  }, CLEANUP_INTERVAL);
+  log("Cooldown cleanup started (every 10 minutes)", "telegram");
+}
+
 async function startSingleBot(config: BotConfig) {
   const token = config.botToken;
   const userId = config.userId;
@@ -211,7 +237,7 @@ async function startSingleBot(config: BotConfig) {
 
     await storage.updateBotConfig(config.id, { botName: me.first_name || "Bot" });
 
-    const instance: BotInstance = { bot, userId, botConfigId: config.id, token, webhookPath, botUsername };
+    const instance: BotInstance = { bot, userId, botConfigId: config.id, token, webhookPath, botUsername, botTelegramId: me.id };
     activeBots.set(token, instance);
 
     bot.on("message", (msg) => handleMessage(msg, instance));
@@ -286,6 +312,7 @@ async function startSingleBot(config: BotConfig) {
     log(`Bot started for user ${userId}: @${botUsername} (webhook: ${webhookUrl})`, "telegram");
   } catch (err: any) {
     log(`Failed to start bot for user ${userId}: ${err.message}\n${err.stack || ""}`, "telegram");
+    throw err;
   }
 }
 
@@ -293,8 +320,7 @@ async function handleNewMembers(msg: TelegramBot.Message, instance: BotInstance)
   if (!msg.new_chat_members || !msg.chat) return;
   const { bot, userId, botConfigId } = instance;
 
-  const botInfo = await bot.getMe();
-  const botJoined = msg.new_chat_members.some(m => m.id === botInfo.id);
+  const botJoined = msg.new_chat_members.some(m => m.id === instance.botTelegramId);
 
   if (botJoined) {
     const chatId = msg.chat.id.toString();
@@ -326,8 +352,7 @@ async function handleLeftMember(msg: TelegramBot.Message, instance: BotInstance)
   if (!msg.left_chat_member || !msg.chat) return;
   const { bot, userId, botConfigId } = instance;
 
-  const botInfo = await bot.getMe();
-  if (msg.left_chat_member.id === botInfo.id) {
+  if (msg.left_chat_member.id === instance.botTelegramId) {
     const group = await storage.getGroupByChatId(botConfigId, msg.chat.id.toString());
     if (group) {
       await storage.updateGroup(botConfigId, group.id, { isActive: false });
@@ -1025,7 +1050,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     const groupRecord = await storage.getGroupByChatId(botConfigId, chatId);
 
     if (messageText.startsWith("/")) {
-      const handled = await handleCommand(bot, msg, config, groupRecord, userId, botConfigId);
+      const handled = await handleCommand(bot, msg, config, groupRecord, userId, botConfigId, instance);
       if (handled) return;
     }
 
@@ -1035,7 +1060,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       return;
     }
 
-    const deleteHandled = await handleDeleteRequest(bot, msg, messageText, userName);
+    const deleteHandled = await handleDeleteRequest(bot, msg, messageText, userName, instance);
     if (deleteHandled) return;
 
     const isReport = checkIfReport(messageText, config);
@@ -1051,7 +1076,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       });
     }
 
-    const shouldRespond = await shouldBotRespond(bot, msg, config);
+    const shouldRespond = await shouldBotRespond(msg, config, instance);
     if (!shouldRespond) {
       log(`Not responding (mention/reply rules) to "${messageText.substring(0, 40)}" from ${userName}`, "telegram");
       return;
@@ -1072,8 +1097,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       let replyContext: string | null = null;
       let replyIsFromBot = false;
       if (msg.reply_to_message?.text) {
-        const botInfo = await bot.getMe();
-        replyIsFromBot = msg.reply_to_message.from?.id === botInfo.id;
+        replyIsFromBot = msg.reply_to_message.from?.id === instance.botTelegramId;
         const replyAuthor = replyIsFromBot
           ? config.botName
           : (msg.reply_to_message.from?.first_name || msg.reply_to_message.from?.username || "Someone");
@@ -1114,10 +1138,8 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
   }
 }
 
-async function handleDeleteRequest(bot: TelegramBot, msg: TelegramBot.Message, text: string, userName: string): Promise<boolean> {
-  const botInfo = await bot.getMe();
-  const botUsername = botInfo.username || "";
-  const isMentioned = text.includes(`@${botUsername}`);
+async function handleDeleteRequest(bot: TelegramBot, msg: TelegramBot.Message, text: string, userName: string, instance: BotInstance): Promise<boolean> {
+  const isMentioned = text.includes(`@${instance.botUsername}`);
 
   if (!isMentioned) return false;
 
@@ -1150,12 +1172,11 @@ async function sendBotMessage(bot: TelegramBot, chatId: number | string, text: s
   }
 }
 
-async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userId: string, botConfigId: number): Promise<boolean> {
+async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userId: string, botConfigId: number, instance: BotInstance): Promise<boolean> {
   const text = msg.text || "";
   const chatId = msg.chat.id;
   const userName = msg.from?.first_name || msg.from?.username || "Unknown";
-  const botInfo = await bot.getMe();
-  const botUsername = botInfo.username || "";
+  const botUsername = instance.botUsername;
 
   const cmdMatch = text.match(/^\/(\w+)(?:@(\w+))?(?:\s+([\s\S]*))?$/);
   if (!cmdMatch) return false;
@@ -1212,7 +1233,7 @@ async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, config:
   }
 
   if (command === "report") {
-    await handleReportCommand(bot, msg, config, groupRecord, userName, args, userId, botConfigId);
+    await handleReportCommand(bot, msg, config, groupRecord, userName, args, userId, botConfigId, instance);
     return true;
   }
 
@@ -1293,7 +1314,7 @@ function runDeterministicScamCheck(text: string): { isScam: boolean; reason: str
   return { isScam: false, reason: "" };
 }
 
-async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userName: string, args: string, userId: string, botConfigId: number) {
+async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig, groupRecord: any, userName: string, args: string, userId: string, botConfigId: number, instance: BotInstance) {
   const chatId = msg.chat.id;
   const reportedMsg = msg.reply_to_message;
 
@@ -1302,8 +1323,7 @@ async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, c
     return;
   }
 
-  const botInfo = await bot.getMe();
-  if (reportedMsg.from?.id === botInfo.id) {
+  if (reportedMsg.from?.id === instance.botTelegramId) {
     await sendBotMessage(bot, chatId, "You can't report the bot's own messages.", msg.message_id);
     return;
   }
@@ -1451,13 +1471,12 @@ function checkIfReport(text: string, config: BotConfig): boolean {
   return keywords.some(kw => lower.includes(kw.toLowerCase()));
 }
 
-async function shouldBotRespond(bot: TelegramBot, msg: TelegramBot.Message, config: BotConfig): Promise<boolean> {
+async function shouldBotRespond(msg: TelegramBot.Message, config: BotConfig, instance: BotInstance): Promise<boolean> {
   if (!msg.text) return false;
 
-  const botInfo = await bot.getMe();
-  const botUsername = botInfo.username || "";
+  const botUsername = instance.botUsername;
   const isMentioned = msg.text.includes(`@${botUsername}`);
-  const isReplyToBot = msg.reply_to_message?.from?.id === botInfo.id;
+  const isReplyToBot = msg.reply_to_message?.from?.id === instance.botTelegramId;
 
   if (config.onlyRespondWhenMentioned) return isMentioned;
   if (config.respondToReplies && isReplyToBot) return true;

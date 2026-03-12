@@ -29,8 +29,14 @@ function AuthForm() {
         await register({ email, password, firstName, lastName });
       }
     } catch (err: any) {
-      const body = await err?.response?.json?.().catch(() => null);
-      setError(body?.message || err?.message || "Something went wrong");
+      const msg = err?.message || "Something went wrong";
+      try {
+        const jsonStr = msg.substring(msg.indexOf(": ") + 2);
+        const parsed = JSON.parse(jsonStr);
+        setError(parsed.message || msg);
+      } catch {
+        setError(msg);
+      }
     }
   }
 
