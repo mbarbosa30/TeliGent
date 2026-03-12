@@ -1,9 +1,14 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
 import { startBotEngine, getWebhookStatus } from "./telegram";
 import { isAuthenticated, isAdminAuthenticated } from "./auth";
+import { convert } from "html-to-text";
+import { sql } from "drizzle-orm";
+
+const serverStartTime = Date.now();
 
 const MAX_BOTS_PER_USER = 10;
 
@@ -119,29 +124,23 @@ async function scrapeUrl(url: string): Promise<string> {
     throw new Error("URL must return HTML or text content");
   }
   const html = await response.text();
-  return html
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
-    .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "")
-    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "")
-    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "")
-    .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "")
-    .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, "")
-    .replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<(br|hr)\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote)>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&[a-z]+;/gi, " ")
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => { try { return String.fromCodePoint(parseInt(hex, 16)); } catch { return " "; } })
-    .replace(/&#(\d+);/gi, (_, dec) => { try { return String.fromCodePoint(parseInt(dec, 10)); } catch { return " "; } })
+  const text = convert(html, {
+    wordwrap: false,
+    selectors: [
+      { selector: "img", format: "skip" },
+      { selector: "script", format: "skip" },
+      { selector: "style", format: "skip" },
+      { selector: "noscript", format: "skip" },
+      { selector: "svg", format: "skip" },
+      { selector: "nav", format: "skip" },
+      { selector: "footer", format: "skip" },
+      { selector: "header", format: "skip" },
+      { selector: "aside", format: "skip" },
+      { selector: "iframe", format: "skip" },
+    ],
+    limits: { maxInputLength: 500000 },
+  });
+  return text
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]+/g, " ")
     .replace(/^ +| +$/gm, "")
@@ -154,8 +153,21 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  app.get("/api/health", async (_req, res) => {
+    const uptimeMs = Date.now() - serverStartTime;
+    const uptimeSeconds = Math.floor(uptimeMs / 1000);
+    let dbStatus = "ok";
+    try {
+      await db.execute(sql`SELECT 1`);
+    } catch {
+      dbStatus = "unreachable";
+    }
+    res.json({
+      status: dbStatus === "ok" ? "ok" : "degraded",
+      timestamp: new Date().toISOString(),
+      uptime: uptimeSeconds,
+      database: dbStatus,
+    });
   });
 
   app.get("/api/bots", isAuthenticated, apiRateLimit, async (req, res) => {
