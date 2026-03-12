@@ -98,7 +98,7 @@ app.use((req, res, next) => {
   const LOG_RETENTION_DAYS = parseInt(process.env.LOG_RETENTION_DAYS || "90", 10);
   const LOG_CLEANUP_INTERVAL_HOURS = parseInt(process.env.LOG_CLEANUP_INTERVAL_HOURS || "24", 10);
 
-  setInterval(async () => {
+  const runLogCleanup = async () => {
     try {
       const deleted = await storage.cleanOldActivityLogs(LOG_RETENTION_DAYS);
       if (deleted > 0) {
@@ -107,7 +107,10 @@ app.use((req, res, next) => {
     } catch (err: any) {
       log(`Activity log cleanup error: ${err.message}`);
     }
-  }, LOG_CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000);
+  };
+
+  runLogCleanup();
+  setInterval(runLogCleanup, LOG_CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000);
 
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
