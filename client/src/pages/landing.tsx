@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio } from "lucide-react";
+import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 function AuthForm() {
@@ -214,14 +214,14 @@ export default function LandingPage() {
 
       <section className="py-24 px-6">
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">AI-Powered Protection</p>
+          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Intelligent Community Agents</p>
           <h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-[1.1]" data-testid="text-hero-heading">
-            Smart Telegram Bot
+            Smart Agent
             <br />
             for Your Community
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            An intelligent assistant that answers questions from your knowledge base, detects scams automatically, and moderates content — configured from a simple dashboard.
+            An AI agent that understands your project, speaks with your voice, and engages your community — with built-in scam and spam prevention that works around the clock.
           </p>
           <div className="flex items-center justify-center gap-3 pt-2">
             <Button size="lg" asChild data-testid="button-get-started">
@@ -237,9 +237,9 @@ export default function LandingPage() {
       <section id="features" className="py-16 px-6 border-t">
         <div className="max-w-5xl mx-auto space-y-10">
           <div className="text-center space-y-2">
-            <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Features</p>
-            <h2 className="text-2xl font-bold tracking-tight">Everything You Need</h2>
-            <p className="text-muted-foreground">Configure your bot in minutes, not hours</p>
+            <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Capabilities</p>
+            <h2 className="text-2xl font-bold tracking-tight">An Agent That Gets It</h2>
+            <p className="text-muted-foreground">Understands your project. Engages your community. Stops the bad actors.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
@@ -247,8 +247,17 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Brain className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">AI-Powered Responses</h3>
-                <p className="text-sm text-muted-foreground">Feeds your project context, website content, and knowledge base into every response. Your bot actually knows what it's talking about.</p>
+                <h3 className="font-semibold">Contextual Understanding</h3>
+                <p className="text-sm text-muted-foreground">Learns from your website, knowledge base, and project details. Every response is grounded in what your community actually needs to know.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6 space-y-3">
+                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <h3 className="font-semibold">Configurable Personality</h3>
+                <p className="text-sm text-muted-foreground">Give your agent a name, tone, and character that fits your brand. It speaks with your voice — professional, casual, or anywhere in between.</p>
               </CardContent>
             </Card>
             <Card>
@@ -256,28 +265,28 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Shield className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Scam Detection</h3>
-                <p className="text-sm text-muted-foreground">Automatically detects and removes scam messages, DM solicitation, pump schemes, and spam — before they can harm your community.</p>
+                <h3 className="font-semibold">Scam & Spam Prevention</h3>
+                <p className="text-sm text-muted-foreground">Detects and removes scam messages, phishing, DM solicitation, and pump schemes automatically — keeping your community safe around the clock.</p>
               </CardContent>
             </Card>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
               <CardContent className="pt-6 space-y-3">
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Zap className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Smart Moderation</h3>
-                <p className="text-sm text-muted-foreground">Users can report messages with /report and the bot evaluates them with AI. Configurable response modes and cooldowns keep things balanced.</p>
+                <h3 className="font-semibold">Community Moderation</h3>
+                <p className="text-sm text-muted-foreground">Members can flag suspicious messages with /report. Your agent evaluates them with AI and takes action — learning new threats as it goes.</p>
               </CardContent>
             </Card>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardContent className="pt-6 space-y-3">
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Users className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Multi-Group Support</h3>
-                <p className="text-sm text-muted-foreground">Add your bot to multiple Telegram groups. Track activity, reports, and member counts across all of them from one dashboard.</p>
+                <h3 className="font-semibold">Multi-Group Dashboard</h3>
+                <p className="text-sm text-muted-foreground">Deploy your agent across multiple Telegram groups. Monitor activity, track reports, and manage everything from a single dashboard.</p>
               </CardContent>
             </Card>
             <Card>
@@ -285,8 +294,8 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Globe className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Website Import</h3>
-                <p className="text-sm text-muted-foreground">Paste your website URL and the bot automatically scrapes and learns from your content. Add knowledge base entries for specific topics.</p>
+                <h3 className="font-semibold">Learns From Your Content</h3>
+                <p className="text-sm text-muted-foreground">Paste your website URL and your agent absorbs it. Add knowledge base entries for specific topics. The more it knows, the better it serves.</p>
               </CardContent>
             </Card>
           </div>
@@ -296,8 +305,8 @@ export default function LandingPage() {
       <section id="auth" className="py-16 px-6 border-t">
         <div className="max-w-2xl mx-auto text-center space-y-8">
           <div className="space-y-2">
-            <h2 className="text-2xl font-bold tracking-tight">Ready to protect your community?</h2>
-            <p className="text-muted-foreground">Set up your bot in under 5 minutes.</p>
+            <h2 className="text-2xl font-bold tracking-tight">Give your community a smart agent</h2>
+            <p className="text-muted-foreground">Set up in under 5 minutes. Your agent handles the rest.</p>
           </div>
           <AuthForm />
         </div>
