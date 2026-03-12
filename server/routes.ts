@@ -195,7 +195,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/bots/:botId", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.delete("/api/bots/:botId", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
       await storage.deleteBotConfig(botId);
@@ -208,7 +208,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bots/:botId/config", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.get("/api/bots/:botId/config", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       res.json((req as any).botConfig);
     } catch (err: any) {
@@ -216,7 +216,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bots/:botId/webhook-status", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.get("/api/bots/:botId/webhook-status", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const status = await getWebhookStatus(botId);
@@ -226,7 +226,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/bots/:botId/config", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.patch("/api/bots/:botId/config", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const partial = insertBotConfigSchema.partial().parse(req.body);
@@ -244,7 +244,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bots/:botId/knowledge", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.get("/api/bots/:botId/knowledge", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const entries = await storage.getKnowledgeEntries(botId);
@@ -254,7 +254,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bots/:botId/knowledge", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.post("/api/bots/:botId/knowledge", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const userId = getUserId(req);
@@ -281,7 +281,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/bots/:botId/knowledge/:id", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.patch("/api/bots/:botId/knowledge/:id", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const id = parseInt(req.params.id as string);
@@ -294,7 +294,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/bots/:botId/knowledge/:id", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.delete("/api/bots/:botId/knowledge/:id", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const id = parseInt(req.params.id as string);
@@ -322,7 +322,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bots/:botId/groups", isAuthenticated, requireBotOwnership, async (req, res) => {
+  app.get("/api/bots/:botId/groups", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const allGroups = await storage.getGroups(botId);
