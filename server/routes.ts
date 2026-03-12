@@ -154,7 +154,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.get("/api/health", async (_req, res) => {
+  app.get("/api/health", publicRateLimit, async (_req, res) => {
     const uptimeMs = Date.now() - serverStartTime;
     const uptimeSeconds = Math.floor(uptimeMs / 1000);
     let dbStatus = "ok";
