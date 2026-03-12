@@ -95,16 +95,19 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
+  const LOG_RETENTION_DAYS = parseInt(process.env.LOG_RETENTION_DAYS || "90", 10);
+  const LOG_CLEANUP_INTERVAL_HOURS = parseInt(process.env.LOG_CLEANUP_INTERVAL_HOURS || "24", 10);
+
   setInterval(async () => {
     try {
-      const deleted = await storage.cleanOldActivityLogs(90);
+      const deleted = await storage.cleanOldActivityLogs(LOG_RETENTION_DAYS);
       if (deleted > 0) {
-        log(`Activity log cleanup: removed ${deleted} entries older than 90 days`);
+        log(`Activity log cleanup: removed ${deleted} entries older than ${LOG_RETENTION_DAYS} days`);
       }
     } catch (err: any) {
       log(`Activity log cleanup error: ${err.message}`);
     }
-  }, 24 * 60 * 60 * 1000);
+  }, LOG_CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000);
 
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(

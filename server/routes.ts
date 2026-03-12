@@ -10,7 +10,7 @@ import { sql } from "drizzle-orm";
 
 const serverStartTime = Date.now();
 
-const MAX_BOTS_PER_USER = 10;
+const MAX_BOTS_PER_USER = parseInt(process.env.MAX_BOTS_PER_USER || "10", 10);
 
 function getUserId(req: any): string {
   return req.session?.userId;
@@ -45,6 +45,7 @@ function createApiRateLimiter(windowMs: number, maxRequests: number) {
 
 const apiRateLimit = createApiRateLimiter(60 * 1000, 60);
 const scrapeRateLimit = createApiRateLimiter(60 * 1000, 5);
+const publicRateLimit = createApiRateLimiter(60 * 1000, 30);
 
 async function requireBotOwnership(req: Request, res: Response, next: NextFunction) {
   const userId = getUserId(req);
@@ -185,7 +186,7 @@ export async function registerRoutes(
       const userId = getUserId(req);
       const existing = await storage.getBotConfigs(userId);
       if (existing.length >= MAX_BOTS_PER_USER) {
-        return res.status(400).json({ error: `You can create up to ${MAX_BOTS_PER_USER} bots.` });
+        return res.status(403).json({ error: `You have reached the maximum of ${MAX_BOTS_PER_USER} bots. Please delete an existing bot to create a new one.` });
       }
       const { botName } = req.body;
       const config = await storage.createBotConfig(userId, { botName: botName || "My Bot" });
@@ -356,7 +357,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/stats", isAdminAuthenticated, async (req, res) => {
+  app.get("/api/admin/stats", isAdminAuthenticated, apiRateLimit, async (req, res) => {
     try {
       const stats = await storage.adminGetStats();
       res.json(stats);
@@ -365,7 +366,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/users", isAdminAuthenticated, async (req, res) => {
+  app.get("/api/admin/users", isAdminAuthenticated, apiRateLimit, async (req, res) => {
     try {
       const allUsers = await storage.adminGetAllUsers();
       res.json(allUsers);
@@ -374,7 +375,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/bots", isAdminAuthenticated, async (req, res) => {
+  app.get("/api/admin/bots", isAdminAuthenticated, apiRateLimit, async (req, res) => {
     try {
       const allBots = await storage.adminGetAllBots();
       res.json(allBots);
@@ -383,7 +384,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/activity", isAdminAuthenticated, async (req, res) => {
+  app.get("/api/admin/activity", isAdminAuthenticated, apiRateLimit, async (req, res) => {
     try {
       const logs = await storage.adminGetAllActivityLogs(500);
       res.json(logs);
@@ -396,7 +397,7 @@ export async function registerRoutes(
   let cachedPublicStatsAt = 0;
   const STATS_CACHE_MS = 5 * 60 * 1000;
 
-  app.get("/api/public/stats", async (_req, res) => {
+  app.get("/api/public/stats", publicRateLimit, async (_req, res) => {
     try {
       const now = Date.now();
       if (cachedPublicStats && now - cachedPublicStatsAt < STATS_CACHE_MS) {
