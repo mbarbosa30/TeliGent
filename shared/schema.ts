@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, boolean, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -54,7 +54,7 @@ export const groups = pgTable("groups", {
   isActive: boolean("is_active").notNull().default(true),
   joinedAt: timestamp("joined_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
-  index("idx_groups_bot_config_chat").on(table.botConfigId, table.telegramChatId),
+  uniqueIndex("idx_groups_bot_config_chat_unique").on(table.botConfigId, table.telegramChatId),
 ]);
 
 export const activityLogs = pgTable("activity_logs", {
