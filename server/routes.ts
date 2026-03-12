@@ -320,8 +320,7 @@ export async function registerRoutes(
       const botId = parseInt(req.params.botId as string);
       const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
       const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
-      const logs = await storage.getActivityLogs(botId, limit, offset);
-      const reports = logs.filter(l => l.isReport);
+      const reports = await storage.getReportLogs(botId, limit, offset);
       res.json(reports);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

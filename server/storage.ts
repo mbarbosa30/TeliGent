@@ -27,6 +27,7 @@ export interface IStorage {
   getScamCountForUser(botConfigId: number, telegramUserId: string): Promise<number>;
   cleanOldActivityLogs(retentionDays?: number): Promise<number>;
 
+  getReportLogs(botConfigId: number, limit?: number, offset?: number): Promise<ActivityLog[]>;
   getReportedScamPatterns(botConfigId: number): Promise<ReportedScamPattern[]>;
   createReportedScamPattern(botConfigId: number, pattern: string, originalText?: string): Promise<ReportedScamPattern>;
 
@@ -113,6 +114,10 @@ export class DatabaseStorage implements IStorage {
 
   async getActivityLogs(botConfigId: number, limit = 100, offset = 0): Promise<ActivityLog[]> {
     return db.select().from(activityLogs).where(eq(activityLogs.botConfigId, botConfigId)).orderBy(desc(activityLogs.createdAt)).limit(limit).offset(offset);
+  }
+
+  async getReportLogs(botConfigId: number, limit = 100, offset = 0): Promise<ActivityLog[]> {
+    return db.select().from(activityLogs).where(and(eq(activityLogs.botConfigId, botConfigId), eq(activityLogs.isReport, true))).orderBy(desc(activityLogs.createdAt)).limit(limit).offset(offset);
   }
 
   async cleanOldActivityLogs(retentionDays = 90): Promise<number> {

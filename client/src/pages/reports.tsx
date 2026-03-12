@@ -1,22 +1,30 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Shield, AlertTriangle, Clock, User, Bot } from "lucide-react";
+import { Shield, AlertTriangle, Clock, User, Bot, ChevronLeft, ChevronRight } from "lucide-react";
 import { useBot } from "@/hooks/use-bot";
 import type { ActivityLog } from "@shared/schema";
 import { format } from "date-fns";
 
+const PAGE_SIZE = 50;
+
 export default function ReportsPage() {
   const { selectedBotId } = useBot();
+  const [page, setPage] = useState(0);
 
-  const { data: logs = [], isLoading } = useQuery<ActivityLog[]>({
-    queryKey: ["/api/bots", selectedBotId, "activity"],
+  const { data: reports = [], isLoading } = useQuery<ActivityLog[]>({
+    queryKey: ["/api/bots", selectedBotId, `reports?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`],
     enabled: !!selectedBotId,
   });
 
-  const reports = logs.filter((l) => l.isReport);
+  const hasMore = reports.length === PAGE_SIZE;
+
+  const todayReports = reports.filter(r => new Date(r.createdAt).toDateString() === new Date().toDateString()).length;
+  const uniqueReporters = new Set(reports.map(r => r.userName).filter(Boolean)).size;
 
   if (!selectedBotId) {
     return (
@@ -55,9 +63,7 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-7 w-16" /> : (
-                <div className="font-mono text-3xl font-bold">
-                  {reports.filter(r => new Date(r.createdAt).toDateString() === new Date().toDateString()).length}
-                </div>
+                <div className="font-mono text-3xl font-bold">{todayReports}</div>
               )}
             </CardContent>
           </Card>
@@ -68,9 +74,7 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-7 w-16" /> : (
-                <div className="font-mono text-3xl font-bold">
-                  {new Set(reports.map(r => r.userName).filter(Boolean)).size}
-                </div>
+                <div className="font-mono text-3xl font-bold">{uniqueReporters}</div>
               )}
             </CardContent>
           </Card>
@@ -123,6 +127,32 @@ export default function ReportsPage() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+
+        {!isLoading && (page > 0 || hasMore) && (
+          <div className="flex items-center justify-between pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              data-testid="button-prev-page"
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground font-mono" data-testid="text-page-number">Page {page + 1}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => p + 1)}
+              disabled={!hasMore}
+              data-testid="button-next-page"
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
           </div>
         )}
       </div>

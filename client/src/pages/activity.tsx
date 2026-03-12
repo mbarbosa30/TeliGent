@@ -2,14 +2,17 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Activity, MessageSquare, Shield, Search, UserPlus, LogOut, Bot } from "lucide-react";
+import { Activity, MessageSquare, Shield, Search, UserPlus, LogOut, Bot, ChevronLeft, ChevronRight } from "lucide-react";
 import { useBot } from "@/hooks/use-bot";
 import type { ActivityLog } from "@shared/schema";
 import { format } from "date-fns";
+
+const PAGE_SIZE = 50;
 
 const typeIcons: Record<string, any> = {
   response: MessageSquare,
@@ -23,10 +26,11 @@ const typeIcons: Record<string, any> = {
 export default function ActivityPage() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
+  const [page, setPage] = useState(0);
   const { selectedBotId } = useBot();
 
   const { data: logs = [], isLoading } = useQuery<ActivityLog[]>({
-    queryKey: ["/api/bots", selectedBotId, "activity"],
+    queryKey: ["/api/bots", selectedBotId, `activity?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`],
     enabled: !!selectedBotId,
   });
 
@@ -37,6 +41,8 @@ export default function ActivityPage() {
     const matchType = filterType === "all" || log.type === filterType || (filterType === "report" && log.isReport);
     return matchSearch && matchType;
   });
+
+  const hasMore = logs.length === PAGE_SIZE;
 
   if (!selectedBotId) {
     return (
@@ -61,7 +67,7 @@ export default function ActivityPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Search activity..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" data-testid="input-search-activity" />
           </div>
-          <Select value={filterType} onValueChange={setFilterType}>
+          <Select value={filterType} onValueChange={(v) => { setFilterType(v); setPage(0); }}>
             <SelectTrigger className="w-full sm:w-40" data-testid="select-filter-type">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
@@ -130,6 +136,32 @@ export default function ActivityPage() {
                 </Card>
               );
             })}
+          </div>
+        )}
+
+        {!isLoading && (page > 0 || hasMore) && (
+          <div className="flex items-center justify-between pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              data-testid="button-prev-page"
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground font-mono" data-testid="text-page-number">Page {page + 1}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => p + 1)}
+              disabled={!hasMore}
+              data-testid="button-next-page"
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
           </div>
         )}
       </div>
