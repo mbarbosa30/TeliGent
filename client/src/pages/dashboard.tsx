@@ -9,6 +9,81 @@ import { useBot } from "@/hooks/use-bot";
 import type { BotConfig, Group, ActivityLog, KnowledgeBaseEntry } from "@shared/schema";
 import { format } from "date-fns";
 
+function WebhookStatusRow({ botId }: { botId: number }) {
+  const { data: webhookStatus, isLoading: webhookLoading, isError } = useQuery<{
+    active: boolean;
+    webhookUrl?: string;
+    pendingUpdates?: number;
+    lastError?: string | null;
+    error?: string;
+  }>({
+    queryKey: ["/api/bots", botId, "webhook-status"],
+    enabled: !!botId,
+    refetchInterval: 60000,
+  });
+
+  if (webhookLoading) {
+    return (
+      <div className="flex items-center justify-between pt-2 border-t">
+        <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+          <Webhook className="h-3.5 w-3.5" />
+          Connection
+        </span>
+        <Skeleton className="h-5 w-16" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center justify-between pt-2 border-t">
+        <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+          <Webhook className="h-3.5 w-3.5" />
+          Connection
+        </span>
+        <Badge variant="secondary" data-testid="badge-webhook-status">Unknown</Badge>
+      </div>
+    );
+  }
+
+  const hasWebhook = !!webhookStatus?.webhookUrl;
+  const hasError = webhookStatus?.lastError || webhookStatus?.error;
+  const isHealthy = hasWebhook && !hasError;
+
+  return (
+    <div className="pt-2 border-t space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+          <Webhook className="h-3.5 w-3.5" />
+          Connection
+        </span>
+        <Badge
+          variant={isHealthy ? "default" : hasError ? "destructive" : "secondary"}
+          data-testid="badge-webhook-status"
+        >
+          {isHealthy ? "Connected" : hasError ? "Error" : "Disconnected"}
+        </Badge>
+      </div>
+      {webhookStatus?.active === false && hasWebhook && !hasError && (
+        <p className="text-xs text-muted-foreground" data-testid="text-webhook-note">
+          Webhook set but engine not running locally
+        </p>
+      )}
+      {webhookStatus?.pendingUpdates !== undefined && webhookStatus.pendingUpdates > 0 && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Pending Updates</span>
+          <span className="text-xs font-mono">{webhookStatus.pendingUpdates}</span>
+        </div>
+      )}
+      {hasError && (
+        <p className="text-xs text-destructive truncate" data-testid="text-webhook-error">
+          {webhookStatus?.lastError || webhookStatus?.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function StatCard({ title, value, icon: Icon, description, loading }: {
   title: string;
   value: string | number;
@@ -155,15 +230,7 @@ export default function Dashboard() {
                     <span className="text-sm font-mono">{config.respondToReplies ? "Yes" : "No"}</span>
                   </div>
                   {config.botToken?.trim() && (
-                    <div className="flex items-center justify-between pt-2 border-t">
-                      <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                        <Webhook className="h-3.5 w-3.5" />
-                        Connection
-                      </span>
-                      <Badge variant={config.isActive ? "default" : "secondary"} data-testid="badge-webhook-status">
-                        {config.isActive ? "Enabled" : "Disabled"}
-                      </Badge>
-                    </div>
+                    <WebhookStatusRow botId={selectedBotId!} />
                   )}
                 </>
               ) : (
