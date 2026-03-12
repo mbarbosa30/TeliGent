@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,8 @@ export default function ActivityPage() {
   const [filterType, setFilterType] = useState("all");
   const [page, setPage] = useState(0);
   const { selectedBotId } = useBot();
+
+  useEffect(() => { setPage(0); }, [selectedBotId]);
 
   const { data: logs = [], isLoading } = useQuery<ActivityLog[]>({
     queryKey: ["/api/bots", selectedBotId, `activity?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`],

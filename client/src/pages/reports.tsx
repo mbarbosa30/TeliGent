@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,8 @@ const PAGE_SIZE = 50;
 export default function ReportsPage() {
   const { selectedBotId } = useBot();
   const [page, setPage] = useState(0);
+
+  useEffect(() => { setPage(0); }, [selectedBotId]);
 
   const { data: reports = [], isLoading } = useQuery<ActivityLog[]>({
     queryKey: ["/api/bots", selectedBotId, `reports?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`],
@@ -47,13 +49,14 @@ export default function ReportsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Total Reports</CardTitle>
+              <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Showing</CardTitle>
               <Shield className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-7 w-16" /> : (
                 <div className="font-mono text-3xl font-bold" data-testid="text-total-reports">{reports.length}</div>
               )}
+              <p className="text-xs text-muted-foreground mt-1">reports on this page</p>
             </CardContent>
           </Card>
           <Card>
@@ -65,6 +68,7 @@ export default function ReportsPage() {
               {isLoading ? <Skeleton className="h-7 w-16" /> : (
                 <div className="font-mono text-3xl font-bold">{todayReports}</div>
               )}
+              <p className="text-xs text-muted-foreground mt-1">on this page</p>
             </CardContent>
           </Card>
           <Card>
@@ -76,6 +80,7 @@ export default function ReportsPage() {
               {isLoading ? <Skeleton className="h-7 w-16" /> : (
                 <div className="font-mono text-3xl font-bold">{uniqueReporters}</div>
               )}
+              <p className="text-xs text-muted-foreground mt-1">on this page</p>
             </CardContent>
           </Card>
         </div>
