@@ -275,7 +275,9 @@ export async function shouldBotRespond(msg: TelegramBot.Message, config: BotConf
   return false;
 }
 
-export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean): Promise<string> {
+import type { ChatMessage } from "./conversation-history";
+
+export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[]): Promise<string> {
   const knowledgeEntries = await storage.getActiveKnowledgeEntries(botConfigId);
 
   const MAX_CONTEXT_CHARS = 6000;
@@ -341,11 +343,26 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 - NEVER ask users to send screenshots, timestamps, usernames, or "more details". Just answer directly.
 - NEVER mention admins, admin review, or "flagging for admins".
 - If a message is trivial/casual with nothing useful to add, respond with ONLY "[[SKIP]]".
-- Match the personality and tone above. Be direct, not corporate.`;
+- Match the personality and tone above. Be direct, not corporate.
+- You have access to the recent conversation history below. Use it to maintain context and avoid repeating yourself.`;
 
   const messages: { role: "system" | "assistant" | "user"; content: string }[] = [
     { role: "system", content: systemPrompt },
   ];
+
+  if (conversationHistory && conversationHistory.length > 0) {
+    const MAX_HISTORY_CHARS = 3000;
+    let historyChars = 0;
+    const historyExcludingCurrent = conversationHistory.slice(0, -1);
+    const historyMessages: { role: "system" | "assistant" | "user"; content: string }[] = [];
+    for (const msg of historyExcludingCurrent) {
+      const content = msg.role === "assistant" ? msg.content : `${msg.name} says: ${msg.content}`;
+      if (historyChars + content.length > MAX_HISTORY_CHARS) break;
+      historyMessages.push({ role: msg.role === "assistant" ? "assistant" : "user", content });
+      historyChars += content.length;
+    }
+    messages.push(...historyMessages);
+  }
 
   if (replyContext) {
     if (replyIsFromBot) {

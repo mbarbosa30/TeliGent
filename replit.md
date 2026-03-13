@@ -10,14 +10,16 @@ I prefer simple language and detailed explanations. I want iterative development
 **Frontend**: Developed with React and TypeScript, utilizing Vite for building, Shadcn UI for components, TanStack Query for data fetching, and Wouter for routing. The UI features a refined minimal aesthetic with Space Grotesk + JetBrains Mono fonts, zero border-radius, no shadows, and a monochrome palette.
 **Backend**: Built on Express.js, using Drizzle ORM for PostgreSQL database interactions.
 **Authentication**: Custom email/password authentication system with bcrypt for password hashing and express-session for session management, stored in PostgreSQL.
-**Telegram Bot Engine**: A modular multi-instance architecture (`server/telegram/`) where each user's bot configuration runs as an isolated TelegramBot instance, primarily operating in webhook mode for production. Split into focused modules: `index.ts` (engine/webhooks), `scam-detection.ts` (detection orchestration + AI scam checks), `scam-patterns.ts` (named pattern objects with descriptions), `normalization.ts` (homoglyph/unicode normalization), `commands.ts` (bot commands/AI response), `types.ts` (shared interfaces), `utils.ts` (OpenAI client, sendBotMessage).
-**AI Integration**: Leverages OpenAI's GPT-5.2 via Replit AI Integrations for advanced scam detection and conversational capabilities.
+**Telegram Bot Engine**: A modular multi-instance architecture (`server/telegram/`) where each user's bot configuration runs as an isolated TelegramBot instance, primarily operating in webhook mode for production. Split into focused modules: `index.ts` (engine/webhooks), `scam-detection.ts` (detection orchestration + AI scam checks), `scam-patterns.ts` (named pattern objects with descriptions), `normalization.ts` (homoglyph/unicode normalization), `commands.ts` (bot commands/AI response), `types.ts` (shared interfaces), `utils.ts` (OpenAI client, sendBotMessage), `conversation-history.ts` (in-memory per-group message buffer), `realtime-learning.ts` (AI fact extraction to knowledge base).
+**AI Integration**: Leverages OpenAI's GPT-5.2 via Replit AI Integrations for advanced scam detection, conversational capabilities, and real-time knowledge extraction.
+**Conversation Memory**: In-memory ring buffer stores last 50 messages per group (4-hour TTL). Last 20 messages are included in AI context for continuity-aware responses.
+**Real-time Learning**: AI analyzes substantive messages (80+ chars) for factual information worth remembering. Extracted facts are saved to the knowledge base under the "learned" category (max 50 per bot, 5-minute cooldown between extractions).
 **Multi-Bot Design**: Supports multiple bots per user, with all data (knowledge base, groups, activity logs) scoped by `botConfigId` via foreign keys. Storage methods and API endpoints are designed to be bot-scoped.
 **Scam Detection**: A comprehensive system combining:
     - **Homoglyph Normalization**: Strips dots/commas, converts similar-looking characters (e.g., Cyrillic, I/l, 0/O) to prevent evasion.
     - **Deterministic Regex**: Extensive patterns to detect various scam types like migration/airdrop scams, DM solicitations, unsolicited service offers, pump/shill spam, wallet buying scams, and more.
     - **Name Impersonation Detection**: Identifies users whose display names mimic bot or group names without admin privileges.
-    - **AI Fallback**: Utilizes GPT-5-mini with a scam-biased prompt for messages that bypass deterministic checks.
+    - **AI Fallback**: Utilizes GPT-5.2 with a scam-biased prompt for messages that bypass deterministic checks.
     - **Report-based Learning**: Allows the bot to learn new scam patterns from user reports, extracting and storing key phrase bigrams to auto-flag future matching messages.
     - **Auto-ban Feature**: Configurable per-bot, automatically bans Telegram users after a set number of auto-deleted scam messages.
 

@@ -12,6 +12,8 @@ import type { BotInstance } from "./types";
 import { sendBotMessage } from "./utils";
 import { detectAndHandleScam } from "./scam-detection";
 import { handleCommand, handleDeleteRequest, checkIfReport, shouldBotRespond, generateAIResponse } from "./commands";
+import { addMessage, getRecentMessages, cleanupOldHistories } from "./conversation-history";
+import { maybeLearnFromMessage } from "./realtime-learning";
 
 const activeBots = new Map<string, BotInstance>();
 const cooldowns = new Map<string, number>();
@@ -245,6 +247,7 @@ function startCooldownCleanup() {
         cleaned++;
       }
     }
+    cleanupOldHistories();
     if (cleaned > 0) {
       log(`Cooldown cleanup: removed ${cleaned} stale entries (${cooldowns.size} remaining)`, "telegram");
     }
@@ -460,6 +463,17 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     const deleteHandled = await handleDeleteRequest(bot, msg, messageText, userName, instance);
     if (deleteHandled) return;
 
+    addMessage(botConfigId, chatId, {
+      role: "user",
+      name: userName,
+      content: messageText,
+      timestamp: Date.now(),
+    });
+
+    maybeLearnFromMessage(botConfigId, userId, messageText, userName).catch(err =>
+      log(`Learning error: ${err.message}`, "telegram")
+    );
+
     const isReport = checkIfReport(messageText, config);
     if (isReport && config.trackReports) {
       await storage.createActivityLog(botConfigId, userId, {
@@ -501,13 +515,21 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
         replyContext = `${replyAuthor} said: ${msg.reply_to_message.text}`;
       }
 
-      const response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot);
+      const conversationHistory = getRecentMessages(botConfigId, chatId, 20);
+      const response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory);
       log(`AI response for ${userName}: "${(response || "").substring(0, 60)}..."`, "telegram");
 
       if (response && response.trim() && response.trim() !== "[[SKIP]]") {
         await sendBotMessage(bot, msg.chat.id, response, msg.message_id);
         log(`Reply sent to ${userName} in chat ${chatId}`, "telegram");
         cooldowns.set(cooldownKey, now);
+
+        addMessage(botConfigId, chatId, {
+          role: "assistant",
+          name: config.botName,
+          content: response,
+          timestamp: Date.now(),
+        });
 
         await storage.createActivityLog(botConfigId, userId, {
           groupId: groupRecord?.id || null,
