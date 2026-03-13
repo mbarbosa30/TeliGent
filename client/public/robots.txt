@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /knowledge
+Disallow: /activity
+Disallow: /memories
+Disallow: /account
+Disallow: /admin
+
+Sitemap: https://teli.gent/sitemap.xml

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check } from "lucide-react";
+import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown } from "lucide-react";
 import { SiX, SiTelegram } from "react-icons/si";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -228,6 +228,68 @@ function TokenAddress() {
   );
 }
 
+const FAQ_ITEMS = [
+  {
+    question: "What is TeliGent?",
+    answer: "TeliGent is an AI-powered Telegram bot platform that moderates your community, detects scams and spam in real time, and engages members with intelligent, on-brand responses. It learns from your website, knowledge base, and conversation history to provide contextual support."
+  },
+  {
+    question: "How does the scam detection work?",
+    answer: "TeliGent uses a multi-layered approach combining deterministic pattern matching (detecting phishing, DM solicitation, pump schemes, impersonation) with AI-powered analysis. It catches scam messages that bypass simple keyword filters by understanding context, homoglyph evasion, and message structure."
+  },
+  {
+    question: "Is TeliGent free to use?",
+    answer: "Yes, TeliGent is free to set up and use. You just need your own Telegram bot token from BotFather. No credit card is required to get started."
+  },
+  {
+    question: "What types of communities can use TeliGent?",
+    answer: "TeliGent works for any Telegram community — crypto and web3 projects, NFT communities, DeFi protocols, gaming groups, developer communities, and any group that needs intelligent moderation and engagement. The bot adapts to your specific project context."
+  },
+  {
+    question: "How do I set up TeliGent for my Telegram group?",
+    answer: "Setup takes under 5 minutes: create a free account at teli.gent, enter your Telegram bot token (from BotFather), configure your bot's personality and knowledge base, then add it to your group as an admin. The bot starts protecting and engaging your community immediately."
+  },
+  {
+    question: "Can I manage multiple Telegram groups with one account?",
+    answer: "Yes, TeliGent supports multi-group management. You can deploy your bot across multiple Telegram groups and monitor all activity, scam reports, and conversations from a single dashboard."
+  },
+];
+
+function FAQSection() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  return (
+    <section id="faq" className="py-16 px-6 border-t">
+      <div className="max-w-3xl mx-auto space-y-10">
+        <div className="text-center space-y-2">
+          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Frequently Asked Questions</p>
+          <h2 className="text-2xl font-bold tracking-tight">Everything You Need to Know</h2>
+          <p className="text-muted-foreground">Common questions about our AI Telegram moderation bot.</p>
+        </div>
+        <div className="space-y-2">
+          {FAQ_ITEMS.map((item, i) => (
+            <div key={i} className="border" data-testid={`faq-item-${i}`}>
+              <button
+                onClick={() => setOpenIndex(openIndex === i ? null : i)}
+                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-muted/50 transition-colors"
+                data-testid={`button-faq-toggle-${i}`}
+              >
+                <span className="font-medium text-sm pr-4">{item.question}</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${openIndex === i ? 'rotate-180' : ''}`} />
+              </button>
+              {openIndex === i && (
+                <div className="px-5 pb-4">
+                  <p className="text-sm text-muted-foreground leading-relaxed">{item.answer}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
@@ -241,6 +303,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-4">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-features">Features</a>
+            <a href="#faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-faq">FAQ</a>
             <a href="#auth" className="text-sm text-muted-foreground hover:text-foreground transition-colors" data-testid="link-sign-in">Sign In</a>
           </div>
         </div>
@@ -248,14 +311,14 @@ export default function LandingPage() {
 
       <section className="py-24 px-6">
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Intelligent Community Agents</p>
+          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">AI-Powered Telegram Moderation Bot</p>
           <h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-[1.1]" data-testid="text-hero-heading">
             Smart Agent
             <br />
             for Your Community
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            An AI agent that understands your project, speaks with your voice, and engages your community — with built-in scam and spam prevention that works around the clock.
+            An AI community support agent that understands your project, speaks with your voice, and moderates your Telegram groups — with real-time scam detection, spam filtering, and intelligent member engagement around the clock.
           </p>
           <div className="flex items-center justify-center gap-3 pt-2">
             <Button size="lg" asChild data-testid="button-get-started">
@@ -272,8 +335,8 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto space-y-10">
           <div className="text-center space-y-2">
             <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Capabilities</p>
-            <h2 className="text-2xl font-bold tracking-tight">An Agent That Gets It</h2>
-            <p className="text-muted-foreground">Understands your project. Engages your community. Stops the bad actors.</p>
+            <h2 className="text-2xl font-bold tracking-tight">AI-Powered Community Management</h2>
+            <p className="text-muted-foreground">Automated Telegram moderation, intelligent member support, and real-time scam protection.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
@@ -281,8 +344,8 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Brain className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Contextual Understanding</h3>
-                <p className="text-sm text-muted-foreground">Learns from your website, knowledge base, and project details. Every response is grounded in what your community actually needs to know.</p>
+                <h3 className="font-semibold">Knowledge-Driven AI Responses</h3>
+                <p className="text-sm text-muted-foreground">Your bot learns from your website, knowledge base, and project details. Every response is grounded in real context — like having a support agent who actually knows your product.</p>
               </CardContent>
             </Card>
             <Card>
@@ -290,8 +353,8 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Sparkles className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Configurable Personality</h3>
-                <p className="text-sm text-muted-foreground">Give your agent a name, tone, and character that fits your brand. It speaks with your voice — professional, casual, or anywhere in between.</p>
+                <h3 className="font-semibold">Customizable Bot Personality</h3>
+                <p className="text-sm text-muted-foreground">Give your Telegram bot a name, tone, and character that matches your brand. It speaks with your voice — professional, casual, or anywhere in between.</p>
               </CardContent>
             </Card>
             <Card>
@@ -299,8 +362,8 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Shield className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Scam & Spam Prevention</h3>
-                <p className="text-sm text-muted-foreground">Detects and removes scam messages, phishing, DM solicitation, and pump schemes automatically — keeping your community safe around the clock.</p>
+                <h3 className="font-semibold">Anti-Scam & Spam Filter</h3>
+                <p className="text-sm text-muted-foreground">Automatically detects and removes scam messages, phishing attempts, DM solicitation, pump schemes, and token shills — keeping your Telegram group safe 24/7.</p>
               </CardContent>
             </Card>
           </div>
@@ -310,8 +373,8 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Zap className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Community Moderation</h3>
-                <p className="text-sm text-muted-foreground">Members can flag suspicious messages with /report. Your agent evaluates them with AI and takes action — learning new threats as it goes.</p>
+                <h3 className="font-semibold">AI-Assisted Group Moderation</h3>
+                <p className="text-sm text-muted-foreground">Members can flag suspicious messages with /report. Your bot evaluates reports with AI, takes action automatically, and learns new threat patterns as it goes.</p>
               </CardContent>
             </Card>
             <Card>
@@ -319,8 +382,8 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Users className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Multi-Group Dashboard</h3>
-                <p className="text-sm text-muted-foreground">Deploy your agent across multiple Telegram groups. Monitor activity, track reports, and manage everything from a single dashboard.</p>
+                <h3 className="font-semibold">Multi-Group Management</h3>
+                <p className="text-sm text-muted-foreground">Deploy your bot across multiple Telegram groups. Monitor activity, track scam reports, and manage all your communities from a single dashboard.</p>
               </CardContent>
             </Card>
             <Card>
@@ -328,19 +391,21 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Globe className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Learns From Your Content</h3>
-                <p className="text-sm text-muted-foreground">Paste your website URL and your agent absorbs it. Add knowledge base entries for specific topics. The more it knows, the better it serves.</p>
+                <h3 className="font-semibold">Auto-Learning Knowledge Base</h3>
+                <p className="text-sm text-muted-foreground">Paste your website URL and your bot absorbs it. Add knowledge base entries for specific topics. It also learns from conversations — the more it knows, the better it supports your community.</p>
               </CardContent>
             </Card>
           </div>
         </div>
       </section>
 
+      <FAQSection />
+
       <section id="auth" className="py-16 px-6 border-t">
         <div className="max-w-2xl mx-auto text-center space-y-8">
           <div className="space-y-2">
-            <h2 className="text-2xl font-bold tracking-tight">Give your community a smart agent</h2>
-            <p className="text-muted-foreground">Set up in under 5 minutes. Your agent handles the rest.</p>
+            <h2 className="text-2xl font-bold tracking-tight">Add an AI moderator to your Telegram group</h2>
+            <p className="text-muted-foreground">Set up in under 5 minutes. Your bot handles the rest.</p>
           </div>
           <AuthForm />
         </div>
