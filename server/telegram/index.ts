@@ -500,7 +500,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       if (handled) return;
     }
 
-    const scamDetected = await detectAndHandleScam(bot, msg, messageText, userName, userId, botConfigId, config, groupRecord);
+    const scamDetected = await detectAndHandleScam(bot, msg, messageText, userName, userId, botConfigId, config, groupRecord, instance.botUsername);
     if (scamDetected) {
       log(`Scam detected from ${userName} — handled`, "telegram");
       return;

@@ -225,12 +225,13 @@ export async function executeScamAction(
   return true;
 }
 
-export function isProductInterestMessage(normalized: string, config: BotConfig): boolean {
+export function isProductInterestMessage(normalized: string, config: BotConfig, botUsername?: string): boolean {
   const botName = (config.botName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const normLower = normalized.toLowerCase();
-  if (botName.length < 3) return false;
+  if (botName.length < 3 && (!botUsername || botUsername.length < 3)) return false;
   const normClean = normLower.replace(/[^a-z0-9]/g, "");
-  const mentionsBot = normClean.includes(botName);
+  const mentionsBot = (botName.length >= 3 && normClean.includes(botName)) ||
+    (botUsername && botUsername.length >= 3 && normLower.includes(`@${botUsername.toLowerCase()}`));
   if (!mentionsBot) return false;
   const hasInterestLanguage = /\b(how\s*(do|can|to)|want\s*to\s*(add|use|set\s*up|install|integrate|try|get|enable|activate)|can\s*i\s*(add|use|set\s*up|install|integrate|try|get|enable|activate)|add\s*(it|this|the\s*bot|your\s*bot)|set\s*(it\s*)?up|interested\s*in|looking\s*(to|for)\s*(add|use|integrate|try)|where\s*(do|can)\s*i|tell\s*me\s*(about|how)|need\s*help\s*(with|setting|adding)|what\s*(does|is)|is\s*(it|this)\s*(free|available)|pricing|plans?|features?)\b/i.test(normalized);
   if (!hasInterestLanguage) return false;
@@ -279,7 +280,8 @@ export async function detectAndHandleScam(
   userId: string,
   botConfigId: number,
   config: BotConfig,
-  groupRecord: any
+  groupRecord: any,
+  botUsername?: string
 ): Promise<boolean> {
   try {
     const member = await bot.getChatMember(msg.chat.id, msg.from!.id);
@@ -292,7 +294,7 @@ export async function detectAndHandleScam(
 
   const normalized = normalizeUnicode(text);
 
-  if (isProductInterestMessage(normalized, config)) {
+  if (isProductInterestMessage(normalized, config, botUsername)) {
     log(`Product interest message from ${userName} — skipping scam check`, "telegram");
     return false;
   }
