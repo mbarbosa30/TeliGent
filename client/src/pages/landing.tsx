@@ -214,8 +214,7 @@ function TokenAddress() {
   };
 
   return (
-    <div className="flex items-center gap-2 bg-muted px-3 py-2 w-fit">
-      <span className="text-xs text-muted-foreground">CA</span>
+    <span className="inline-flex items-center gap-1.5">
       <code className="text-xs font-mono select-all" data-testid="text-token-ca">{TOKEN_CA}</code>
       <button
         onClick={handleCopy}
@@ -223,9 +222,9 @@ function TokenAddress() {
         data-testid="button-copy-ca"
         aria-label="Copy contract address"
       >
-        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       </button>
-    </div>
+    </span>
   );
 }
 
@@ -347,30 +346,26 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t py-8 px-6">
-        <div className="max-w-6xl mx-auto space-y-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center bg-foreground">
-                <Bot className="h-3 w-3 text-background" />
-              </div>
-              <span className="text-sm font-semibold">TeliGent</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <a href="https://x.com/Teli_Gent_" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-x-twitter" aria-label="X (Twitter)">
-                <SiX className="h-4 w-4" />
-              </a>
-              <a href="https://t.me/teli_gent" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-telegram" aria-label="Telegram">
-                <SiTelegram className="h-4 w-4" />
-              </a>
-              <a href="https://dexscreener.com/base/0x0d65bab223f60d04fb509046096f14934f0bea2943514b32f131c96a781f380f" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-dexscreener" aria-label="DexScreener">
-                <BarChart3 className="h-4 w-4" />
-              </a>
-            </div>
-          </div>
-          <TokenAddress />
+      <footer className="border-t py-6 px-6">
+        <div className="max-w-6xl mx-auto space-y-3">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>TeliGent</span>
+            <div className="flex items-center gap-3">
+              <a href="https://x.com/Teli_Gent_" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" data-testid="link-x-twitter" aria-label="X (Twitter)">
+                <SiX className="h-3.5 w-3.5" />
+              </a>
+              <a href="https://t.me/teli_gent" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" data-testid="link-telegram" aria-label="Telegram">
+                <SiTelegram className="h-3.5 w-3.5" />
+              </a>
+              <a href="https://dexscreener.com/base/0x0d65bab223f60d04fb509046096f14934f0bea2943514b32f131c96a781f380f" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" data-testid="link-dexscreener" aria-label="DexScreener">
+                <BarChart3 className="h-3.5 w-3.5" />
+              </a>
+            </div>
             <span>teli.gent</span>
+          </div>
+          <div className="flex items-center justify-center text-xs text-muted-foreground gap-1.5">
+            <span>CA</span>
+            <TokenAddress />
           </div>
         </div>
       </footer>
