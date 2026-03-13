@@ -127,7 +127,10 @@ export const scamPatterns: ScamPattern[] = [
     description: "Promotion/marketing offers, guaranteed returns, free crypto promises",
     reason: "DM solicitation with scam/promo offer",
     detect: (normalized) =>
-      /\b(promot|promo\b|engag|market|listing|volume|investor|communit(y|ies).*\b(own|run|manag|lead)|(own|run|manag|lead).*\bcommunit(y|ies)|\d+\s*(eth|btc|usdt|bnb|sol)\b|free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized),
+      /\b(promot|promo\b|listing|volume|investor)\b/i.test(normalized) ||
+      (/\b(i\s+|we\s+)(own|run|manag|lead)\w*\s+(a\s+|my\s+|our\s+|several\s+|multiple\s+)*(communit|channel|group)/i.test(normalized) && /\b(dm|pm|inbox|message|contact|engag|volume|growth|boost|promo|offer|service|provid|deliver)\b/i.test(normalized)) ||
+      /\b\d+\s*(eth|btc|usdt|bnb|sol)\b/i.test(normalized) ||
+      /\b(free\s*(token|coin|airdrop|eth|btc|crypto)|guaranteed\s*(return|profit))\b/i.test(normalized),
   },
   {
     name: "channelManagementPitch",

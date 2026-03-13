@@ -111,6 +111,16 @@ A message is NOT a scam if it's:
 - Casual chat, memes, or banter
 - Asking about project status WITHOUT making announcements
 - Sharing a link directly relevant to an ongoing conversation (not unsolicited)
+- A user asking how to add/use/set up the bot or any product/service that belongs to this group — this is legitimate customer interest, NOT a scam
+- A user mentioning "my community/group/channel" in the context of wanting to USE the group's product/service (e.g., "I want to add this bot to my community") — this is NOT offering services
+- A user asking about pricing, features, or availability of the group's own product
+
+EXAMPLES OF LEGITIMATE MESSAGES (do NOT flag these):
+- "How can I add this bot to my community?" → NOT a scam (product interest)
+- "I want to use TeliGent for my Telegram group, how do I set it up?" → NOT a scam (customer inquiry)
+- "Can I add @BotName to my community? What does it cost?" → NOT a scam (pricing question)
+- "I manage a community and I'm looking to add your bot for scam protection" → NOT a scam (product interest, NOT cold-pitch)
+- "Does this bot work for groups with 1000+ members?" → NOT a scam (feature question)
 
 Respond with ONLY valid JSON: {"scam": true, "reason": "brief explanation"} or {"scam": false, "reason": "brief explanation"}`
         },
@@ -187,21 +197,24 @@ export async function executeScamAction(
       const config = await storage.getBotConfig(botConfigId);
       if (config && config.autoBanThreshold > 0) {
         const scamCount = await storage.getScamCountForUser(botConfigId, tgUserId);
-        if (scamCount >= config.autoBanThreshold) {
+        const distinctReasons = getDistinctScamCount(tgUserId, reason);
+        if (scamCount >= config.autoBanThreshold && distinctReasons >= 2) {
           await bot.banChatMember(msg.chat.id, Number(tgUserId));
-          log(`AUTO-BANNED user ${userName} (tgId: ${tgUserId}) after ${scamCount} scam deletions (threshold: ${config.autoBanThreshold})`, "telegram");
+          log(`AUTO-BANNED user ${userName} (tgId: ${tgUserId}) after ${scamCount} scam deletions, ${distinctReasons} distinct patterns (threshold: ${config.autoBanThreshold})`, "telegram");
           if (groupRecord) {
             await storage.createActivityLog(botConfigId, userId, {
               groupId: groupRecord.id,
               type: "report",
               telegramUserId: tgUserId,
               userName,
-              userMessage: `Auto-banned after ${scamCount} scam messages`,
+              userMessage: `Auto-banned after ${scamCount} scam messages (${distinctReasons} distinct patterns)`,
               botResponse: "(user banned)",
               isReport: true,
-              metadata: { autoDetected: true, reason: `Auto-ban: ${scamCount} scam deletions reached threshold of ${config.autoBanThreshold}` },
+              metadata: { autoDetected: true, reason: `Auto-ban: ${scamCount} scam deletions, ${distinctReasons} distinct patterns reached threshold of ${config.autoBanThreshold}` },
             });
           }
+        } else if (scamCount >= config.autoBanThreshold && distinctReasons < 2) {
+          log(`Auto-ban deferred for ${userName} (tgId: ${tgUserId}): ${scamCount} deletions but only ${distinctReasons} distinct pattern(s) — may be false positive`, "telegram");
         }
       }
     } catch (e: any) {
@@ -211,6 +224,52 @@ export async function executeScamAction(
 
   return true;
 }
+
+export function isProductInterestMessage(normalized: string, config: BotConfig): boolean {
+  const botName = (config.botName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normLower = normalized.toLowerCase();
+  if (botName.length < 3) return false;
+  const normClean = normLower.replace(/[^a-z0-9]/g, "");
+  const mentionsBot = normClean.includes(botName);
+  if (!mentionsBot) return false;
+  const hasInterestLanguage = /\b(how\s*(do|can|to)|want\s*to\s*(add|use|set\s*up|install|integrate|try|get|enable|activate)|can\s*i\s*(add|use|set\s*up|install|integrate|try|get|enable|activate)|add\s*(it|this|the\s*bot|your\s*bot)|set\s*(it\s*)?up|interested\s*in|looking\s*(to|for)\s*(add|use|integrate|try)|where\s*(do|can)\s*i|tell\s*me\s*(about|how)|need\s*help\s*(with|setting|adding)|what\s*(does|is)|is\s*(it|this)\s*(free|available)|pricing|plans?|features?)\b/i.test(normalized);
+  if (!hasInterestLanguage) return false;
+  const hasScamIndicators =
+    /\b(dm|pm|inbox|contact)\s*(me|us)\b/i.test(normalized) ||
+    /\b(guaranteed|profit|return|free\s*(token|coin|crypto|eth|btc|sol))\b/i.test(normalized) ||
+    /\b(send\s*(me|us)\s*(a\s*)?(message|msg|dm|pm))\b/i.test(normalized) ||
+    /\b(giveaway|give\s*away|airdrop|migration)\b/i.test(normalized) ||
+    /\b(i\s*(can|will|offer|provide)\s*(create|make|design|build|boost|promote|pump))\b/i.test(normalized) ||
+    /https?:\/\//i.test(normalized) ||
+    /(?:t\.me|telegram\.me)\/(\+|joinchat\/)/i.test(normalized);
+  return !hasScamIndicators;
+}
+
+const recentScamReasons = new Map<string, { reasons: Set<string>; firstSeen: number }>();
+
+function getDistinctScamCount(tgUserId: string, newReason: string): number {
+  const key = tgUserId;
+  const now = Date.now();
+  let entry = recentScamReasons.get(key);
+  if (!entry || now - entry.firstSeen > 30 * 60 * 1000) {
+    entry = { reasons: new Set(), firstSeen: now };
+    recentScamReasons.set(key, entry);
+  }
+  const category = newReason
+    .replace(/\s*\(.*\)$/, "")
+    .replace(/^AI:\s*/, "")
+    .replace(/^AI \(impersonator\):\s*/, "")
+    .substring(0, 60);
+  entry.reasons.add(category);
+  return entry.reasons.size;
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  for (const [key, entry] of recentScamReasons) {
+    if (entry.firstSeen < cutoff) recentScamReasons.delete(key);
+  }
+}, 10 * 60 * 1000);
 
 export async function detectAndHandleScam(
   bot: TelegramBot,
@@ -232,6 +291,11 @@ export async function detectAndHandleScam(
   }
 
   const normalized = normalizeUnicode(text);
+
+  if (isProductInterestMessage(normalized, config)) {
+    log(`Product interest message from ${userName} — skipping scam check`, "telegram");
+    return false;
+  }
   if (normalized !== text) {
     log(`Unicode normalized: "${text.substring(0, 60)}" → "${normalized.substring(0, 60)}"`, "telegram");
   }
@@ -397,7 +461,7 @@ export function runDeterministicScamCheck(text: string): { isScam: boolean; reas
     return { isScam: true, reason: "Unsolicited service offer with DM solicitation" };
   }
 
-  if (/\b(i\s*manage|managing)\b.{0,20}\b(channel|communit|group)s?\b/i.test(normalized) && /\b(engag|growth|volume|mc|market\s*cap|member|organic|promot)\b/i.test(normalized)) {
+  if (/\b(i\s*manage|managing)\b.{0,20}\b(channel|communit|group)s?\b/i.test(normalized) && /\b(engag|growth|volume|mc|market\s*cap|organic|promot)\b/i.test(normalized) && /\b(dm|pm|inbox|contact|offer|service|provid|deliver|boost|can\s*help|will\s*help)\b/i.test(normalized)) {
     return { isScam: true, reason: "Channel management cold-pitch spam" };
   }
 
