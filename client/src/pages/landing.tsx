@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles } from "lucide-react";
+import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check } from "lucide-react";
+import { SiX, SiTelegram } from "react-icons/si";
 import { useAuth } from "@/hooks/use-auth";
 
 function AuthForm() {
@@ -200,6 +201,34 @@ function MetricsSection() {
   );
 }
 
+const TOKEN_CA = "0x2822656E2Eec1c608a223752B4e0A651b50c4bA3";
+
+function TokenAddress() {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(TOKEN_CA).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="flex items-center gap-2 bg-muted px-3 py-2 w-fit">
+      <span className="text-xs text-muted-foreground">CA</span>
+      <code className="text-xs font-mono select-all" data-testid="text-token-ca">{TOKEN_CA}</code>
+      <button
+        onClick={handleCopy}
+        className="text-muted-foreground hover:text-foreground transition-colors"
+        data-testid="button-copy-ca"
+        aria-label="Copy contract address"
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
+}
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
@@ -318,10 +347,31 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t py-6 px-6">
-        <div className="max-w-6xl mx-auto flex items-center justify-between text-xs text-muted-foreground">
-          <span>TeliGent</span>
-          <span>teli.gent</span>
+      <footer className="border-t py-8 px-6">
+        <div className="max-w-6xl mx-auto space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center bg-foreground">
+                <Bot className="h-3 w-3 text-background" />
+              </div>
+              <span className="text-sm font-semibold">TeliGent</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <a href="https://x.com/Teli_Gent_" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-x-twitter" aria-label="X (Twitter)">
+                <SiX className="h-4 w-4" />
+              </a>
+              <a href="https://t.me/teli_gent" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-telegram" aria-label="Telegram">
+                <SiTelegram className="h-4 w-4" />
+              </a>
+              <a href="https://dexscreener.com/base/0x0d65bab223f60d04fb509046096f14934f0bea2943514b32f131c96a781f380f" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-dexscreener" aria-label="DexScreener">
+                <BarChart3 className="h-4 w-4" />
+              </a>
+            </div>
+          </div>
+          <TokenAddress />
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>teli.gent</span>
+          </div>
         </div>
       </footer>
     </div>
