@@ -56,7 +56,7 @@ export async function aiScamCheck(text: string, senderRole: string): Promise<{ i
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-5.2",
       messages: [
         {
           role: "system",

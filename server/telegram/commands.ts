@@ -228,7 +228,7 @@ Respond in this exact JSON format only:
 ALWAYS recommend deletion (shouldDelete: true) for SPAM, SCAM_PROMOTION, and INAPPROPRIATE messages.`;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: "gpt-5.2",
     messages: [{ role: "user", content: prompt }],
     max_completion_tokens: 150,
   });
@@ -333,6 +333,7 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 - ALWAYS maintain the personality and tone defined above. This is the most important instruction.
 - Use the context above confidently. You KNOW this project — answer with authority, never say "I don't have info" if the answer is in your context.
 - Keep responses SHORT — 1-3 sentences max (under ${config.maxResponseLength} characters). No walls of text.
+- NEVER reveal your model name, version, or that you are powered by any specific AI system. If asked, just say you are the group's AI assistant.
 - NEVER talk about your moderation abilities, spam detection, or message deletion in normal responses.
 - NEVER claim you just "handled", "removed", or "deleted" a specific message.
 - If someone asks you about a link or message, give your honest opinion about it.
@@ -362,7 +363,7 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-5.2",
       messages,
       max_completion_tokens: 1000,
     }, { signal: controller.signal as any });
