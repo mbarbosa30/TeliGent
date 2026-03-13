@@ -8,16 +8,18 @@ import type { Express } from "express";
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
 
-import type { BotInstance } from "./types";
+import type { BotInstance, GroupContext } from "./types";
 import { sendBotMessage } from "./utils";
 import { detectAndHandleScam } from "./scam-detection";
 import { handleCommand, handleDeleteRequest, checkIfReport, shouldBotRespond, generateAIResponse } from "./commands";
 import { addMessage, getRecentMessages, cleanupOldHistories } from "./conversation-history";
 import { maybeLearnFromMessage } from "./realtime-learning";
+import { scrapeUrl } from "../scraper";
 
 const activeBots = new Map<string, BotInstance>();
 const cooldowns = new Map<string, number>();
 const webhookPathToToken = new Map<string, string>();
+const GROUP_CONTEXT_TTL_MS = 30 * 60 * 1000;
 let engineStarted = false;
 let webhookRouteRegistered = false;
 let expressApp: Express | null = null;
@@ -248,6 +250,15 @@ function startCooldownCleanup() {
       }
     }
     cleanupOldHistories();
+
+    for (const [, instance] of activeBots) {
+      for (const [chatId, ctx] of instance.groupContexts) {
+        if (now - ctx.fetchedAt > GROUP_CONTEXT_TTL_MS * 2) {
+          instance.groupContexts.delete(chatId);
+        }
+      }
+    }
+
     if (cleaned > 0) {
       log(`Cooldown cleanup: removed ${cleaned} stale entries (${cooldowns.size} remaining)`, "telegram");
     }
@@ -276,7 +287,7 @@ async function startSingleBot(config: BotConfig) {
 
     await storage.updateBotConfig(config.id, { botName: me.first_name || "Bot" });
 
-    const instance: BotInstance = { bot, userId, botConfigId: config.id, token, webhookPath, botUsername, botTelegramId: me.id };
+    const instance: BotInstance = { bot, userId, botConfigId: config.id, token, webhookPath, botUsername, botTelegramId: me.id, groupContexts: new Map() };
     activeBots.set(token, instance);
 
     bot.on("message", (msg) => handleMessage(msg, instance));
@@ -314,6 +325,17 @@ async function startSingleBot(config: BotConfig) {
     }
 
     log(`Bot started for user ${userId}: @${botUsername} (webhook: ${webhookUrl})`, "telegram");
+
+    if (config.websiteUrl && config.websiteUrl.trim() && (!config.websiteContent || !config.websiteContent.trim())) {
+      scrapeUrl(config.websiteUrl).then(async (content) => {
+        if (content && content.trim()) {
+          await storage.updateBotConfig(config.id, { websiteContent: content });
+          log(`Auto-scraped website for @${botUsername}: ${content.length} chars`, "telegram");
+        }
+      }).catch((err) => {
+        log(`Auto-scrape failed for @${botUsername}: ${err.message}`, "telegram");
+      });
+    }
   } catch (err: any) {
     log(`Failed to start bot for user ${userId}: ${err.message}\n${err.stack || ""}`, "telegram");
     throw err;
@@ -412,6 +434,29 @@ async function handleMyChatMember(update: any, instance: BotInstance) {
     }
   } catch (err: any) {
     log(`Error handling my_chat_member: ${err.message}`, "telegram");
+  }
+}
+
+async function fetchGroupContext(instance: BotInstance, chatId: string, numericChatId: number): Promise<GroupContext | null> {
+  const cached = instance.groupContexts.get(chatId);
+  if (cached && Date.now() - cached.fetchedAt < GROUP_CONTEXT_TTL_MS) {
+    return cached;
+  }
+
+  try {
+    const chat = await instance.bot.getChat(numericChatId);
+    const pinned = (chat as any).pinned_message;
+    const pinnedText = pinned?.text || pinned?.caption || null;
+    const context: GroupContext = {
+      description: (chat as any).description || "",
+      pinnedMessage: pinnedText,
+      fetchedAt: Date.now(),
+    };
+    instance.groupContexts.set(chatId, context);
+    return context;
+  } catch (err: any) {
+    log(`Failed to fetch group context for chat ${chatId}: ${err.message}`, "telegram");
+    return cached || null;
   }
 }
 
@@ -516,7 +561,8 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       }
 
       const conversationHistory = getRecentMessages(botConfigId, chatId, 20);
-      const response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory);
+      const groupContext = await fetchGroupContext(instance, chatId, msg.chat.id);
+      const response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory, groupContext);
       log(`AI response for ${userName}: "${(response || "").substring(0, 60)}..."`, "telegram");
 
       if (response && response.trim() && response.trim() !== "[[SKIP]]") {

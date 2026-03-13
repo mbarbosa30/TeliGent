@@ -276,16 +276,30 @@ export async function shouldBotRespond(msg: TelegramBot.Message, config: BotConf
 }
 
 import type { ChatMessage } from "./conversation-history";
+import type { GroupContext } from "./types";
 
-export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[]): Promise<string> {
+export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[], groupContext?: GroupContext | null): Promise<string> {
   const knowledgeEntries = await storage.getActiveKnowledgeEntries(botConfigId);
 
-  const MAX_CONTEXT_CHARS = 6000;
+  const MAX_CONTEXT_CHARS = 8000;
   let usedChars = 0;
+
+  let groupInfoSection = "";
+  if (groupContext) {
+    const parts: string[] = [];
+    if (groupContext.description) parts.push(`Group description: ${groupContext.description}`);
+    if (groupContext.pinnedMessage) parts.push(`Pinned message: ${groupContext.pinnedMessage}`);
+    if (parts.length > 0) {
+      const groupText = parts.join("\n").slice(0, 1000);
+      groupInfoSection = `\n\n--- GROUP INFO ---\n${groupText}`;
+      usedChars += groupText.length;
+    }
+  }
 
   let globalContextSection = "";
   if (config.globalContext && config.globalContext.trim()) {
-    const globalText = config.globalContext.slice(0, 2000);
+    const maxGlobal = Math.min(2000, MAX_CONTEXT_CHARS - usedChars);
+    const globalText = config.globalContext.slice(0, maxGlobal);
     globalContextSection = `\n\n--- ABOUT THIS PROJECT/COMMUNITY ---\n${globalText}`;
     usedChars += globalText.length;
   }
@@ -324,10 +338,10 @@ The following instructions define your tone, personality, and communication styl
 ${config.personality}
 
 --- END PERSONALITY ---
-${globalContextSection}${websiteSection}${knowledgeContext}
+${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}
 
 --- YOUR ROLE ---
-- You are a community assistant that answers questions and provides information based on your context and personality above.
+- You are a community assistant and active participant in this group. Engage naturally with members.
 - When users mention your @handle or your name, they are addressing YOU directly. Never refer to yourself as a separate entity.
 - Scam/spam detection runs AUTOMATICALLY in the background — it is a separate system. You do NOT need to talk about it.
 
@@ -342,9 +356,10 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 - NEVER guess or improvise specific data like contract addresses, token prices, wallet addresses, stats, or numbers.
 - NEVER ask users to send screenshots, timestamps, usernames, or "more details". Just answer directly.
 - NEVER mention admins, admin review, or "flagging for admins".
-- If a message is trivial/casual with nothing useful to add, respond with ONLY "[[SKIP]]".
+- Be conversational and engaging. React to what people say, add humor when appropriate, and participate in group discussions naturally.
+- Only respond with "[[SKIP]]" if the message is a single emoji, a single word like "ok"/"yes"/"no"/"lol", or completely meaningless. For anything else — casual chat, opinions, hype, questions — engage with it.
 - Match the personality and tone above. Be direct, not corporate.
-- You have access to the recent conversation history below. Use it to maintain context and avoid repeating yourself.`;
+- You have access to the recent conversation history and group info below. Use them to maintain context and avoid repeating yourself.`;
 
   const messages: { role: "system" | "assistant" | "user"; content: string }[] = [
     { role: "system", content: systemPrompt },
@@ -380,7 +395,7 @@ ${globalContextSection}${websiteSection}${knowledgeContext}
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5.2",
+      model: "gpt-5-mini",
       messages,
       max_completion_tokens: 1000,
     }, { signal: controller.signal as any });
