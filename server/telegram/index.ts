@@ -112,6 +112,11 @@ function registerWebhookRoute(app: Express) {
       const msgText = body.message?.text?.substring(0, 50) || "(no text)";
       const chatType = body.message?.chat?.type || "unknown";
       log(`[WEBHOOK] Update for @${inst.botUsername}: type=${updateType}, chat=${chatType}, text="${msgText}"`, "telegram");
+
+      if (body.my_chat_member) {
+        handleMyChatMember(body.my_chat_member, inst);
+      }
+
       inst.bot.processUpdate(body);
     } else {
       log(`[WEBHOOK] No active bot instance for token at ${webhookPath}`, "telegram");
@@ -284,7 +289,11 @@ async function startSingleBot(config: BotConfig) {
     } catch (e: any) {
       log(`Warning: deleteWebHook before set failed for @${botUsername}: ${e.message}`, "telegram");
     }
-    const setResult = await bot.setWebHook(webhookUrl, { secret_token: secret });
+    const webhookOptions: any = {
+      secret_token: secret,
+      allowed_updates: ["message", "edited_message", "callback_query", "my_chat_member", "chat_member"],
+    };
+    const setResult = await bot.setWebHook(webhookUrl, webhookOptions);
     log(`setWebHook result for @${botUsername}: ${setResult}`, "telegram");
 
     const webhookInfo = await bot.getWebHookInfo();
@@ -295,7 +304,7 @@ async function startSingleBot(config: BotConfig) {
       log(`Retrying setWebHook for @${botUsername}...`, "telegram");
       await bot.deleteWebHook();
       await new Promise(r => setTimeout(r, 1000));
-      const retryResult = await bot.setWebHook(webhookUrl, { secret_token: secret });
+      const retryResult = await bot.setWebHook(webhookUrl, webhookOptions);
       log(`Retry setWebHook result for @${botUsername}: ${retryResult}`, "telegram");
       const retryInfo = await bot.getWebHookInfo();
       log(`Retry webhook info for @${botUsername}: url=${retryInfo.url}, pending=${retryInfo.pending_update_count}, last_error=${retryInfo.last_error_message || "none"}`, "telegram");
@@ -350,6 +359,56 @@ async function handleLeftMember(msg: TelegramBot.Message, instance: BotInstance)
       await storage.updateGroup(botConfigId, group.id, { isActive: false });
     }
     log(`Bot removed from group: ${msg.chat.title} (user: ${userId})`, "telegram");
+  }
+}
+
+async function handleMyChatMember(update: any, instance: BotInstance) {
+  try {
+    const chat = update.chat;
+    const newStatus = update.new_chat_member?.status;
+    const oldStatus = update.old_chat_member?.status;
+
+    if (!chat || chat.type === "private") return;
+
+    const isJoined = (newStatus === "member" || newStatus === "administrator") &&
+      (oldStatus === "left" || oldStatus === "kicked");
+    const isLeft = (newStatus === "left" || newStatus === "kicked") &&
+      (oldStatus === "member" || oldStatus === "administrator");
+
+    const { bot, userId, botConfigId } = instance;
+
+    if (isJoined) {
+      const chatId = chat.id.toString();
+      const chatTitle = chat.title || "Unknown Group";
+      const memberCount = await bot.getChatMemberCount(chat.id).catch(() => 0);
+
+      await storage.upsertGroup(botConfigId, userId, {
+        telegramChatId: chatId,
+        name: chatTitle,
+        memberCount,
+        isActive: true,
+      });
+
+      await storage.createActivityLog(botConfigId, userId, {
+        groupId: null,
+        type: "join",
+        userName: "Bot",
+        userMessage: `Bot added to group "${chatTitle}"`,
+        botResponse: null,
+        isReport: false,
+        metadata: null,
+      });
+
+      log(`Bot added to group via my_chat_member: ${chatTitle} (user: ${userId})`, "telegram");
+    } else if (isLeft) {
+      const group = await storage.getGroupByChatId(botConfigId, chat.id.toString());
+      if (group) {
+        await storage.updateGroup(botConfigId, group.id, { isActive: false });
+      }
+      log(`Bot removed from group via my_chat_member: ${chat.title} (user: ${userId})`, "telegram");
+    }
+  } catch (err: any) {
+    log(`Error handling my_chat_member: ${err.message}`, "telegram");
   }
 }
 
