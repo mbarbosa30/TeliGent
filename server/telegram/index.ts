@@ -15,9 +15,9 @@ import { handleCommand, handleDeleteRequest, checkIfReport, shouldBotRespond, ge
 
 const activeBots = new Map<string, BotInstance>();
 const cooldowns = new Map<string, number>();
-const registeredWebhookPaths = new Set<string>();
 const webhookPathToToken = new Map<string, string>();
 let engineStarted = false;
+let webhookRouteRegistered = false;
 let expressApp: Express | null = null;
 let cooldownCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -84,6 +84,43 @@ export async function getWebhookStatus(botConfigId: number): Promise<any> {
   }
 }
 
+function registerWebhookRoute(app: Express) {
+  app.post("/api/telegram-webhook/:hash", (req, res) => {
+    const webhookPath = `/api/telegram-webhook/${req.params.hash}`;
+    const currentToken = webhookPathToToken.get(webhookPath);
+    if (!currentToken) {
+      log(`[WEBHOOK] No token mapped for ${webhookPath}`, "telegram");
+      res.sendStatus(200);
+      return;
+    }
+    const expectedSecret = getWebhookSecret(currentToken);
+    const headerSecret = req.headers["x-telegram-bot-api-secret-token"];
+    if (headerSecret && headerSecret !== expectedSecret) {
+      log(`[WEBHOOK] Auth FAILED for ${webhookPath} (secret mismatch)`, "telegram");
+      res.sendStatus(403);
+      return;
+    }
+    if (!headerSecret) {
+      log(`[WEBHOOK] Rejected: no secret_token header for ${webhookPath}`, "telegram");
+      res.sendStatus(401);
+      return;
+    }
+    const inst = activeBots.get(currentToken);
+    if (inst) {
+      const body = req.body;
+      const updateType = body.message ? "message" : body.edited_message ? "edited_message" : body.callback_query ? "callback_query" : body.my_chat_member ? "my_chat_member" : body.chat_member ? "chat_member" : "other";
+      const msgText = body.message?.text?.substring(0, 50) || "(no text)";
+      const chatType = body.message?.chat?.type || "unknown";
+      log(`[WEBHOOK] Update for @${inst.botUsername}: type=${updateType}, chat=${chatType}, text="${msgText}"`, "telegram");
+      inst.bot.processUpdate(body);
+    } else {
+      log(`[WEBHOOK] No active bot instance for token at ${webhookPath}`, "telegram");
+    }
+    res.sendStatus(200);
+  });
+  log("Registered parameterized webhook route: /api/telegram-webhook/:hash", "telegram");
+}
+
 export async function startBotEngine(app?: Express) {
   if (app) expressApp = app;
 
@@ -91,6 +128,11 @@ export async function startBotEngine(app?: Express) {
   if (!isProduction) {
     log("Dev mode: skipping Telegram bots to avoid conflicts with production webhooks.", "telegram");
     return;
+  }
+
+  if (app && !webhookRouteRegistered) {
+    registerWebhookRoute(app);
+    webhookRouteRegistered = true;
   }
 
   try {
@@ -234,46 +276,7 @@ async function startSingleBot(config: BotConfig) {
     bot.on("left_chat_member", (msg) => handleLeftMember(msg, instance));
 
     webhookPathToToken.set(webhookPath, token);
-
-    if (!registeredWebhookPaths.has(webhookPath)) {
-      const capturedPath = webhookPath;
-      expressApp.post(capturedPath, (req, res) => {
-        const currentToken = webhookPathToToken.get(capturedPath);
-        if (!currentToken) {
-          log(`[WEBHOOK] No token mapped for ${capturedPath}`, "telegram");
-          res.sendStatus(200);
-          return;
-        }
-        const expectedSecret = getWebhookSecret(currentToken);
-        const headerSecret = req.headers["x-telegram-bot-api-secret-token"];
-        if (headerSecret && headerSecret !== expectedSecret) {
-          log(`[WEBHOOK] Auth FAILED for ${capturedPath} (secret mismatch)`, "telegram");
-          res.sendStatus(403);
-          return;
-        }
-        if (!headerSecret) {
-          log(`[WEBHOOK] Rejected: no secret_token header for ${capturedPath}`, "telegram");
-          res.sendStatus(401);
-          return;
-        }
-        const inst = activeBots.get(currentToken);
-        if (inst) {
-          const body = req.body;
-          const updateType = body.message ? "message" : body.edited_message ? "edited_message" : body.callback_query ? "callback_query" : body.my_chat_member ? "my_chat_member" : body.chat_member ? "chat_member" : "other";
-          const msgText = body.message?.text?.substring(0, 50) || "(no text)";
-          const chatType = body.message?.chat?.type || "unknown";
-          log(`[WEBHOOK] Update for @${inst.botUsername}: type=${updateType}, chat=${chatType}, text="${msgText}"`, "telegram");
-          inst.bot.processUpdate(body);
-        } else {
-          log(`[WEBHOOK] No active bot instance for token at ${capturedPath}`, "telegram");
-        }
-        res.sendStatus(200);
-      });
-      registeredWebhookPaths.add(webhookPath);
-      log(`Registered webhook route: ${webhookPath}`, "telegram");
-    } else {
-      log(`Webhook route already registered: ${webhookPath} — updated token mapping`, "telegram");
-    }
+    log(`Mapped webhook path ${webhookPath} to bot @${botUsername}`, "telegram");
 
     const webhookUrl = `${appUrl}${webhookPath}`;
     try {

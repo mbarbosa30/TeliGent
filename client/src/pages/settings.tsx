@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -79,9 +79,14 @@ export default function SettingsPage() {
     },
   });
 
+  const prevBotIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (config) {
-      form.reset({
+      const isBotSwitch = prevBotIdRef.current !== selectedBotId;
+      prevBotIdRef.current = selectedBotId;
+
+      const configValues: SettingsForm = {
         botToken: config.botToken || "",
         botName: config.botName,
         personality: config.personality,
@@ -96,9 +101,15 @@ export default function SettingsPage() {
         autoBanThreshold: config.autoBanThreshold ?? 0,
         trackReports: config.trackReports,
         reportKeywords: config.reportKeywords || ["report", "issue", "bug", "problem", "broken"],
-      });
+      };
+
+      if (isBotSwitch) {
+        form.reset(configValues);
+      } else {
+        form.reset(configValues, { keepDirtyValues: true });
+      }
     }
-  }, [config, form]);
+  }, [config, form, selectedBotId]);
 
   const mutation = useMutation({
     mutationFn: (data: SettingsForm) => {
