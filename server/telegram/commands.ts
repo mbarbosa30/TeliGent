@@ -2,10 +2,11 @@ import TelegramBot from "node-telegram-bot-api";
 import { storage } from "../storage";
 import { log } from "../index";
 import type { BotConfig } from "@shared/schema";
-import type { BotInstance } from "./types";
+import type { BotInstance, GroupContext } from "./types";
 import { openai, sendBotMessage } from "./utils";
 import { normalizeUnicode } from "./normalization";
 import { runDeterministicScamCheck, extractKeyPhrases, clearLearnedPatternsCache } from "./scam-detection";
+import type { ChatMessage } from "./conversation-history";
 
 export { sendBotMessage };
 
@@ -256,11 +257,12 @@ export function checkIfReport(text: string, config: BotConfig): boolean {
   return keywords.some(kw => lower.includes(kw.toLowerCase()));
 }
 
-export async function shouldBotRespond(msg: TelegramBot.Message, config: BotConfig, instance: BotInstance): Promise<boolean> {
+export async function shouldBotRespond(msg: TelegramBot.Message, config: BotConfig, instance: BotInstance, conversationHistory?: ChatMessage[]): Promise<boolean> {
   if (!msg.text) return false;
 
   const botUsername = instance.botUsername;
-  const isMentioned = msg.text.includes(`@${botUsername}`);
+  const text = msg.text;
+  const isMentioned = text.includes(`@${botUsername}`);
   const isReplyToBot = msg.reply_to_message?.from?.id === instance.botTelegramId;
 
   if (config.onlyRespondWhenMentioned) return isMentioned;
@@ -269,14 +271,81 @@ export async function shouldBotRespond(msg: TelegramBot.Message, config: BotConf
   if (config.responseMode === "always") return true;
   if (config.responseMode === "mentioned") return isMentioned;
   if (config.responseMode === "questions") {
-    return msg.text.includes("?") || /^(what|how|why|when|where|who|can|is|are|do|does|will|would|should|could)\b/i.test(msg.text);
+    return text.includes("?") || /^(what|how|why|when|where|who|can|is|are|do|does|will|would|should|could)\b/i.test(text);
   }
-  if (config.responseMode === "smart") return isMentioned || isReplyToBot;
+  if (config.responseMode === "smart") {
+    if (isReplyToBot) return true;
+
+    const stripped = text.replace(/[\s\u200B-\u200D\uFEFF]/g, "");
+    if (stripped.length < 3) return false;
+    if (/^[\p{Emoji}\u200d\ufe0f\u20e3]+$/u.test(stripped)) return false;
+
+    const lower = text.toLowerCase();
+    const botNameLower = (config.botName || "").toLowerCase();
+    if (botNameLower && lower.includes(botNameLower)) return true;
+
+    if (text.includes("?") || /^(what|how|why|when|where|who|can|is|are|do|does|will|would|should|could)\b/i.test(text)) return true;
+
+    if (text.length < 15) return false;
+
+    try {
+      const recentBotMessages = (conversationHistory || [])
+        .filter(m => m.role === "assistant")
+        .slice(-3);
+      const lastBotMessageAge = recentBotMessages.length > 0
+        ? Date.now() - recentBotMessages[recentBotMessages.length - 1].timestamp
+        : Infinity;
+
+      const recentContext = (conversationHistory || []).slice(-5)
+        .map(m => `${m.role === "assistant" ? config.botName : m.name}: ${m.content.slice(0, 80)}`)
+        .join("\n");
+
+      const contextSummary = config.globalContext
+        ? config.globalContext.slice(0, 300)
+        : `Community group bot named ${config.botName}`;
+
+      const triagePrompt = `You are deciding if the bot "${config.botName}" should respond to a message in a Telegram group.
+
+Bot's domain: ${contextSummary}
+
+Recent chat:
+${recentContext || "(no recent messages)"}
+
+New message from ${msg.from?.first_name || "someone"}: "${text.slice(0, 300)}"
+
+Bot last spoke: ${lastBotMessageAge < 60000 ? "just now" : lastBotMessageAge < 300000 ? "a few minutes ago" : "a while ago"}
+
+Should the bot respond? Consider:
+- Is the topic relevant to the bot's domain/project?
+- Would the bot add value by responding?
+- Is the conversation naturally inviting a response?
+- Don't respond to every casual message — only when the bot has something useful or fun to contribute
+- If the bot just spoke recently, be more selective
+
+Reply with ONLY "RESPOND" or "SKIP".`;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const response = await openai.chat.completions.create({
+          model: "gpt-5-mini",
+          messages: [{ role: "user", content: triagePrompt }],
+          max_completion_tokens: 10,
+        }, { signal: controller.signal as any });
+
+        const answer = (response.choices[0]?.message?.content || "").trim().toUpperCase();
+        return answer.includes("RESPOND");
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err: any) {
+      log(`Smart triage error: ${err.message} — defaulting to skip`, "telegram");
+      return false;
+    }
+  }
   return false;
 }
-
-import type { ChatMessage } from "./conversation-history";
-import type { GroupContext } from "./types";
 
 export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[], groupContext?: GroupContext | null): Promise<string> {
   const knowledgeEntries = await storage.getActiveKnowledgeEntries(botConfigId);

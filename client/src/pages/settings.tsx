@@ -345,7 +345,7 @@ export default function SettingsPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="smart">Smart (AI decides when to respond)</SelectItem>
+                        <SelectItem value="smart">Smart (AI picks when to join in)</SelectItem>
                         <SelectItem value="always">Always respond to messages</SelectItem>
                         <SelectItem value="mentioned">Only when mentioned</SelectItem>
                         <SelectItem value="questions">Only to questions</SelectItem>

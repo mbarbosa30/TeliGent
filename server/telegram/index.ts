@@ -532,9 +532,10 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       });
     }
 
-    const shouldRespond = await shouldBotRespond(msg, config, instance);
+    const conversationHistory = getRecentMessages(botConfigId, chatId, 20);
+    const shouldRespond = await shouldBotRespond(msg, config, instance, conversationHistory);
     if (!shouldRespond) {
-      log(`Not responding (mention/reply rules) to "${messageText.substring(0, 40)}" from ${userName}`, "telegram");
+      log(`Not responding to "${messageText.substring(0, 40)}" from ${userName}`, "telegram");
       return;
     }
 
@@ -560,7 +561,6 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
         replyContext = `${replyAuthor} said: ${msg.reply_to_message.text}`;
       }
 
-      const conversationHistory = getRecentMessages(botConfigId, chatId, 20);
       const groupContext = await fetchGroupContext(instance, chatId, msg.chat.id);
       const response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory, groupContext);
       log(`AI response for ${userName}: "${(response || "").substring(0, 60)}..."`, "telegram");
