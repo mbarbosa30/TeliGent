@@ -348,7 +348,10 @@ Reply with ONLY "RESPOND" or "SKIP".`;
 }
 
 export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[], groupContext?: GroupContext | null): Promise<string> {
-  const knowledgeEntries = await storage.getActiveKnowledgeEntries(botConfigId);
+  const [knowledgeEntries, memories] = await Promise.all([
+    storage.getActiveKnowledgeEntries(botConfigId),
+    storage.getBotMemories(botConfigId),
+  ]);
 
   const MAX_CONTEXT_CHARS = 8000;
   let usedChars = 0;
@@ -398,6 +401,21 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     }
   }
 
+  let memoriesSection = "";
+  if (memories.length > 0) {
+    const maxMemories = Math.max(0, MAX_CONTEXT_CHARS - usedChars - 200);
+    let memText = "";
+    for (const m of memories.slice(0, 30)) {
+      const entry = `[${m.type}] ${m.content}`;
+      if (memText.length + entry.length + 2 > maxMemories) break;
+      memText += (memText ? "\n" : "") + entry;
+    }
+    if (memText) {
+      memoriesSection = `\n\n--- YOUR MEMORIES (things you've learned from past interactions) ---\n${memText}`;
+      usedChars += memText.length;
+    }
+  }
+
   const usernameClause = botUsername ? ` Your Telegram handle is @${botUsername} — when people mention @${botUsername}, they are talking to YOU.` : "";
   const systemPrompt = `You are "${config.botName}", a bot assistant in the Telegram group "${groupName}".${usernameClause}
 
@@ -407,7 +425,7 @@ The following instructions define your tone, personality, and communication styl
 ${config.personality}
 
 --- END PERSONALITY ---
-${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}
+${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}${memoriesSection}
 
 --- YOUR ROLE ---
 - You are a community assistant and active participant in this group. Engage naturally with members.

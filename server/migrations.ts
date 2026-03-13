@@ -13,6 +13,8 @@ function log(message: string) {
 export async function runMigrations() {
   const client = await pool.connect();
   try {
+    await ensureBotMemoriesTable(client);
+
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
     const hasBotConfigIdOnLogs = await columnExists(client, "activity_logs", "bot_config_id");
@@ -170,6 +172,28 @@ async function createIndexes(client: any) {
   if (created > 0) {
     log(`Ensured ${created} database indexes exist`);
   }
+}
+
+async function ensureBotMemoriesTable(client: any) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_memories'`
+  );
+  if (rows.length > 0) return;
+
+  log("Creating bot_memories table...");
+  await client.query(`
+    CREATE TABLE bot_memories (
+      id SERIAL PRIMARY KEY,
+      bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+      type TEXT NOT NULL DEFAULT 'insight',
+      content TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'auto',
+      confidence INTEGER NOT NULL DEFAULT 70,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_bot_memories_bot_config_id ON bot_memories (bot_config_id)`);
+  log("Created bot_memories table");
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {

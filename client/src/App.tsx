@@ -20,6 +20,7 @@ import SettingsPage from "@/pages/settings";
 import AccountPage from "@/pages/account";
 import LandingPage from "@/pages/landing";
 import SetupGuidePage from "@/pages/setup-guide";
+import MemoriesPage from "@/pages/memories";
 import AdminPage from "@/pages/admin";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
@@ -66,6 +67,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/knowledge" component={KnowledgeBase} />
+      <Route path="/memories" component={MemoriesPage} />
       <Route path="/activity" component={ActivityPage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/settings" component={SettingsPage} />

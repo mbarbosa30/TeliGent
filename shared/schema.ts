@@ -86,6 +86,18 @@ export const reportedScamPatterns = pgTable("reported_scam_patterns", {
   index("idx_reported_scam_patterns_bot_config_id").on(table.botConfigId),
 ]);
 
+export const botMemories = pgTable("bot_memories", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  type: text("type").notNull().default("insight"),
+  content: text("content").notNull(),
+  source: text("source").notNull().default("auto"),
+  confidence: integer("confidence").notNull().default(70),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_bot_memories_bot_config_id").on(table.botConfigId),
+]);
+
 export const insertBotConfigSchema = createInsertSchema(botConfigs).omit({
   id: true,
   createdAt: true,
@@ -122,3 +134,10 @@ export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
 export type ReportedScamPattern = typeof reportedScamPatterns.$inferSelect;
 export type InsertReportedScamPattern = z.infer<typeof insertReportedScamPatternSchema>;
+
+export const insertBotMemorySchema = createInsertSchema(botMemories).omit({
+  id: true,
+  createdAt: true,
+});
+export type BotMemory = typeof botMemories.$inferSelect;
+export type InsertBotMemory = z.infer<typeof insertBotMemorySchema>;

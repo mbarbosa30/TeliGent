@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory } from "@shared/schema";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 
 export interface IStorage {
@@ -30,6 +30,11 @@ export interface IStorage {
   getReportLogs(botConfigId: number, limit?: number, offset?: number): Promise<ActivityLog[]>;
   getReportedScamPatterns(botConfigId: number): Promise<ReportedScamPattern[]>;
   createReportedScamPattern(botConfigId: number, pattern: string, originalText?: string): Promise<ReportedScamPattern>;
+
+  getBotMemories(botConfigId: number): Promise<BotMemory[]>;
+  createBotMemory(botConfigId: number, data: Omit<InsertBotMemory, "botConfigId">): Promise<BotMemory>;
+  deleteBotMemory(botConfigId: number, id: number): Promise<void>;
+  countBotMemories(botConfigId: number): Promise<number>;
 
   getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }>;
   adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]>;
@@ -154,6 +159,24 @@ export class DatabaseStorage implements IStorage {
     if (existing.length > 0) return existing[0];
     const [created] = await db.insert(reportedScamPatterns).values({ botConfigId, pattern, originalText: originalText || null, source: "report" }).returning();
     return created;
+  }
+
+  async getBotMemories(botConfigId: number): Promise<BotMemory[]> {
+    return db.select().from(botMemories).where(eq(botMemories.botConfigId, botConfigId)).orderBy(desc(botMemories.createdAt));
+  }
+
+  async createBotMemory(botConfigId: number, data: Omit<InsertBotMemory, "botConfigId">): Promise<BotMemory> {
+    const [created] = await db.insert(botMemories).values({ ...data, botConfigId }).returning();
+    return created;
+  }
+
+  async deleteBotMemory(botConfigId: number, id: number): Promise<void> {
+    await db.delete(botMemories).where(and(eq(botMemories.id, id), eq(botMemories.botConfigId, botConfigId)));
+  }
+
+  async countBotMemories(botConfigId: number): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(botMemories).where(eq(botMemories.botConfigId, botConfigId));
+    return result.count;
   }
 
   async getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }> {

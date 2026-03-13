@@ -14,6 +14,7 @@ import { detectAndHandleScam } from "./scam-detection";
 import { handleCommand, handleDeleteRequest, checkIfReport, shouldBotRespond, generateAIResponse } from "./commands";
 import { addMessage, getRecentMessages, cleanupOldHistories } from "./conversation-history";
 import { maybeLearnFromMessage } from "./realtime-learning";
+import { maybeExtractInsight } from "./conversation-insights";
 import { scrapeUrl } from "../scraper";
 
 const activeBots = new Map<string, BotInstance>();
@@ -586,6 +587,10 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
           isReport: false,
           metadata: null,
         });
+
+        maybeExtractInsight(botConfigId, messageText, response, userName, conversationHistory, config.botName).catch(err =>
+          log(`Insight extraction error: ${err.message}`, "telegram")
+        );
       } else if (response && response.trim() === "[[SKIP]]") {
         log(`AI chose to skip message from ${userName}`, "telegram");
       } else if (!response || !response.trim()) {

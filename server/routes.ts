@@ -219,6 +219,48 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bots/:botId/memories", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const memories = await storage.getBotMemories(botId);
+      res.json(memories);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bots/:botId/memories", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const { type, content } = req.body;
+      if (!content || typeof content !== "string" || content.trim().length < 5) {
+        return res.status(400).json({ error: "Content must be at least 5 characters" });
+      }
+      const validTypes = ["correction", "preference", "topic", "context", "insight"];
+      const memType = validTypes.includes(type) ? type : "insight";
+      const memory = await storage.createBotMemory(botId, {
+        type: memType,
+        content: content.trim().slice(0, 300),
+        source: "manual",
+        confidence: 90,
+      });
+      res.json(memory);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/bots/:botId/memories/:id", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const id = parseInt(req.params.id as string);
+      await storage.deleteBotMemory(botId, id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/bots/:botId/scrape-website", isAuthenticated, requireBotOwnership, scrapeRateLimit, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
