@@ -23,6 +23,8 @@ export const botConfigs = pgTable("bot_configs", {
   autoBanThreshold: integer("auto_ban_threshold").notNull().default(0),
   trackReports: boolean("track_reports").notNull().default(true),
   reportKeywords: text("report_keywords").array().notNull().default(sql`ARRAY['report', 'issue', 'bug', 'problem', 'broken']`),
+  widgetEnabled: boolean("widget_enabled").notNull().default(false),
+  widgetKey: varchar("widget_key", { length: 64 }),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
@@ -98,6 +100,29 @@ export const botMemories = pgTable("bot_memories", {
   index("idx_bot_memories_bot_config_id").on(table.botConfigId),
 ]);
 
+export const widgetConversations = pgTable("widget_conversations", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  sessionId: varchar("session_id", { length: 64 }).notNull(),
+  visitorName: text("visitor_name"),
+  pageUrl: text("page_url"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_widget_conversations_bot_config_id").on(table.botConfigId),
+  index("idx_widget_conversations_session").on(table.botConfigId, table.sessionId),
+]);
+
+export const widgetMessages = pgTable("widget_messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").notNull().references(() => widgetConversations.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_widget_messages_conversation_id").on(table.conversationId),
+]);
+
 export const insertBotConfigSchema = createInsertSchema(botConfigs).omit({
   id: true,
   createdAt: true,
@@ -141,3 +166,17 @@ export const insertBotMemorySchema = createInsertSchema(botMemories).omit({
 });
 export type BotMemory = typeof botMemories.$inferSelect;
 export type InsertBotMemory = z.infer<typeof insertBotMemorySchema>;
+
+export const insertWidgetConversationSchema = createInsertSchema(widgetConversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertWidgetMessageSchema = createInsertSchema(widgetMessages).omit({
+  id: true,
+  createdAt: true,
+});
+export type WidgetConversation = typeof widgetConversations.$inferSelect;
+export type InsertWidgetConversation = z.infer<typeof insertWidgetConversationSchema>;
+export type WidgetMessage = typeof widgetMessages.$inferSelect;
+export type InsertWidgetMessage = z.infer<typeof insertWidgetMessageSchema>;

@@ -21,6 +21,7 @@ import AccountPage from "@/pages/account";
 import LandingPage from "@/pages/landing";
 import SetupGuidePage from "@/pages/setup-guide";
 import MemoriesPage from "@/pages/memories";
+import WidgetPage from "@/pages/widget";
 import AdminPage from "@/pages/admin";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
@@ -72,6 +73,7 @@ function Router() {
       <Route path="/reports" component={ReportsPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/setup" component={SetupGuidePage} />
+      <Route path="/widget" component={WidgetPage} />
       <Route path="/account" component={AccountPage} />
       <Route component={NotFound} />
     </Switch>

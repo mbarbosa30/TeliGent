@@ -4,9 +4,11 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
 import { startBotEngine, getWebhookStatus } from "./telegram";
+import { generateAIResponse } from "./telegram/commands";
 import { isAuthenticated, isAdminAuthenticated } from "./auth";
 import { sql } from "drizzle-orm";
 import { scrapeUrl } from "./scraper";
+import crypto from "crypto";
 
 const serverStartTime = Date.now();
 
@@ -345,6 +347,118 @@ export async function registerRoutes(
       res.json(logs);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  const widgetRateLimit = createApiRateLimiter(60 * 1000, 20);
+
+  app.post("/api/bots/:botId/widget/enable", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const widgetKey = crypto.randomBytes(24).toString("hex");
+      await storage.updateBotConfig(botId, { widgetEnabled: true, widgetKey });
+      res.json({ widgetKey });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bots/:botId/widget/disable", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      await storage.updateBotConfig(botId, { widgetEnabled: false });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/widget/conversations", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const conversations = await storage.getWidgetConversations(botId);
+      res.json(conversations);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  function widgetCors(req: Request, res: Response, next: NextFunction) {
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      res.setHeader("Access-Control-Max-Age", "86400");
+    }
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+    next();
+  }
+
+  app.options("/api/widget/:widgetKey/config", widgetCors);
+  app.options("/api/widget/:widgetKey/message", widgetCors);
+
+  app.get("/api/widget/:widgetKey/config", widgetCors, widgetRateLimit, async (req, res) => {
+    try {
+      const config = await storage.getBotByWidgetKey(req.params.widgetKey);
+      if (!config) return res.status(404).json({ error: "Widget not found" });
+      res.json({
+        botName: config.botName || "Assistant",
+        greeting: `Hi! I'm ${config.botName || "the assistant"}. How can I help you?`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/widget/:widgetKey/message", widgetCors, widgetRateLimit, async (req, res) => {
+    try {
+      const config = await storage.getBotByWidgetKey(req.params.widgetKey);
+      if (!config) return res.status(404).json({ error: "Widget not found" });
+
+      const { message, sessionId, pageUrl } = req.body;
+      if (!message || typeof message !== "string" || !sessionId || typeof sessionId !== "string") {
+        return res.status(400).json({ error: "message and sessionId are required" });
+      }
+      if (message.length > 2000) {
+        return res.status(400).json({ error: "Message too long" });
+      }
+      if (sessionId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+        return res.status(400).json({ error: "Invalid sessionId format" });
+      }
+
+      const conversation = await storage.getOrCreateWidgetConversation(config.id, sessionId, pageUrl);
+      await storage.addWidgetMessage(conversation.id, "user", message);
+
+      const history = await storage.getWidgetMessages(conversation.id, 20);
+      const conversationHistory = history.map(m => ({
+        role: m.role as "user" | "assistant",
+        name: m.role === "user" ? "Website Visitor" : (config.botName || "Assistant"),
+        content: m.content,
+        timestamp: new Date(m.createdAt).getTime(),
+      }));
+
+      const aiResponse = await generateAIResponse(
+        config.id,
+        message,
+        "Website Visitor",
+        config,
+        "Website Chat",
+        config.botName || "Assistant",
+        null,
+        false,
+        conversationHistory,
+        null,
+      );
+
+      await storage.addWidgetMessage(conversation.id, "assistant", aiResponse);
+
+      res.json({ response: aiResponse, conversationId: conversation.id });
+    } catch (err: any) {
+      console.error("Widget message error:", err);
+      res.status(500).json({ error: "Failed to generate response" });
     }
   });
 

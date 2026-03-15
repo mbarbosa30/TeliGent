@@ -14,6 +14,8 @@ export async function runMigrations() {
   const client = await pool.connect();
   try {
     await ensureBotMemoriesTable(client);
+    await ensureWidgetColumns(client);
+    await ensureWidgetTables(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -194,6 +196,58 @@ async function ensureBotMemoriesTable(client: any) {
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_bot_memories_bot_config_id ON bot_memories (bot_config_id)`);
   log("Created bot_memories table");
+}
+
+async function ensureWidgetColumns(client: any) {
+  if (!(await columnExists(client, "bot_configs", "widget_enabled"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN widget_enabled BOOLEAN NOT NULL DEFAULT false`);
+    log("Added widget_enabled to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "widget_key"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN widget_key VARCHAR(64)`);
+    log("Added widget_key to bot_configs");
+  }
+}
+
+async function ensureWidgetTables(client: any) {
+  const { rows: convRows } = await client.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_name = 'widget_conversations'`
+  );
+  if (convRows.length === 0) {
+    log("Creating widget_conversations table...");
+    await client.query(`
+      CREATE TABLE widget_conversations (
+        id SERIAL PRIMARY KEY,
+        bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+        session_id VARCHAR(64) NOT NULL,
+        visitor_name TEXT,
+        page_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_widget_conversations_bot_config_id ON widget_conversations (bot_config_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_widget_conversations_session ON widget_conversations (bot_config_id, session_id)`);
+    log("Created widget_conversations table");
+  }
+
+  const { rows: msgRows } = await client.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_name = 'widget_messages'`
+  );
+  if (msgRows.length === 0) {
+    log("Creating widget_messages table...");
+    await client.query(`
+      CREATE TABLE widget_messages (
+        id SERIAL PRIMARY KEY,
+        conversation_id INTEGER NOT NULL REFERENCES widget_conversations(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_widget_messages_conversation_id ON widget_messages (conversation_id)`);
+    log("Created widget_messages table");
+  }
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {

@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage } from "@shared/schema";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 
 export interface IStorage {
@@ -35,6 +35,12 @@ export interface IStorage {
   createBotMemory(botConfigId: number, data: Omit<InsertBotMemory, "botConfigId">): Promise<BotMemory>;
   deleteBotMemory(botConfigId: number, id: number): Promise<void>;
   countBotMemories(botConfigId: number): Promise<number>;
+
+  getBotByWidgetKey(widgetKey: string): Promise<BotConfig | undefined>;
+  getOrCreateWidgetConversation(botConfigId: number, sessionId: string, pageUrl?: string): Promise<WidgetConversation>;
+  addWidgetMessage(conversationId: number, role: string, content: string): Promise<WidgetMessage>;
+  getWidgetMessages(conversationId: number, limit?: number): Promise<WidgetMessage[]>;
+  getWidgetConversations(botConfigId: number, limit?: number): Promise<(WidgetConversation & { messageCount: number; lastMessage?: string })[]>;
 
   getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }>;
   adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]>;
@@ -177,6 +183,41 @@ export class DatabaseStorage implements IStorage {
   async countBotMemories(botConfigId: number): Promise<number> {
     const [result] = await db.select({ count: count() }).from(botMemories).where(eq(botMemories.botConfigId, botConfigId));
     return result.count;
+  }
+
+  async getBotByWidgetKey(widgetKey: string): Promise<BotConfig | undefined> {
+    const [config] = await db.select().from(botConfigs).where(and(eq(botConfigs.widgetKey, widgetKey), eq(botConfigs.widgetEnabled, true))).limit(1);
+    return config;
+  }
+
+  async getOrCreateWidgetConversation(botConfigId: number, sessionId: string, pageUrl?: string): Promise<WidgetConversation> {
+    const [existing] = await db.select().from(widgetConversations).where(and(eq(widgetConversations.botConfigId, botConfigId), eq(widgetConversations.sessionId, sessionId))).limit(1);
+    if (existing) {
+      const [updated] = await db.update(widgetConversations).set({ updatedAt: new Date(), pageUrl: pageUrl || existing.pageUrl }).where(eq(widgetConversations.id, existing.id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(widgetConversations).values({ botConfigId, sessionId, pageUrl: pageUrl || null }).returning();
+    return created;
+  }
+
+  async addWidgetMessage(conversationId: number, role: string, content: string): Promise<WidgetMessage> {
+    const [created] = await db.insert(widgetMessages).values({ conversationId, role, content }).returning();
+    return created;
+  }
+
+  async getWidgetMessages(conversationId: number, limit = 50): Promise<WidgetMessage[]> {
+    return db.select().from(widgetMessages).where(eq(widgetMessages.conversationId, conversationId)).orderBy(widgetMessages.createdAt).limit(limit);
+  }
+
+  async getWidgetConversations(botConfigId: number, limit = 50): Promise<(WidgetConversation & { messageCount: number; lastMessage?: string })[]> {
+    const convos = await db.select().from(widgetConversations).where(eq(widgetConversations.botConfigId, botConfigId)).orderBy(desc(widgetConversations.updatedAt)).limit(limit);
+    const results = [];
+    for (const c of convos) {
+      const [msgCount] = await db.select({ count: count() }).from(widgetMessages).where(eq(widgetMessages.conversationId, c.id));
+      const [lastMsg] = await db.select().from(widgetMessages).where(eq(widgetMessages.conversationId, c.id)).orderBy(desc(widgetMessages.createdAt)).limit(1);
+      results.push({ ...c, messageCount: msgCount.count, lastMessage: lastMsg?.content });
+    }
+    return results;
   }
 
   async getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }> {
