@@ -162,6 +162,17 @@ export const scamPatterns: ScamPattern[] = [
       (/\b\d+[\s,]*\d*(?:[kKmM])?\+?\s*(followers?|subscribers?|members?|audience|enthusiasts?)\b/i.test(raw) && /\b(crypto|project|token|coin|campaign|promo|growth|exposure)\b/i.test(normalized) && /\b(partner|collaborat|promot|advertis|offer|provide|elevat|grow|boost|media\s*kit|campaign|viral|drop\s*(us|me)\s*(a\s*)?message)\b/i.test(normalized)),
   },
   {
+    name: "promoForHireSpam",
+    description: "Paid promotion services advertising reach on Twitter/Telegram accounts and channels",
+    reason: "Promo-for-hire spam (paid promotion service pitch)",
+    detect: (normalized, raw) =>
+      (/\b(i\s*will|we\s*will|i\s*can|we\s*can)\s*(promot|market|boost|advertis|shill)\w*\s*(your|ur)\s*(post|project|token|coin|brand|content)\b/i.test(normalized) && /\b(twitter|telegram|youtube|tiktok|instagram|discord|channel|account|group)\b/i.test(normalized)) ||
+      (/\b(promot|market|boost|advertis)\w*\s*(your|ur)\s*(post|project|token|coin|brand|content)\b/i.test(normalized) && /\b\d+\s*(active\s*)?(twitter|telegram|youtube|tiktok|instagram|discord|channel|account|group)s?\b/i.test(raw)) ||
+      (/\b(i\s*provide|we\s*provide|i\s*offer|we\s*offer)\s*(strong|real|reliable|massive|organic|quality|best|top)?\s*(promot|market|boost|advertis|visibilit|expos)/i.test(normalized) && /\b(dm|pm|inbox|message|contact)\s*(me|us)\b/i.test(normalized)) ||
+      (/\b(promot|market|boost|advertis)\w*\s*(your|ur)\s*(post|project|token|coin|brand|content)\s*(on|across|to)\s*\d+/i.test(raw) && /\b(dm|pm|inbox|message|contact|reach|free\s*to)\b/i.test(normalized)) ||
+      (/\b(strong|real|reliable|massive)\s*(promot|visibilit|reach|expos)/i.test(normalized) && /\b\d+\s*(active\s*)?(twitter|telegram|youtube|channel|account|group)s?\b/i.test(raw) && /\b(dm|pm|inbox|message|contact|free\s*to)\b/i.test(normalized)),
+  },
+  {
     name: "volumeServiceSpam",
     description: "Offering volume/liquidity services, community-backed pumping",
     reason: "Volume/liquidity service spam (unsolicited paid service)",
@@ -299,13 +310,17 @@ export const scamPatterns: ScamPattern[] = [
     description: "Buying/selling crypto wallets with transaction history",
     reason: "Wallet buying/selling scam",
     detect: (normalized, raw) =>
-      (/\b(buy|sell|pay(ing)?)\b.{0,30}\b(wall+ets?|accounts?)\b.{0,30}\b(history|transactions?|old|empty|aged|month|year)\b/i.test(normalized)) ||
-      (/\b(need|want|looking\s*for)\b.{0,15}\b(wall+ets?|accounts?)\b.{0,30}\b(history|transactions?|old|empty|aged|month|year)\b/i.test(normalized) && /\b(pay|buy|sol|eth|usdt|write\s*me|contact|dm|pm|\dsol|\deth)\b/i.test(normalized)) ||
-      /\b(old|empty|aged)\s*(wall+ets?|accounts?)\b.{0,60}\b(pay|buy|sell|solana|sol|eth|usdt|btc)\b/i.test(normalized) ||
-      (/\b(need|want|looking\s*for)\b.{0,10}\b(old|empty|aged)\b.{0,10}\b(wall+ets?|accounts?)\b/i.test(normalized) && /\b(pay|buy|sol|eth|usdt|write\s*me|contact|dm|pm)\b/i.test(normalized)) ||
-      (/\b(need|want)\b.{0,20}\b(wall+ets?|accounts?)\b.{0,60}\b(pay|buy|paying)\b/i.test(raw) && /\d+\.?\d*\s*(sol|eth|usdt|btc|bnb)\b/i.test(raw)) ||
-      (/\b(wall+ets?|accounts?)\s*(with|that\s*(has|have))\s*.{0,30}(transactions?|history|activit)/i.test(normalized) && /\b(pay|buy|sell|sol|eth|usdt|write\s*me|contact|dm|pm|\dsol|\deth|need|want)\b/i.test(normalized)) ||
-      (/\b(need|want|looking\s*for|buy)\b.{0,30}\b(solana|sol|eth|ethereum|crypto|btc|bitcoin)\b.{0,20}\b(wall+ets?|accounts?)\b/i.test(normalized) && /\b(pay|buy|\dsol|\deth|write\s*me|contact|dm|pm)\b/i.test(normalized)),
+      (/\b(buy|sell|pay(ing)?)\b.{0,30}\b(wall+ets?|accounts?)\b.{0,30}\b(history|transactions?|old|empty|aged|dead|month|year)\b/i.test(normalized)) ||
+      (/\b(need|want|looking\s*for)\b.{0,30}\b(wall+ets?|accounts?)\b.{0,30}\b(history|transactions?|old|empty|aged|dead|month|year)\b/i.test(normalized) && /\b(pay|buy|sol|eth|usdt|write\s*me|contact|dm|pm)\b/i.test(normalized)) ||
+      (/\b(need|want|looking\s*for)\b.{0,30}\b(wall+ets?|accounts?)\b.{0,30}\b(history|transactions?|old|empty|aged|dead|month|year)\b/i.test(normalized) && /\d+\s*(sol|eth|usdt|btc|bnb)\b/i.test(raw)) ||
+      /\b(old|empty|aged|dead)\s*(wall+ets?|accounts?|tokens?)\b.{0,60}\b(pay|buy|sell|solana|sol|eth|usdt|btc)\b/i.test(normalized) ||
+      (/\b(need|want|looking\s*for)\b.{0,15}\b(old|empty|aged|dead)\b.{0,15}\b(wall+ets?|accounts?|tokens?)\b/i.test(normalized) && /\b(pay|buy|sol|eth|usdt|write\s*me|contact|dm|pm)\b/i.test(normalized)) ||
+      (/\b(need|want)\b.{0,30}\b(wall+ets?|accounts?)\b.{0,60}\b(pay|buy|paying)\b/i.test(raw) && /\d+\s*(sol|eth|usdt|btc|bnb)\b/i.test(raw)) ||
+      (/\b(wall+ets?|accounts?)\s*(with|that\s*(has|have))\s*.{0,40}(transactions?|history|activit|dead\s*tokens?)/i.test(normalized) && /\b(pay|buy|sell|sol|eth|usdt|write\s*me|contact|dm|pm|need|want)\b/i.test(normalized)) ||
+      (/\b(wall+ets?|accounts?)\s*(with|that\s*(has|have))\s*.{0,40}(transactions?|history|activit|dead\s*tokens?)/i.test(normalized) && /\d+\s*(sol|eth|usdt|btc|bnb)\b/i.test(raw)) ||
+      (/\b(need|want|looking\s*for|buy)\b.{0,30}\b(solana|sol|eth|ethereum|crypto|btc|bitcoin)\b.{0,20}\b(wall+ets?|accounts?)\b/i.test(normalized) && /\b(pay|buy|write\s*me|contact|dm|pm)\b/i.test(normalized)) ||
+      (/\b(need|want|looking\s*for|buy)\b.{0,30}\b(solana|sol|eth|ethereum|crypto|btc|bitcoin)\b.{0,20}\b(wall+ets?|accounts?)\b/i.test(normalized) && /\d+\s*(sol|eth|usdt|btc|bnb)\b/i.test(raw)) ||
+      (/\b(plenty|dead)\s*(tokens?)\b/i.test(normalized) && /\b(wall+ets?|accounts?)\b/i.test(normalized) && /\b(pay|buy|need|want|sell)\b/i.test(normalized)),
   },
   {
     name: "pumpPromoSpam",

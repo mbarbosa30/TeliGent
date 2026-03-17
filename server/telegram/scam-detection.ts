@@ -327,7 +327,7 @@ export async function detectAndHandleScam(
     hit("dmSolicitation") || hit("scamOffer") || hit("cryptoGiveawayScam") || hit("aggressiveDmSpam") ||
     hit("emojiDmSolicitation") || hit("pumpPromoSpam") || hit("boostBotPromo") ||
     hit("dmServiceMenu") || hit("serviceListSpam") || hit("coldPitchPromo") ||
-    hit("volumeServiceSpam") || hit("tokenCallCard") || hit("channelManagementPitch") ||
+    hit("promoForHireSpam") || hit("volumeServiceSpam") || hit("tokenCallCard") || hit("channelManagementPitch") ||
     hit("fakeExchangeListing") || hasFinancialShillHypeResult || hit("investmentServicePitch") ||
     hit("revenueSplitScam") || hit("formattedPitchScam") || hasLearnedPatternMatch;
 
@@ -354,6 +354,9 @@ export async function detectAndHandleScam(
   }
   if (hit("coldPitchPromo")) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("coldPitchPromo"));
+  }
+  if (hit("promoForHireSpam")) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("promoForHireSpam"));
   }
   if (hit("volumeServiceSpam")) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("volumeServiceSpam"));
@@ -469,6 +472,10 @@ export function runDeterministicScamCheck(text: string): { isScam: boolean; reas
 
   if (hit("coldPitchPromo")) {
     return { isScam: true, reason: "Cold-pitch promotion / paid promo service offer" };
+  }
+
+  if (hit("promoForHireSpam")) {
+    return { isScam: true, reason: "Promo-for-hire spam — paid promotion service pitch" };
   }
 
   if (hit("volumeServiceSpam")) {
