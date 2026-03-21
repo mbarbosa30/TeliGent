@@ -152,15 +152,26 @@ export async function generateERC8004Registration(baseUrl: string): Promise<ERC8
   };
 }
 
-export function getERC8004Status(baseUrl: string) {
+interface ERC8004Status {
+  registrationUrl: string;
+  standard: string;
+  chain: string;
+  chainId: number;
+  contractAddress: string | null;
+  tokenId: string | null;
+  mintStatus: "pending" | "minted";
+  description: string;
+}
+
+export function getERC8004Status(baseUrl: string): ERC8004Status {
   return {
     registrationUrl: `${baseUrl}/api/agent/erc8004/registration`,
     standard: "ERC-8004",
     chain: "base",
     chainId: 8453,
-    contractAddress: null as string | null,
-    tokenId: null as string | null,
-    mintStatus: "pending" as "pending" | "minted",
+    contractAddress: null,
+    tokenId: null,
+    mintStatus: "pending",
     description: "On-chain agent identity and reputation standard (ERC-721 based). Registration file hosted at public URL; NFT minting anchors the URI on-chain. Contract address and token ID are populated after minting.",
   };
 }
