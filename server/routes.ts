@@ -623,7 +623,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/agent/dashboard", isAuthenticated, async (req, res) => {
+  app.get("/api/agent/dashboard", isAdminAuthenticated, async (req, res) => {
     try {
       const { getAgentDashboard } = await import("./agent/index");
       const baseUrl = `${req.protocol}://${req.get("host")}`;

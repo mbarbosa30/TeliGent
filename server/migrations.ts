@@ -267,12 +267,23 @@ async function ensureAgentServiceLogsTable(client: any) {
         reason TEXT,
         pricing_tier TEXT NOT NULL DEFAULT 'free',
         amount_usdc TEXT DEFAULT '0',
+        payment_id TEXT,
+        payment_verified BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_agent_service_logs_created ON agent_service_logs (created_at)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_agent_service_logs_service ON agent_service_logs (service)`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_service_logs_payment_id ON agent_service_logs (payment_id) WHERE payment_id IS NOT NULL`);
     log("Created agent_service_logs table");
+  } else {
+    const hasPaymentId = await columnExists(client, "agent_service_logs", "payment_id");
+    if (!hasPaymentId) {
+      await client.query(`ALTER TABLE agent_service_logs ADD COLUMN payment_id TEXT`);
+      await client.query(`ALTER TABLE agent_service_logs ADD COLUMN payment_verified BOOLEAN DEFAULT false`);
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_service_logs_payment_id ON agent_service_logs (payment_id) WHERE payment_id IS NOT NULL`);
+      log("Added payment_id and payment_verified columns to agent_service_logs");
+    }
   }
 }
 
