@@ -481,6 +481,160 @@ export async function registerRoutes(
     }
   });
 
+  const agentRateLimit = createApiRateLimiter(60 * 1000, 30);
+
+  app.get("/api/agent/identity", agentRateLimit, async (req, res) => {
+    try {
+      const { getAgentIdentity } = await import("./agent/index");
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const identity = await getAgentIdentity(baseUrl);
+      res.json(identity);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/agent/wallet/status", agentRateLimit, async (_req, res) => {
+    try {
+      const { getWalletStatus, getLocusWalletAddress } = await import("./agent/locus");
+      const walletData = await getWalletStatus();
+      res.json({
+        configured: !!walletData,
+        address: getLocusWalletAddress() || walletData?.ownerAddress || null,
+        status: walletData?.walletStatus || "not_configured",
+        chain: walletData?.chain || "base",
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/agent/services/threat-check", agentRateLimit, async (req, res) => {
+    try {
+      const { text, useAI, paymentId, callerIdentifier } = req.body;
+      if (!text || typeof text !== "string") {
+        return res.status(400).json({ error: "Missing required field: text" });
+      }
+      if (text.length > 5000) {
+        return res.status(400).json({ error: "Text exceeds maximum length of 5000 characters" });
+      }
+
+      const pricingTier = useAI ? "ai" : "deterministic";
+      const requiredAmount = useAI ? 0.005 : 0.001;
+
+      let verified = false;
+      let amountUsdc = "0";
+      if (paymentId) {
+        const existingLog = await storage.getAgentServiceLogByPaymentId(paymentId);
+        if (existingLog) {
+          return res.status(409).json({ error: "Payment ID already used" });
+        }
+        const { verifyLocusPayment } = await import("./agent/locus");
+        const result = await verifyLocusPayment(paymentId);
+        verified = result.verified;
+        amountUsdc = result.amount || "0";
+        if (!verified || parseFloat(amountUsdc) < requiredAmount) {
+          return res.status(402).json({
+            error: "Payment required",
+            requiredAmount: requiredAmount.toString(),
+            currency: "USDC",
+            verified,
+          });
+        }
+      }
+
+      const { performThreatCheck } = await import("./agent/services");
+      const result = await performThreatCheck(text, useAI === true);
+
+      await storage.createAgentServiceLog({
+        service: "threat-check",
+        callerIdentifier: callerIdentifier || req.ip || "unknown",
+        inputLength: text.length,
+        isScam: result.isScam,
+        method: result.method,
+        reason: result.reason,
+        pricingTier,
+        amountUsdc,
+        paymentId: paymentId || null,
+        paymentVerified: verified,
+      });
+
+      res.json({
+        ...result,
+        paymentVerified: verified,
+        service: "threat-check",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/agent/services/community-health", agentRateLimit, async (req, res) => {
+    try {
+      const { paymentId, callerIdentifier } = req.body || {};
+      const requiredAmount = 0.002;
+
+      let verified = false;
+      let amountUsdc = "0";
+      if (paymentId) {
+        const existingLog = await storage.getAgentServiceLogByPaymentId(paymentId);
+        if (existingLog) {
+          return res.status(409).json({ error: "Payment ID already used" });
+        }
+        const { verifyLocusPayment } = await import("./agent/locus");
+        const result = await verifyLocusPayment(paymentId);
+        verified = result.verified;
+        amountUsdc = result.amount || "0";
+        if (!verified || parseFloat(amountUsdc) < requiredAmount) {
+          return res.status(402).json({
+            error: "Payment required",
+            requiredAmount: requiredAmount.toString(),
+            currency: "USDC",
+            verified,
+          });
+        }
+      }
+
+      const { getCommunityHealthStats } = await import("./agent/services");
+      const stats = await getCommunityHealthStats();
+
+      await storage.createAgentServiceLog({
+        service: "community-health",
+        callerIdentifier: callerIdentifier || req.ip || "unknown",
+        inputLength: 0,
+        isScam: null,
+        method: null,
+        reason: null,
+        pricingTier: "standard",
+        amountUsdc,
+        paymentId: paymentId || null,
+        paymentVerified: verified,
+      });
+
+      res.json({
+        ...stats,
+        paymentVerified: verified,
+        service: "community-health",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/agent/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const { getAgentDashboard } = await import("./agent/index");
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const dashboard = await getAgentDashboard(baseUrl);
+      const logs = await storage.getAgentServiceLogs(50);
+      res.json({ ...dashboard, recentLogs: logs });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   await startBotEngine(app);
 
   return httpServer;

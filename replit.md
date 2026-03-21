@@ -18,6 +18,7 @@ I prefer simple language and detailed explanations. I want iterative development
 **Scam Detection**: Combines homoglyph normalization, extensive deterministic regex patterns, name impersonation detection, and an AI fallback (GPT-5.2). It includes report-based learning to extract and store key phrase bigrams from user reports, and a configurable auto-ban feature for repeat offenders. Structural and token-based scam patterns are implemented for language-agnostic detection.
 **Group Context**: Bot fetches and caches group descriptions and pinned messages, injecting them into the AI system prompt.
 **Website Auto-scrape**: Bots can automatically scrape a configured `websiteUrl` for content if empty, using a shared scraper module.
+**Master Agent (Agent-to-Agent API)**: An autonomous agent layer (`server/agent/`) that exposes TeliGent's scam detection and threat intelligence as public API services for other agents. Includes Locus payment integration on Base (USDC) for paid service calls. Endpoints: `/api/agent/identity` (manifest), `/api/agent/services/threat-check` (scam analysis), `/api/agent/services/community-health` (aggregated stats), `/api/agent/wallet/status` (Locus wallet). Service requests are logged in `agent_service_logs` table. Dashboard at `/agent` in the frontend.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database.
@@ -31,3 +32,4 @@ I prefer simple language and detailed explanations. I want iterative development
 - **express-session**: Session management.
 - **connect-pg-simple**: PostgreSQL store for sessions.
 - **Drizzle ORM**: ORM for TypeScript and PostgreSQL.
+- **Locus API**: Agent wallet and payment infrastructure on Base (USDC). Used for agent-to-agent service payments.

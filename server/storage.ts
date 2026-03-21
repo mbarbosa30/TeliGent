@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog } from "@shared/schema";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 
 export interface IStorage {
@@ -47,6 +47,11 @@ export interface IStorage {
   adminGetAllBots(): Promise<(BotConfig & { userEmail?: string })[]>;
   adminGetAllActivityLogs(limit?: number): Promise<(ActivityLog & { botName?: string })[]>;
   adminGetStats(): Promise<{ totalUsers: number; totalBots: number; totalGroups: number; totalLogs: number; totalScams: number }>;
+
+  createAgentServiceLog(data: Omit<InsertAgentServiceLog, "id" | "createdAt">): Promise<AgentServiceLog>;
+  getAgentServiceLogs(limit?: number): Promise<AgentServiceLog[]>;
+  getAgentServiceLogByPaymentId(paymentId: string): Promise<AgentServiceLog | undefined>;
+  getAgentServiceStats(): Promise<{ totalRequests: number; totalEarnings: string; requestsToday: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -280,6 +285,37 @@ export class DatabaseStorage implements IStorage {
       totalGroups: groupCount.count,
       totalLogs: logCount.count,
       totalScams: scamCount.count,
+    };
+  }
+
+  async createAgentServiceLog(data: Omit<InsertAgentServiceLog, "id" | "createdAt">): Promise<AgentServiceLog> {
+    const [log] = await db.insert(agentServiceLogs).values(data).returning();
+    return log;
+  }
+
+  async getAgentServiceLogs(limit = 100): Promise<AgentServiceLog[]> {
+    return db.select().from(agentServiceLogs).orderBy(desc(agentServiceLogs.createdAt)).limit(limit);
+  }
+
+  async getAgentServiceLogByPaymentId(paymentId: string): Promise<AgentServiceLog | undefined> {
+    const [log] = await db.select().from(agentServiceLogs).where(eq(agentServiceLogs.paymentId, paymentId)).limit(1);
+    return log;
+  }
+
+  async getAgentServiceStats(): Promise<{ totalRequests: number; totalEarnings: string; requestsToday: number }> {
+    const [totalCount] = await db.select({ count: count() }).from(agentServiceLogs);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const [todayCount] = await db.select({ count: count() }).from(agentServiceLogs).where(
+      sql`${agentServiceLogs.createdAt} >= ${todayStart}`
+    );
+    const [earningsResult] = await db.select({
+      total: sql<string>`COALESCE(SUM(CAST(${agentServiceLogs.amountUsdc} AS DECIMAL)), 0)`,
+    }).from(agentServiceLogs);
+    return {
+      totalRequests: totalCount.count,
+      totalEarnings: String(earningsResult.total || "0"),
+      requestsToday: todayCount.count,
     };
   }
 }

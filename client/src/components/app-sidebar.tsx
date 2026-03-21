@@ -11,7 +11,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, BookOpen, Settings, Activity, Bot, Shield, LogOut, Sparkles, Plus, ChevronDown, UserCircle, Brain, Code } from "lucide-react";
+import { LayoutDashboard, BookOpen, Settings, Activity, Bot, Shield, LogOut, Sparkles, Plus, ChevronDown, UserCircle, Brain, Code, Cpu } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +36,7 @@ const navItems = [
   { title: "Activity Log", url: "/activity", icon: Activity },
   { title: "Reports", url: "/reports", icon: Shield },
   { title: "Widget", url: "/widget", icon: Code },
+  { title: "Master Agent", url: "/agent", icon: Cpu },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 

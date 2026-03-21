@@ -180,3 +180,28 @@ export type WidgetConversation = typeof widgetConversations.$inferSelect;
 export type InsertWidgetConversation = z.infer<typeof insertWidgetConversationSchema>;
 export type WidgetMessage = typeof widgetMessages.$inferSelect;
 export type InsertWidgetMessage = z.infer<typeof insertWidgetMessageSchema>;
+
+export const agentServiceLogs = pgTable("agent_service_logs", {
+  id: serial("id").primaryKey(),
+  service: text("service").notNull(),
+  callerIdentifier: text("caller_identifier"),
+  inputLength: integer("input_length"),
+  isScam: boolean("is_scam"),
+  method: text("method"),
+  reason: text("reason"),
+  pricingTier: text("pricing_tier").notNull().default("free"),
+  amountUsdc: text("amount_usdc").default("0"),
+  paymentId: text("payment_id"),
+  paymentVerified: boolean("payment_verified").default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_agent_service_logs_created").on(table.createdAt),
+  index("idx_agent_service_logs_service").on(table.service),
+]);
+
+export const insertAgentServiceLogSchema = createInsertSchema(agentServiceLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type AgentServiceLog = typeof agentServiceLogs.$inferSelect;
+export type InsertAgentServiceLog = z.infer<typeof insertAgentServiceLogSchema>;

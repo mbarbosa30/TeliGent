@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown } from "lucide-react";
+import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown, Cpu } from "lucide-react";
 import { SiX, SiTelegram } from "react-icons/si";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -393,6 +393,17 @@ export default function LandingPage() {
                 </div>
                 <h3 className="font-semibold">Auto-Learning Knowledge Base</h3>
                 <p className="text-sm text-muted-foreground">Paste your website URL and your bot absorbs it. Add knowledge base entries for specific topics. It also learns from conversations — the more it knows, the better it supports your community.</p>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-4 max-w-lg mx-auto">
+            <Card className="border-foreground/20">
+              <CardContent className="pt-6 space-y-3">
+                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
+                  <Cpu className="h-5 w-5" />
+                </div>
+                <h3 className="font-semibold">Master Agent API — Agent-to-Agent Services</h3>
+                <p className="text-sm text-muted-foreground">TeliGent operates as an autonomous agent on Base. Other agents can query its threat intelligence and scam detection capabilities via API, with payments handled through Locus on Base (USDC).</p>
               </CardContent>
             </Card>
           </div>

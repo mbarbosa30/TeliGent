@@ -1,0 +1,259 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Loader2, Copy, Check, Cpu, Wallet, Activity, Shield, Zap, ExternalLink } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+export default function AgentPage() {
+  const { toast } = useToast();
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const { data: dashboard, isLoading, isError } = useQuery<any>({
+    queryKey: ["/api/agent/dashboard"],
+  });
+
+  const handleCopy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    toast({ title: "Copied", description: `${label} copied to clipboard.` });
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center space-y-2">
+          <p className="text-sm text-destructive font-medium" data-testid="text-error">Failed to load agent dashboard</p>
+          <p className="text-xs text-muted-foreground">Check your connection and try refreshing the page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const identity = dashboard?.identity;
+  const stats = dashboard?.serviceStats;
+  const logs = dashboard?.recentLogs || [];
+  const baseUrl = window.location.origin;
+
+  const curlExample = `curl -X POST ${baseUrl}/api/agent/services/threat-check \\
+  -H "Content-Type: application/json" \\
+  -d '{"text": "DM me for guaranteed 100x returns on your investment"}'`;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Master Agent</h1>
+        <p className="text-muted-foreground mt-1">Autonomous community protection agent on Base</p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 bg-foreground flex items-center justify-center">
+                <Cpu className="h-5 w-5 text-background" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Status</p>
+                <Badge variant={dashboard?.isConfigured ? "default" : "secondary"} data-testid="badge-agent-status">
+                  {dashboard?.isConfigured ? "Active" : "Not Configured"}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 bg-foreground flex items-center justify-center">
+                <Activity className="h-5 w-5 text-background" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Requests</p>
+                <p className="text-2xl font-bold font-mono" data-testid="text-total-requests">{stats?.totalRequests || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 bg-foreground flex items-center justify-center">
+                <Zap className="h-5 w-5 text-background" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Today</p>
+                <p className="text-2xl font-bold font-mono" data-testid="text-requests-today">{stats?.requestsToday || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 bg-foreground flex items-center justify-center">
+                <Wallet className="h-5 w-5 text-background" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Earnings</p>
+                <p className="text-2xl font-bold font-mono" data-testid="text-total-earnings">${stats?.totalEarnings || "0.00"}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="h-4 w-4" />
+              Agent Identity
+            </CardTitle>
+            <CardDescription>Public agent manifest for other agents to discover</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Name</span>
+                <span className="text-sm font-medium" data-testid="text-agent-name">{identity?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Version</span>
+                <span className="text-sm font-mono">{identity?.version}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Chain</span>
+                <Badge variant="outline">{identity?.chain?.toUpperCase()}</Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Wallet</span>
+                <span className="text-xs font-mono truncate max-w-[200px]" data-testid="text-wallet-address">
+                  {identity?.walletAddress || "Not configured"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Wallet Status</span>
+                <Badge variant={identity?.walletStatus === "deployed" ? "default" : "secondary"}>
+                  {identity?.walletStatus || "N/A"}
+                </Badge>
+              </div>
+            </div>
+            <div className="pt-2 border-t">
+              <p className="text-sm text-muted-foreground mb-2">Identity Endpoint</p>
+              <div className="flex items-center gap-2">
+                <code className="text-xs bg-muted p-2 flex-1 truncate font-mono">{identity?.endpoints?.identity}</code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => handleCopy(identity?.endpoints?.identity || "", "Endpoint")}
+                  data-testid="button-copy-identity-url"
+                >
+                  {copied === "Endpoint" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Services & Pricing
+            </CardTitle>
+            <CardDescription>Agent-to-agent paid services via Locus on Base</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {identity?.pricing && Object.entries(identity.pricing).map(([key, pricing]: [string, any]) => (
+              <div key={key} className="p-3 border bg-muted/30">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm font-medium">{key}</span>
+                  <Badge variant="outline" className="font-mono">{pricing.price} {pricing.currency}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">{pricing.description}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Try It — Threat Check API</CardTitle>
+          <CardDescription>Test the agent's scam detection service</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="bg-muted p-4 overflow-x-auto">
+            <pre className="text-xs font-mono whitespace-pre-wrap" data-testid="text-curl-example">{curlExample}</pre>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleCopy(curlExample, "curl")}
+              data-testid="button-copy-curl"
+            >
+              {copied === "curl" ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+              Copy
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(`${baseUrl}/api/agent/identity`, "_blank")}
+              data-testid="button-view-identity"
+            >
+              <ExternalLink className="h-3.5 w-3.5 mr-1" />
+              View Identity JSON
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Service Activity</CardTitle>
+          <CardDescription>Log of agent-to-agent service requests</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {logs.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-no-logs">
+              No service requests yet. Use the API endpoints above to get started.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {logs.map((log: any) => (
+                <div key={log.id} className="flex items-center justify-between p-3 border bg-muted/20 text-sm" data-testid={`row-log-${log.id}`}>
+                  <div className="flex items-center gap-3">
+                    <Badge variant={log.isScam ? "destructive" : "secondary"} className="text-xs">
+                      {log.isScam ? "THREAT" : "CLEAN"}
+                    </Badge>
+                    <span className="font-mono text-xs">{log.service}</span>
+                    <span className="text-muted-foreground text-xs truncate max-w-[200px]">{log.reason}</span>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <Badge variant="outline" className="font-mono text-xs">{log.pricingTier}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(log.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

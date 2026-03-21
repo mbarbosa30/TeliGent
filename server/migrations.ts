@@ -16,6 +16,7 @@ export async function runMigrations() {
     await ensureBotMemoriesTable(client);
     await ensureWidgetColumns(client);
     await ensureWidgetTables(client);
+    await ensureAgentServiceLogsTable(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -247,6 +248,31 @@ async function ensureWidgetTables(client: any) {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_widget_messages_conversation_id ON widget_messages (conversation_id)`);
     log("Created widget_messages table");
+  }
+}
+
+async function ensureAgentServiceLogsTable(client: any) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_service_logs'`
+  );
+  if (rows.length === 0) {
+    await client.query(`
+      CREATE TABLE agent_service_logs (
+        id SERIAL PRIMARY KEY,
+        service TEXT NOT NULL,
+        caller_identifier TEXT,
+        input_length INTEGER,
+        is_scam BOOLEAN,
+        method TEXT,
+        reason TEXT,
+        pricing_tier TEXT NOT NULL DEFAULT 'free',
+        amount_usdc TEXT DEFAULT '0',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_agent_service_logs_created ON agent_service_logs (created_at)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_agent_service_logs_service ON agent_service_logs (service)`);
+    log("Created agent_service_logs table");
   }
 }
 
