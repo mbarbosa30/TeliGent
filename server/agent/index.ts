@@ -64,7 +64,7 @@ export interface AgentIdentity {
 export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> {
   const walletStatus = await getWalletStatus();
   const selfStatus = await getTeliGentSelfStatus();
-  const openServStatus = getOpenServStatus();
+  const openServStatus = await getOpenServStatus();
   const manifest = getOpenServManifest(baseUrl);
 
   return {
@@ -171,7 +171,7 @@ export async function getAgentDashboard(baseUrl: string): Promise<AgentDashboard
   const identity = await getAgentIdentity(baseUrl);
   const apiKey = getLocusApiKey();
   const selfStatus = await getTeliGentSelfStatus();
-  const openServStatus = getOpenServStatus();
+  const openServStatus = await getOpenServStatus();
   const { storage } = await import("../storage");
 
   const stats = await storage.getAgentServiceStats();

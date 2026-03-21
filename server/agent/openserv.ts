@@ -18,11 +18,21 @@ export interface OpenServStatus {
   totalInvocations: number;
 }
 
-export function getOpenServStatus(): OpenServStatus {
+export async function getOpenServStatus(): Promise<OpenServStatus> {
+  let dbInvocations = totalInvocations;
+  try {
+    const { db } = await import("../db");
+    const { sql } = await import("drizzle-orm");
+    const result = await db.execute(sql`SELECT COUNT(*) as count FROM agent_service_logs WHERE caller_identifier LIKE 'openserv:%'`);
+    const count = Number(result.rows?.[0]?.count ?? 0);
+    dbInvocations = Math.max(count, totalInvocations);
+  } catch {
+    dbInvocations = totalInvocations;
+  }
   return {
     configured: isOpenServConfigured(),
     capabilities: ["threat-check", "threat-check-ai", "community-health"],
-    totalInvocations,
+    totalInvocations: dbInvocations,
   };
 }
 
