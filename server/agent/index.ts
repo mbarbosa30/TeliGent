@@ -1,6 +1,7 @@
 import { getLocusApiKey, getLocusWalletAddress, getWalletStatus } from "./locus";
 import { getTeliGentSelfStatus } from "./self";
 import { getOpenServStatus, getOpenServManifest } from "./openserv";
+import { getERC8004Status } from "./erc8004";
 
 export interface AgentIdentity {
   name: string;
@@ -45,6 +46,12 @@ export interface AgentIdentity {
       verificationHeaders: string[];
     };
   };
+  erc8004: {
+    registrationUrl: string;
+    chain: string;
+    standard: string;
+    description: string;
+  };
   endpoints: {
     identity: string;
     threatCheck: string;
@@ -53,6 +60,7 @@ export interface AgentIdentity {
     openServInvoke: string;
     openServHealth: string;
     agentCard: string;
+    erc8004Registration: string;
   };
   links: {
     website: string;
@@ -127,6 +135,7 @@ export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> 
     },
     payment: manifest.payment,
     trust: manifest.trust,
+    erc8004: getERC8004Status(baseUrl),
     endpoints: {
       identity: `${baseUrl}/api/agent/identity`,
       threatCheck: `${baseUrl}/api/agent/services/threat-check`,
@@ -135,6 +144,7 @@ export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> 
       openServInvoke: `${baseUrl}/api/agent/openserv/invoke`,
       openServHealth: `${baseUrl}/api/agent/openserv/health`,
       agentCard: `${baseUrl}/.well-known/agent.json`,
+      erc8004Registration: `${baseUrl}/api/agent/erc8004/registration`,
     },
     links: {
       website: "https://teli.gent",

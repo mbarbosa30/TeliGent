@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Copy, Check, Cpu, Wallet, Activity, Shield, Zap, ExternalLink, Fingerprint, ShieldCheck, Globe } from "lucide-react";
+import { Loader2, Copy, Check, Cpu, Wallet, Activity, Shield, Zap, ExternalLink, Fingerprint, ShieldCheck, Globe, Link } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AgentPage() {
@@ -128,7 +128,7 @@ export default function AgentPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -297,6 +297,63 @@ export default function AgentPage() {
                 {openServStatus?.configured
                   ? "TeliGent is available on the OpenServ multi-agent marketplace. Other agents can discover and invoke threat detection capabilities directly."
                   : "Set OPENSERV_API_KEY to register on the OpenServ marketplace and make TeliGent's capabilities discoverable to other agents."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Link className="h-4 w-4" />
+              ERC-8004 — On-chain Identity
+            </CardTitle>
+            <CardDescription>Verifiable agent identity anchored on-chain via ERC-8004</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Standard</span>
+                <Badge variant="default" data-testid="badge-erc8004-standard">ERC-8004</Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Chain</span>
+                <Badge variant="outline">{identity?.erc8004?.chain?.toUpperCase() || "BASE"}</Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Status</span>
+                <Badge variant="secondary" data-testid="badge-erc8004-status">Registration Hosted</Badge>
+              </div>
+            </div>
+            <div className="pt-2 border-t">
+              <p className="text-sm text-muted-foreground mb-2">Registration File</p>
+              <div className="flex items-center gap-2">
+                <code className="text-xs bg-muted p-2 flex-1 truncate font-mono" data-testid="text-erc8004-url">{identity?.erc8004?.registrationUrl || `${baseUrl}/api/agent/erc8004/registration`}</code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => handleCopy(identity?.erc8004?.registrationUrl || `${baseUrl}/api/agent/erc8004/registration`, "ERC-8004")}
+                  data-testid="button-copy-erc8004-url"
+                >
+                  {copied === "ERC-8004" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(identity?.erc8004?.registrationUrl || `${baseUrl}/api/agent/erc8004/registration`, "_blank")}
+                data-testid="button-view-erc8004"
+              >
+                <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                View Registration JSON
+              </Button>
+            </div>
+            <div className="pt-2 border-t">
+              <p className="text-xs text-muted-foreground">
+                ERC-8004 is an ERC-721 based standard for trustless agent identity, reputation, and validation. The registration file describes capabilities, endpoints, and trust models. Mint as an NFT to anchor this identity on-chain.
               </p>
             </div>
           </CardContent>

@@ -487,6 +487,17 @@ export async function registerRoutes(
   const { registerOpenServRoutes } = await import("./agent/openserv");
   registerOpenServRoutes(app);
 
+  app.get("/api/agent/erc8004/registration", agentRateLimit, async (req, res) => {
+    try {
+      const { generateERC8004Registration } = await import("./agent/erc8004");
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const registration = await generateERC8004Registration(baseUrl);
+      res.json(registration);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/agent/identity", agentRateLimit, async (req, res) => {
     try {
       const { getAgentIdentity } = await import("./agent/index");
