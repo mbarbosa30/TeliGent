@@ -1,11 +1,7 @@
-import express from "express";
+import type { Express } from "express";
 import { log } from "../index";
 import { getLocusWalletAddress } from "./locus";
 
-const OPENSERV_PORT = parseInt(process.env.OPENSERV_PORT || "7378", 10);
-
-let serverStarted = false;
-let serverError: string | null = null;
 let totalInvocations = 0;
 
 export function getOpenServApiKey(): string | null {
@@ -18,20 +14,14 @@ export function isOpenServConfigured(): boolean {
 
 export interface OpenServStatus {
   configured: boolean;
-  running: boolean;
-  port: number;
   capabilities: string[];
-  error: string | null;
   totalInvocations: number;
 }
 
 export function getOpenServStatus(): OpenServStatus {
   return {
     configured: isOpenServConfigured(),
-    running: serverStarted,
-    port: OPENSERV_PORT,
     capabilities: ["threat-check", "threat-check-ai", "community-health"],
-    error: serverError,
     totalInvocations,
   };
 }
@@ -91,7 +81,7 @@ const capabilityDefs: CapabilityDef[] = [
   },
 ];
 
-export function getOpenServAgentCard(baseUrl: string) {
+export function getOpenServManifest(baseUrl: string) {
   const walletAddress = getLocusWalletAddress();
 
   return {
@@ -112,23 +102,23 @@ export function getOpenServAgentCard(baseUrl: string) {
       },
     })),
     endpoints: {
-      invoke: `${baseUrl}/`,
-      health: `${baseUrl}/health`,
-      agentCard: `${baseUrl}/.well-known/agent.json`,
-      identity: `${baseUrl.replace(`:${OPENSERV_PORT}`, ":5000")}/api/agent/identity`,
+      invoke: `${baseUrl}/api/agent/openserv/invoke`,
+      health: `${baseUrl}/api/agent/openserv/health`,
+      identity: `${baseUrl}/api/agent/identity`,
+      threatCheck: `${baseUrl}/api/agent/services/threat-check`,
+      communityHealth: `${baseUrl}/api/agent/services/community-health`,
     },
     payment: {
       address: walletAddress || null,
       currency: "USDC",
       chain: "base",
       protocol: "locus",
-      note: "Service invocations via OpenServ marketplace are logged. For direct API calls, use /api/agent/services/* endpoints with Locus payment verification.",
     },
     trust: {
       selfProtocol: {
         chain: "celo",
         description: "Self-verified calling agents receive 50% pricing discount and higher rate limits (60/min vs 30/min)",
-        headers: ["x-self-agent-address", "x-self-agent-signature", "x-self-agent-timestamp"],
+        verificationHeaders: ["x-self-agent-address", "x-self-agent-signature", "x-self-agent-timestamp"],
       },
     },
     provider: {
@@ -167,104 +157,79 @@ async function logOpenServInvocation(capName: string, result: string, callerInfo
   }
 }
 
-export async function startOpenServAgent(): Promise<void> {
+export function registerOpenServRoutes(app: Express): void {
   const apiKey = getOpenServApiKey();
   if (!apiKey) {
     log("OpenServ not configured — OPENSERV_API_KEY not set", "agent");
     return;
   }
 
-  if (serverStarted) {
-    log("OpenServ agent already running", "agent");
-    return;
-  }
-
-  try {
-    const app = express();
-    app.use(express.json());
-
-    app.post("/", async (req, res) => {
-      try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
-          return res.status(401).json({ error: "Unauthorized" });
-        }
-
-        const { type, capability, args, taskId, workspaceId } = req.body;
-
-        if (type === "capability_invoke" || type === "do_task") {
-          const capName = capability || req.body.task?.capability;
-          const capArgs = args || req.body.task?.args || {};
-
-          const cap = capabilityDefs.find((c) => c.name === capName);
-          if (!cap) {
-            return res.status(404).json({ error: `Unknown capability: ${capName}` });
-          }
-
-          log(`OpenServ invocation: ${capName} (workspace: ${workspaceId || "N/A"}, task: ${taskId || "N/A"})`, "agent");
-
-          const result = await cap.run(capArgs);
-          totalInvocations++;
-
-          const callerInfo = `ws-${workspaceId || "unknown"}/task-${taskId || "unknown"}`;
-          logOpenServInvocation(capName, result, callerInfo);
-
-          return res.json({
-            success: true,
-            result,
-            capability: capName,
-            taskId,
-          });
-        }
-
-        if (type === "get_capabilities" || type === "list_capabilities") {
-          return res.json({
-            capabilities: capabilityDefs.map((c) => ({
-              name: c.name,
-              description: c.description,
-              parameters: c.parameters,
-              pricing: { amount: c.priceUsdc, currency: "USDC" },
-            })),
-          });
-        }
-
-        return res.status(400).json({ error: `Unknown request type: ${type}` });
-      } catch (err: any) {
-        log(`OpenServ request error: ${err.message}`, "agent");
-        return res.status(500).json({ error: err.message });
+  app.post("/api/agent/openserv/invoke", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
+        return res.status(401).json({ error: "Unauthorized" });
       }
-    });
 
-    app.get("/health", (_req, res) => {
-      res.json({
-        status: "ok",
-        agent: "TeliGent Master Agent",
-        version: "1.2.0",
-        capabilities: capabilityDefs.length,
-        totalInvocations,
-      });
-    });
+      const { type, capability, args, taskId, workspaceId } = req.body;
 
-    app.get("/.well-known/agent.json", (req, res) => {
-      const baseUrl = `${req.protocol}://${req.get("host")}`;
-      res.json(getOpenServAgentCard(baseUrl));
-    });
+      if (type === "capability_invoke" || type === "do_task") {
+        const capName = capability || req.body.task?.capability;
+        const capArgs = args || req.body.task?.args || {};
 
-    await new Promise<void>((resolve, reject) => {
-      const server = app.listen(OPENSERV_PORT, "0.0.0.0", () => {
-        serverStarted = true;
-        serverError = null;
-        log(`OpenServ agent started on port ${OPENSERV_PORT} with ${capabilityDefs.length} capabilities`, "agent");
-        resolve();
-      });
-      server.on("error", (err: any) => {
-        serverError = err.message;
-        log(`OpenServ agent failed to start: ${err.message}`, "agent");
-        reject(err);
-      });
+        const cap = capabilityDefs.find((c) => c.name === capName);
+        if (!cap) {
+          return res.status(404).json({ error: `Unknown capability: ${capName}` });
+        }
+
+        log(`OpenServ invocation: ${capName} (workspace: ${workspaceId || "N/A"}, task: ${taskId || "N/A"})`, "agent");
+
+        const result = await cap.run(capArgs);
+        totalInvocations++;
+
+        const callerInfo = `ws-${workspaceId || "unknown"}/task-${taskId || "unknown"}`;
+        logOpenServInvocation(capName, result, callerInfo);
+
+        return res.json({
+          success: true,
+          result,
+          capability: capName,
+          taskId,
+        });
+      }
+
+      if (type === "get_capabilities" || type === "list_capabilities") {
+        return res.json({
+          capabilities: capabilityDefs.map((c) => ({
+            name: c.name,
+            description: c.description,
+            parameters: c.parameters,
+            pricing: { amount: c.priceUsdc, currency: "USDC" },
+          })),
+        });
+      }
+
+      return res.status(400).json({ error: `Unknown request type: ${type}` });
+    } catch (err: any) {
+      log(`OpenServ request error: ${err.message}`, "agent");
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/agent/openserv/health", (_req, res) => {
+    res.json({
+      status: "ok",
+      agent: "TeliGent Master Agent",
+      version: "1.2.0",
+      capabilities: capabilityDefs.length,
+      totalInvocations,
     });
-  } catch (err: any) {
-    serverError = err.message;
-    log(`Failed to start OpenServ agent: ${err.message}`, "agent");
-  }
+  });
+
+  app.get("/.well-known/agent.json", (req, res) => {
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    res.json(getOpenServManifest(baseUrl));
+  });
+
+  log(`OpenServ routes registered with ${capabilityDefs.length} capabilities`, "agent");
 }

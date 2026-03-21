@@ -119,15 +119,8 @@ app.use((req, res, next) => {
       host: "0.0.0.0",
       reusePort: true,
     },
-    async () => {
+    () => {
       log(`serving on port ${port}`);
-
-      try {
-        const { startOpenServAgent } = await import("./agent/openserv");
-        await startOpenServAgent();
-      } catch (err: any) {
-        log(`OpenServ agent startup skipped: ${err.message}`);
-      }
     },
   );
 })();

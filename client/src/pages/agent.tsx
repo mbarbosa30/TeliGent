@@ -269,21 +269,15 @@ export default function AgentPage() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Status</span>
-                <Badge variant={openServStatus?.running ? "default" : openServStatus?.configured ? "secondary" : "outline"} data-testid="badge-openserv-status">
-                  {openServStatus?.running ? "Running" : openServStatus?.configured ? "Configured" : "Not Configured"}
+                <Badge variant={openServStatus?.configured ? "default" : "outline"} data-testid="badge-openserv-status">
+                  {openServStatus?.configured ? "Active" : "Not Configured"}
                 </Badge>
               </div>
-              {openServStatus?.running && (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Port</span>
-                    <span className="text-sm font-mono">{openServStatus.port}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Invocations</span>
-                    <span className="text-sm font-mono" data-testid="text-openserv-invocations">{openServStatus.totalInvocations || 0}</span>
-                  </div>
-                </>
+              {openServStatus?.configured && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Invocations</span>
+                  <span className="text-sm font-mono" data-testid="text-openserv-invocations">{openServStatus.totalInvocations || 0}</span>
+                </div>
               )}
             </div>
             {openServStatus?.capabilities && openServStatus.capabilities.length > 0 && (

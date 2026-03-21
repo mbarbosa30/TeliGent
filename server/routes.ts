@@ -484,6 +484,9 @@ export async function registerRoutes(
   const agentRateLimit = createApiRateLimiter(60 * 1000, 30);
   const agentTrustRateLimit = createApiRateLimiter(60 * 1000, 60);
 
+  const { registerOpenServRoutes } = await import("./agent/openserv");
+  registerOpenServRoutes(app);
+
   app.get("/api/agent/identity", agentRateLimit, async (req, res) => {
     try {
       const { getAgentIdentity } = await import("./agent/index");

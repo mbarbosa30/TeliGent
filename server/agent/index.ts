@@ -1,6 +1,6 @@
 import { getLocusApiKey, getLocusWalletAddress, getWalletStatus } from "./locus";
 import { getTeliGentSelfStatus } from "./self";
-import { getOpenServStatus } from "./openserv";
+import { getOpenServStatus, getOpenServManifest } from "./openserv";
 
 export interface AgentIdentity {
   name: string;
@@ -25,14 +25,34 @@ export interface AgentIdentity {
   };
   openServ: {
     configured: boolean;
-    running: boolean;
-    capabilities: string[];
+    capabilities: Array<{
+      name: string;
+      description: string;
+      parameters: Record<string, any>;
+      pricing: { amount: string; currency: string; chain: string; protocol: string };
+    }>;
+  };
+  payment: {
+    address: string | null;
+    currency: string;
+    chain: string;
+    protocol: string;
+  };
+  trust: {
+    selfProtocol: {
+      chain: string;
+      description: string;
+      verificationHeaders: string[];
+    };
   };
   endpoints: {
     identity: string;
     threatCheck: string;
     communityHealth: string;
     walletStatus: string;
+    openServInvoke: string;
+    openServHealth: string;
+    agentCard: string;
   };
   links: {
     website: string;
@@ -45,6 +65,7 @@ export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> 
   const walletStatus = await getWalletStatus();
   const selfStatus = await getTeliGentSelfStatus();
   const openServStatus = getOpenServStatus();
+  const manifest = getOpenServManifest(baseUrl);
 
   return {
     name: "TeliGent Master Agent",
@@ -102,14 +123,18 @@ export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> 
     },
     openServ: {
       configured: openServStatus.configured,
-      running: openServStatus.running,
-      capabilities: openServStatus.capabilities,
+      capabilities: manifest.capabilities,
     },
+    payment: manifest.payment,
+    trust: manifest.trust,
     endpoints: {
       identity: `${baseUrl}/api/agent/identity`,
       threatCheck: `${baseUrl}/api/agent/services/threat-check`,
       communityHealth: `${baseUrl}/api/agent/services/community-health`,
       walletStatus: `${baseUrl}/api/agent/wallet/status`,
+      openServInvoke: `${baseUrl}/api/agent/openserv/invoke`,
+      openServHealth: `${baseUrl}/api/agent/openserv/health`,
+      agentCard: `${baseUrl}/.well-known/agent.json`,
     },
     links: {
       website: "https://teli.gent",
@@ -130,10 +155,7 @@ export interface AgentDashboardData {
   };
   openServStatus: {
     configured: boolean;
-    running: boolean;
-    port: number;
     capabilities: string[];
-    error: string | null;
     totalInvocations: number;
   };
   serviceStats: {
