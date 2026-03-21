@@ -522,25 +522,31 @@ export async function registerRoutes(
       const pricingTier = useAI ? "ai" : "deterministic";
       const requiredAmount = useAI ? 0.005 : 0.001;
 
-      let verified = false;
-      let amountUsdc = "0";
-      if (paymentId) {
-        const existingLog = await storage.getAgentServiceLogByPaymentId(paymentId);
-        if (existingLog) {
-          return res.status(409).json({ error: "Payment ID already used" });
-        }
-        const { verifyLocusPayment } = await import("./agent/locus");
-        const result = await verifyLocusPayment(paymentId);
-        verified = result.verified;
-        amountUsdc = result.amount || "0";
-        if (!verified || parseFloat(amountUsdc) < requiredAmount) {
-          return res.status(402).json({
-            error: "Payment required",
-            requiredAmount: requiredAmount.toString(),
-            currency: "USDC",
-            verified,
-          });
-        }
+      if (!paymentId) {
+        return res.status(402).json({
+          error: "Payment required",
+          message: "Provide a valid Locus paymentId to use this service",
+          requiredAmount: requiredAmount.toString(),
+          currency: "USDC",
+          tier: pricingTier,
+        });
+      }
+
+      const existingLog = await storage.getAgentServiceLogByPaymentId(paymentId);
+      if (existingLog) {
+        return res.status(409).json({ error: "Payment ID already used" });
+      }
+      const { verifyLocusPayment } = await import("./agent/locus");
+      const paymentResult = await verifyLocusPayment(paymentId);
+      const verified = paymentResult.verified;
+      const amountUsdc = paymentResult.amount || "0";
+      if (!verified || parseFloat(amountUsdc) < requiredAmount) {
+        return res.status(402).json({
+          error: "Payment verification failed",
+          requiredAmount: requiredAmount.toString(),
+          currency: "USDC",
+          verified,
+        });
       }
 
       const { performThreatCheck } = await import("./agent/services");
@@ -555,13 +561,13 @@ export async function registerRoutes(
         reason: result.reason,
         pricingTier,
         amountUsdc,
-        paymentId: paymentId || null,
-        paymentVerified: verified,
+        paymentId,
+        paymentVerified: true,
       });
 
       res.json({
         ...result,
-        paymentVerified: verified,
+        paymentVerified: true,
         service: "threat-check",
         timestamp: new Date().toISOString(),
       });
@@ -575,25 +581,30 @@ export async function registerRoutes(
       const { paymentId, callerIdentifier } = req.body || {};
       const requiredAmount = 0.002;
 
-      let verified = false;
-      let amountUsdc = "0";
-      if (paymentId) {
-        const existingLog = await storage.getAgentServiceLogByPaymentId(paymentId);
-        if (existingLog) {
-          return res.status(409).json({ error: "Payment ID already used" });
-        }
-        const { verifyLocusPayment } = await import("./agent/locus");
-        const result = await verifyLocusPayment(paymentId);
-        verified = result.verified;
-        amountUsdc = result.amount || "0";
-        if (!verified || parseFloat(amountUsdc) < requiredAmount) {
-          return res.status(402).json({
-            error: "Payment required",
-            requiredAmount: requiredAmount.toString(),
-            currency: "USDC",
-            verified,
-          });
-        }
+      if (!paymentId) {
+        return res.status(402).json({
+          error: "Payment required",
+          message: "Provide a valid Locus paymentId to use this service",
+          requiredAmount: requiredAmount.toString(),
+          currency: "USDC",
+        });
+      }
+
+      const existingLog = await storage.getAgentServiceLogByPaymentId(paymentId);
+      if (existingLog) {
+        return res.status(409).json({ error: "Payment ID already used" });
+      }
+      const { verifyLocusPayment } = await import("./agent/locus");
+      const paymentResult = await verifyLocusPayment(paymentId);
+      const verified = paymentResult.verified;
+      const amountUsdc = paymentResult.amount || "0";
+      if (!verified || parseFloat(amountUsdc) < requiredAmount) {
+        return res.status(402).json({
+          error: "Payment verification failed",
+          requiredAmount: requiredAmount.toString(),
+          currency: "USDC",
+          verified,
+        });
       }
 
       const { getCommunityHealthStats } = await import("./agent/services");
@@ -608,13 +619,13 @@ export async function registerRoutes(
         reason: null,
         pricingTier: "standard",
         amountUsdc,
-        paymentId: paymentId || null,
-        paymentVerified: verified,
+        paymentId,
+        paymentVerified: true,
       });
 
       res.json({
         ...stats,
-        paymentVerified: verified,
+        paymentVerified: true,
         service: "community-health",
         timestamp: new Date().toISOString(),
       });
