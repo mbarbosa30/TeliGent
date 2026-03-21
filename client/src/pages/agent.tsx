@@ -274,10 +274,16 @@ export default function AgentPage() {
                 </Badge>
               </div>
               {openServStatus?.running && (
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Port</span>
-                  <span className="text-sm font-mono">{openServStatus.port}</span>
-                </div>
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Port</span>
+                    <span className="text-sm font-mono">{openServStatus.port}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Invocations</span>
+                    <span className="text-sm font-mono" data-testid="text-openserv-invocations">{openServStatus.totalInvocations || 0}</span>
+                  </div>
+                </>
               )}
             </div>
             {openServStatus?.capabilities && openServStatus.capabilities.length > 0 && (

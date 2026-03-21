@@ -134,6 +134,7 @@ export interface AgentDashboardData {
     port: number;
     capabilities: string[];
     error: string | null;
+    totalInvocations: number;
   };
   serviceStats: {
     totalRequests: number;

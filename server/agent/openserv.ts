@@ -1,10 +1,12 @@
 import express from "express";
 import { log } from "../index";
+import { getLocusWalletAddress } from "./locus";
 
 const OPENSERV_PORT = parseInt(process.env.OPENSERV_PORT || "7378", 10);
 
 let serverStarted = false;
 let serverError: string | null = null;
+let totalInvocations = 0;
 
 export function getOpenServApiKey(): string | null {
   return process.env.OPENSERV_API_KEY || null;
@@ -20,6 +22,7 @@ export interface OpenServStatus {
   port: number;
   capabilities: string[];
   error: string | null;
+  totalInvocations: number;
 }
 
 export function getOpenServStatus(): OpenServStatus {
@@ -29,17 +32,20 @@ export function getOpenServStatus(): OpenServStatus {
     port: OPENSERV_PORT,
     capabilities: ["threat-check", "threat-check-ai", "community-health"],
     error: serverError,
+    totalInvocations,
   };
 }
 
-interface OpenServCapability {
+interface CapabilityDef {
   name: string;
   description: string;
   parameters: Record<string, { type: string; description: string; required?: boolean; maxLength?: number }>;
+  pricingTier: string;
+  priceUsdc: string;
   run: (args: any) => Promise<string>;
 }
 
-const capabilities: OpenServCapability[] = [
+const capabilityDefs: CapabilityDef[] = [
   {
     name: "threat-check",
     description:
@@ -47,6 +53,8 @@ const capabilities: OpenServCapability[] = [
     parameters: {
       text: { type: "string", description: "The text content to analyze for scam/threat patterns", required: true, maxLength: 5000 },
     },
+    pricingTier: "deterministic",
+    priceUsdc: "0.001",
     async run(args: { text: string }) {
       const { performThreatCheck } = await import("./services");
       const result = await performThreatCheck(args.text, false);
@@ -60,6 +68,8 @@ const capabilities: OpenServCapability[] = [
     parameters: {
       text: { type: "string", description: "The text content to analyze with full AI threat detection", required: true, maxLength: 5000 },
     },
+    pricingTier: "ai",
+    priceUsdc: "0.005",
     async run(args: { text: string }) {
       const { performThreatCheck } = await import("./services");
       const result = await performThreatCheck(args.text, true);
@@ -71,6 +81,8 @@ const capabilities: OpenServCapability[] = [
     description:
       "Aggregated community protection statistics and threat landscape overview. Returns data on protected groups, detected scams, active bots, and conversation volume.",
     parameters: {},
+    pricingTier: "standard",
+    priceUsdc: "0.002",
     async run() {
       const { getCommunityHealthStats } = await import("./services");
       const stats = await getCommunityHealthStats();
@@ -80,23 +92,79 @@ const capabilities: OpenServCapability[] = [
 ];
 
 export function getOpenServAgentCard(baseUrl: string) {
+  const walletAddress = getLocusWalletAddress();
+
   return {
     name: "TeliGent Master Agent",
     description:
       "Autonomous community protection agent on Base. Real-time scam detection, threat intelligence, and community health monitoring for Telegram groups and web platforms. Proof-of-human identity via Self Protocol on Celo.",
     url: baseUrl,
-    capabilities: capabilities.map((c) => ({
+    version: "1.2.0",
+    capabilities: capabilityDefs.map((c) => ({
       name: c.name,
       description: c.description,
       parameters: c.parameters,
+      pricing: {
+        amount: c.priceUsdc,
+        currency: "USDC",
+        chain: "base",
+        protocol: "locus",
+      },
     })),
+    endpoints: {
+      invoke: `${baseUrl}/`,
+      health: `${baseUrl}/health`,
+      agentCard: `${baseUrl}/.well-known/agent.json`,
+      identity: `${baseUrl.replace(`:${OPENSERV_PORT}`, ":5000")}/api/agent/identity`,
+    },
+    payment: {
+      address: walletAddress || null,
+      currency: "USDC",
+      chain: "base",
+      protocol: "locus",
+      note: "Service invocations via OpenServ marketplace are logged. For direct API calls, use /api/agent/services/* endpoints with Locus payment verification.",
+    },
+    trust: {
+      selfProtocol: {
+        chain: "celo",
+        description: "Self-verified calling agents receive 50% pricing discount and higher rate limits (60/min vs 30/min)",
+        headers: ["x-self-agent-address", "x-self-agent-signature", "x-self-agent-timestamp"],
+      },
+    },
     provider: {
       name: "TeliGent",
       url: "https://teli.gent",
+      telegram: "https://t.me/teli_gent",
+      twitter: "https://x.com/Teli_Gent_",
     },
-    version: "1.2.0",
-    tags: ["security", "scam-detection", "threat-intelligence", "community-protection", "telegram"],
+    tags: ["security", "scam-detection", "threat-intelligence", "community-protection", "telegram", "x402-compatible"],
   };
+}
+
+async function logOpenServInvocation(capName: string, result: string, callerInfo: string) {
+  try {
+    const { storage } = await import("../storage");
+    const parsed = JSON.parse(result);
+
+    const cap = capabilityDefs.find((c) => c.name === capName);
+
+    await storage.createAgentServiceLog({
+      service: capName === "community-health" ? "community-health" : "threat-check",
+      callerIdentifier: `openserv:${callerInfo}`,
+      inputLength: parsed.inputLength || 0,
+      isScam: parsed.isScam ?? null,
+      method: parsed.method || null,
+      reason: parsed.reason || null,
+      pricingTier: `openserv-${cap?.pricingTier || "standard"}`,
+      amountUsdc: cap?.priceUsdc || "0",
+      paymentId: `openserv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      paymentVerified: true,
+      selfVerified: false,
+      selfAgentAddress: null,
+    });
+  } catch (err: any) {
+    log(`Failed to log OpenServ invocation: ${err.message}`, "agent");
+  }
 }
 
 export async function startOpenServAgent(): Promise<void> {
@@ -128,13 +196,18 @@ export async function startOpenServAgent(): Promise<void> {
           const capName = capability || req.body.task?.capability;
           const capArgs = args || req.body.task?.args || {};
 
-          const cap = capabilities.find((c) => c.name === capName);
+          const cap = capabilityDefs.find((c) => c.name === capName);
           if (!cap) {
             return res.status(404).json({ error: `Unknown capability: ${capName}` });
           }
 
           log(`OpenServ invocation: ${capName} (workspace: ${workspaceId || "N/A"}, task: ${taskId || "N/A"})`, "agent");
+
           const result = await cap.run(capArgs);
+          totalInvocations++;
+
+          const callerInfo = `ws-${workspaceId || "unknown"}/task-${taskId || "unknown"}`;
+          logOpenServInvocation(capName, result, callerInfo);
 
           return res.json({
             success: true,
@@ -146,10 +219,11 @@ export async function startOpenServAgent(): Promise<void> {
 
         if (type === "get_capabilities" || type === "list_capabilities") {
           return res.json({
-            capabilities: capabilities.map((c) => ({
+            capabilities: capabilityDefs.map((c) => ({
               name: c.name,
               description: c.description,
               parameters: c.parameters,
+              pricing: { amount: c.priceUsdc, currency: "USDC" },
             })),
           });
         }
@@ -162,7 +236,13 @@ export async function startOpenServAgent(): Promise<void> {
     });
 
     app.get("/health", (_req, res) => {
-      res.json({ status: "ok", agent: "TeliGent Master Agent", version: "1.2.0" });
+      res.json({
+        status: "ok",
+        agent: "TeliGent Master Agent",
+        version: "1.2.0",
+        capabilities: capabilityDefs.length,
+        totalInvocations,
+      });
     });
 
     app.get("/.well-known/agent.json", (req, res) => {
@@ -174,7 +254,7 @@ export async function startOpenServAgent(): Promise<void> {
       const server = app.listen(OPENSERV_PORT, "0.0.0.0", () => {
         serverStarted = true;
         serverError = null;
-        log(`OpenServ agent started on port ${OPENSERV_PORT} with ${capabilities.length} capabilities`, "agent");
+        log(`OpenServ agent started on port ${OPENSERV_PORT} with ${capabilityDefs.length} capabilities`, "agent");
         resolve();
       });
       server.on("error", (err: any) => {
