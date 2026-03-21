@@ -269,6 +269,8 @@ async function ensureAgentServiceLogsTable(client: any) {
         amount_usdc TEXT DEFAULT '0',
         payment_id TEXT,
         payment_verified BOOLEAN DEFAULT false,
+        self_verified BOOLEAN DEFAULT false,
+        self_agent_address TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
       )
     `);
@@ -283,6 +285,12 @@ async function ensureAgentServiceLogsTable(client: any) {
       await client.query(`ALTER TABLE agent_service_logs ADD COLUMN payment_verified BOOLEAN DEFAULT false`);
       await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_service_logs_payment_id ON agent_service_logs (payment_id) WHERE payment_id IS NOT NULL`);
       log("Added payment_id and payment_verified columns to agent_service_logs");
+    }
+    const hasSelfVerified = await columnExists(client, "agent_service_logs", "self_verified");
+    if (!hasSelfVerified) {
+      await client.query(`ALTER TABLE agent_service_logs ADD COLUMN self_verified BOOLEAN DEFAULT false`);
+      await client.query(`ALTER TABLE agent_service_logs ADD COLUMN self_agent_address TEXT`);
+      log("Added self_verified and self_agent_address columns to agent_service_logs");
     }
   }
 }

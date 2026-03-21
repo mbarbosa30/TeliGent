@@ -482,6 +482,7 @@ export async function registerRoutes(
   });
 
   const agentRateLimit = createApiRateLimiter(60 * 1000, 30);
+  const agentTrustRateLimit = createApiRateLimiter(60 * 1000, 60);
 
   app.get("/api/agent/identity", agentRateLimit, async (req, res) => {
     try {
@@ -509,7 +510,14 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/agent/services/threat-check", agentRateLimit, async (req, res) => {
+  app.post("/api/agent/services/threat-check", async (req, res, next) => {
+    const { verifySelfRequestHeaders } = await import("./agent/self");
+    const selfResult = await verifySelfRequestHeaders(req);
+    (req as any).selfVerified = selfResult.verified;
+    (req as any).selfAgentAddress = selfResult.agentAddress;
+    const limiter = selfResult.verified ? agentTrustRateLimit : agentRateLimit;
+    limiter(req, res, next);
+  }, async (req, res) => {
     try {
       const { text, useAI, paymentId, callerIdentifier } = req.body;
       if (!text || typeof text !== "string") {
@@ -519,8 +527,11 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Text exceeds maximum length of 5000 characters" });
       }
 
+      const isSelfVerified = !!(req as any).selfVerified;
+      const selfAgentAddress = (req as any).selfAgentAddress || null;
       const pricingTier = useAI ? "ai" : "deterministic";
-      const requiredAmount = useAI ? 0.005 : 0.001;
+      const baseAmount = useAI ? 0.005 : 0.001;
+      const requiredAmount = isSelfVerified ? baseAmount * 0.5 : baseAmount;
 
       if (!paymentId) {
         return res.status(402).json({
@@ -529,6 +540,8 @@ export async function registerRoutes(
           requiredAmount: requiredAmount.toString(),
           currency: "USDC",
           tier: pricingTier,
+          selfVerified: isSelfVerified,
+          trustTierApplied: isSelfVerified,
         });
       }
 
@@ -546,6 +559,7 @@ export async function registerRoutes(
           requiredAmount: requiredAmount.toString(),
           currency: "USDC",
           verified,
+          selfVerified: isSelfVerified,
         });
       }
 
@@ -559,15 +573,19 @@ export async function registerRoutes(
         isScam: result.isScam,
         method: result.method,
         reason: result.reason,
-        pricingTier,
+        pricingTier: isSelfVerified ? `${pricingTier}-trust` : pricingTier,
         amountUsdc,
         paymentId,
         paymentVerified: true,
+        selfVerified: isSelfVerified,
+        selfAgentAddress,
       });
 
       res.json({
         ...result,
         paymentVerified: true,
+        selfVerified: isSelfVerified,
+        trustTierApplied: isSelfVerified,
         service: "threat-check",
         timestamp: new Date().toISOString(),
       });
@@ -576,10 +594,20 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/agent/services/community-health", agentRateLimit, async (req, res) => {
+  app.post("/api/agent/services/community-health", async (req, res, next) => {
+    const { verifySelfRequestHeaders } = await import("./agent/self");
+    const selfResult = await verifySelfRequestHeaders(req);
+    (req as any).selfVerified = selfResult.verified;
+    (req as any).selfAgentAddress = selfResult.agentAddress;
+    const limiter = selfResult.verified ? agentTrustRateLimit : agentRateLimit;
+    limiter(req, res, next);
+  }, async (req, res) => {
     try {
       const { paymentId, callerIdentifier } = req.body || {};
-      const requiredAmount = 0.002;
+      const isSelfVerified = !!(req as any).selfVerified;
+      const selfAgentAddress = (req as any).selfAgentAddress || null;
+      const baseAmount = 0.002;
+      const requiredAmount = isSelfVerified ? baseAmount * 0.5 : baseAmount;
 
       if (!paymentId) {
         return res.status(402).json({
@@ -587,6 +615,8 @@ export async function registerRoutes(
           message: "Provide a valid Locus paymentId to use this service",
           requiredAmount: requiredAmount.toString(),
           currency: "USDC",
+          selfVerified: isSelfVerified,
+          trustTierApplied: isSelfVerified,
         });
       }
 
@@ -604,6 +634,7 @@ export async function registerRoutes(
           requiredAmount: requiredAmount.toString(),
           currency: "USDC",
           verified,
+          selfVerified: isSelfVerified,
         });
       }
 
@@ -617,15 +648,19 @@ export async function registerRoutes(
         isScam: null,
         method: null,
         reason: null,
-        pricingTier: "standard",
+        pricingTier: isSelfVerified ? "standard-trust" : "standard",
         amountUsdc,
         paymentId,
         paymentVerified: true,
+        selfVerified: isSelfVerified,
+        selfAgentAddress,
       });
 
       res.json({
         ...stats,
         paymentVerified: true,
+        selfVerified: isSelfVerified,
+        trustTierApplied: isSelfVerified,
         service: "community-health",
         timestamp: new Date().toISOString(),
       });

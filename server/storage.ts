@@ -51,7 +51,7 @@ export interface IStorage {
   createAgentServiceLog(data: Omit<InsertAgentServiceLog, "id" | "createdAt">): Promise<AgentServiceLog>;
   getAgentServiceLogs(limit?: number): Promise<AgentServiceLog[]>;
   getAgentServiceLogByPaymentId(paymentId: string): Promise<AgentServiceLog | undefined>;
-  getAgentServiceStats(): Promise<{ totalRequests: number; totalEarnings: string; requestsToday: number }>;
+  getAgentServiceStats(): Promise<{ totalRequests: number; totalEarnings: string; requestsToday: number; verifiedRequests: number; unverifiedRequests: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -302,7 +302,7 @@ export class DatabaseStorage implements IStorage {
     return log;
   }
 
-  async getAgentServiceStats(): Promise<{ totalRequests: number; totalEarnings: string; requestsToday: number }> {
+  async getAgentServiceStats(): Promise<{ totalRequests: number; totalEarnings: string; requestsToday: number; verifiedRequests: number; unverifiedRequests: number }> {
     const [totalCount] = await db.select({ count: count() }).from(agentServiceLogs);
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -312,10 +312,15 @@ export class DatabaseStorage implements IStorage {
     const [earningsResult] = await db.select({
       total: sql<string>`COALESCE(SUM(CAST(${agentServiceLogs.amountUsdc} AS DECIMAL)), 0)`,
     }).from(agentServiceLogs);
+    const [verifiedCount] = await db.select({ count: count() }).from(agentServiceLogs).where(
+      eq(agentServiceLogs.selfVerified, true)
+    );
     return {
       totalRequests: totalCount.count,
       totalEarnings: String(earningsResult.total || "0"),
       requestsToday: todayCount.count,
+      verifiedRequests: verifiedCount.count,
+      unverifiedRequests: totalCount.count - verifiedCount.count,
     };
   }
 }

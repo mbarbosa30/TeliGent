@@ -1,4 +1,5 @@
 import { getLocusApiKey, getLocusWalletAddress, getWalletStatus } from "./locus";
+import { getTeliGentSelfStatus } from "./self";
 
 export interface AgentIdentity {
   name: string;
@@ -8,7 +9,15 @@ export interface AgentIdentity {
   chain: string;
   walletAddress: string | null;
   walletStatus: string | null;
+  selfVerified: boolean;
+  selfAgentId: string | null;
+  selfChain: string;
   pricing: {
+    threatCheck: { price: string; currency: string; description: string };
+    threatCheckAI: { price: string; currency: string; description: string };
+    communityHealth: { price: string; currency: string; description: string };
+  };
+  trustTierPricing: {
     threatCheck: { price: string; currency: string; description: string };
     threatCheckAI: { price: string; currency: string; description: string };
     communityHealth: { price: string; currency: string; description: string };
@@ -28,11 +37,12 @@ export interface AgentIdentity {
 
 export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> {
   const walletStatus = await getWalletStatus();
+  const selfStatus = await getTeliGentSelfStatus();
 
   return {
     name: "TeliGent Master Agent",
-    version: "1.0.0",
-    description: "Autonomous community protection agent. Provides real-time scam detection, threat intelligence, and community health monitoring for Telegram groups and web platforms. Powered by deterministic pattern matching and AI analysis.",
+    version: "1.1.0",
+    description: "Autonomous community protection agent with proof-of-human identity. Provides real-time scam detection, threat intelligence, and community health monitoring for Telegram groups and web platforms. Powered by deterministic pattern matching and AI analysis. Self-verified agents get trust-tier pricing discounts.",
     capabilities: [
       "scam_detection",
       "threat_intelligence",
@@ -41,10 +51,14 @@ export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> 
       "impersonation_detection",
       "real_time_learning",
       "multi_platform_protection",
+      "proof_of_human_verification",
     ],
     chain: "base",
     walletAddress: getLocusWalletAddress() || walletStatus?.ownerAddress || null,
     walletStatus: walletStatus?.walletStatus || null,
+    selfVerified: selfStatus.verified,
+    selfAgentId: selfStatus.agentId,
+    selfChain: selfStatus.chain,
     pricing: {
       threatCheck: {
         price: "0.001",
@@ -60,6 +74,23 @@ export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> 
         price: "0.002",
         currency: "USDC",
         description: "Aggregated community protection statistics and threat landscape overview",
+      },
+    },
+    trustTierPricing: {
+      threatCheck: {
+        price: "0.0005",
+        currency: "USDC",
+        description: "Trust-tier: 50% discount for Self-verified agents — deterministic scam detection",
+      },
+      threatCheckAI: {
+        price: "0.0025",
+        currency: "USDC",
+        description: "Trust-tier: 50% discount for Self-verified agents — full AI threat analysis",
+      },
+      communityHealth: {
+        price: "0.001",
+        currency: "USDC",
+        description: "Trust-tier: 50% discount for Self-verified agents — community health stats",
       },
     },
     endpoints: {
@@ -79,16 +110,25 @@ export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> 
 export interface AgentDashboardData {
   identity: AgentIdentity;
   isConfigured: boolean;
+  selfStatus: {
+    configured: boolean;
+    verified: boolean;
+    agentId: string | null;
+    chain: string;
+  };
   serviceStats: {
     totalRequests: number;
     totalEarnings: string;
     requestsToday: number;
+    verifiedRequests: number;
+    unverifiedRequests: number;
   };
 }
 
 export async function getAgentDashboard(baseUrl: string): Promise<AgentDashboardData> {
   const identity = await getAgentIdentity(baseUrl);
   const apiKey = getLocusApiKey();
+  const selfStatus = await getTeliGentSelfStatus();
   const { storage } = await import("../storage");
 
   const stats = await storage.getAgentServiceStats();
@@ -96,6 +136,7 @@ export async function getAgentDashboard(baseUrl: string): Promise<AgentDashboard
   return {
     identity,
     isConfigured: !!apiKey,
+    selfStatus,
     serviceStats: stats,
   };
 }

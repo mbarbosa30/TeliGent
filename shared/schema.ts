@@ -193,6 +193,8 @@ export const agentServiceLogs = pgTable("agent_service_logs", {
   amountUsdc: text("amount_usdc").default("0"),
   paymentId: text("payment_id"),
   paymentVerified: boolean("payment_verified").default(false),
+  selfVerified: boolean("self_verified").default(false),
+  selfAgentAddress: text("self_agent_address"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
   index("idx_agent_service_logs_created").on(table.createdAt),

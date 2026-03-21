@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Copy, Check, Cpu, Wallet, Activity, Shield, Zap, ExternalLink } from "lucide-react";
+import { Loader2, Copy, Check, Cpu, Wallet, Activity, Shield, Zap, ExternalLink, Fingerprint, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AgentPage() {
@@ -42,21 +42,22 @@ export default function AgentPage() {
 
   const identity = dashboard?.identity;
   const stats = dashboard?.serviceStats;
+  const selfStatus = dashboard?.selfStatus;
   const logs = dashboard?.recentLogs || [];
   const baseUrl = window.location.origin;
 
   const curlExample = `curl -X POST ${baseUrl}/api/agent/services/threat-check \\
   -H "Content-Type: application/json" \\
-  -d '{"text": "DM me for guaranteed 100x returns on your investment"}'`;
+  -d '{"text": "DM me for guaranteed 100x returns on your investment", "paymentId": "your-locus-payment-id"}'`;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Master Agent</h1>
-        <p className="text-muted-foreground mt-1">Autonomous community protection agent on Base</p>
+        <p className="text-muted-foreground mt-1">Autonomous community protection agent on Base — with proof-of-human identity</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -111,9 +112,22 @@ export default function AgentPage() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 bg-foreground flex items-center justify-center">
+                <ShieldCheck className="h-5 w-5 text-background" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Verified</p>
+                <p className="text-2xl font-bold font-mono" data-testid="text-verified-requests">{stats?.verifiedRequests || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -170,21 +184,75 @@ export default function AgentPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
+              <Fingerprint className="h-4 w-4" />
+              Self Protocol — Proof of Human
+            </CardTitle>
+            <CardDescription>On-chain verified identity via Self Protocol on Celo</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Status</span>
+                <Badge variant={selfStatus?.verified ? "default" : "secondary"} data-testid="badge-self-status">
+                  {selfStatus?.verified ? "Verified" : selfStatus?.configured ? "Registered" : "Not Configured"}
+                </Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Chain</span>
+                <Badge variant="outline">{selfStatus?.chain?.toUpperCase() || "CELO"}</Badge>
+              </div>
+              {selfStatus?.agentId && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Agent Address</span>
+                  <span className="text-xs font-mono truncate max-w-[180px]" data-testid="text-self-agent-id">
+                    {selfStatus.agentId}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="pt-2 border-t space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Self-verified calling agents receive trust-tier benefits: 50% pricing discount, higher rate limits (60/min vs 30/min), and discounted AI tier access.
+              </p>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Verified requests</span>
+                <span className="font-mono font-medium" data-testid="text-verified-count">{stats?.verifiedRequests || 0}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Unverified requests</span>
+                <span className="font-mono" data-testid="text-unverified-count">{stats?.unverifiedRequests || 0}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
               <Shield className="h-4 w-4" />
               Services & Pricing
             </CardTitle>
             <CardDescription>Agent-to-agent paid services via Locus on Base</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {identity?.pricing && Object.entries(identity.pricing).map(([key, pricing]: [string, any]) => (
-              <div key={key} className="p-3 border bg-muted/30">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm font-medium">{key}</span>
-                  <Badge variant="outline" className="font-mono">{pricing.price} {pricing.currency}</Badge>
+          <CardContent className="space-y-3">
+            {identity?.pricing && Object.entries(identity.pricing).map(([key, pricing]: [string, any]) => {
+              const trustPricing = identity?.trustTierPricing?.[key];
+              return (
+                <div key={key} className="p-3 border bg-muted/30">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm font-medium">{key}</span>
+                    <Badge variant="outline" className="font-mono">{pricing.price} {pricing.currency}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{pricing.description}</p>
+                  {trustPricing && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <Fingerprint className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Trust tier: {trustPricing.price} {trustPricing.currency}</span>
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground">{pricing.description}</p>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       </div>
@@ -192,7 +260,7 @@ export default function AgentPage() {
       <Card>
         <CardHeader>
           <CardTitle>Try It — Threat Check API</CardTitle>
-          <CardDescription>Test the agent's scam detection service</CardDescription>
+          <CardDescription>Test the agent's scam detection service (requires Locus payment)</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="bg-muted p-4 overflow-x-auto">
@@ -218,6 +286,9 @@ export default function AgentPage() {
               View Identity JSON
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Self-verified agents can include x-self-agent-address, x-self-agent-signature, and x-self-agent-timestamp headers for trust-tier pricing.
+          </p>
         </CardContent>
       </Card>
 
@@ -240,6 +311,9 @@ export default function AgentPage() {
                       {log.isScam ? "THREAT" : "CLEAN"}
                     </Badge>
                     <span className="font-mono text-xs">{log.service}</span>
+                    {log.selfVerified && (
+                      <Fingerprint className="h-3 w-3 text-muted-foreground" title="Self-verified agent" />
+                    )}
                     <span className="text-muted-foreground text-xs truncate max-w-[200px]">{log.reason}</span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">

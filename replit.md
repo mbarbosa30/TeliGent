@@ -33,3 +33,4 @@ I prefer simple language and detailed explanations. I want iterative development
 - **connect-pg-simple**: PostgreSQL store for sessions.
 - **Drizzle ORM**: ORM for TypeScript and PostgreSQL.
 - **Locus API**: Agent wallet and payment infrastructure on Base (USDC). Used for agent-to-agent service payments.
+- **Self Protocol (@selfxyz/agent-sdk)**: Proof-of-human identity verification on Celo. Optional trust upgrade for agent-to-agent callers — Self-verified agents get 50% pricing discount and higher rate limits (60/min vs 30/min). Verification via `x-self-agent-address`, `x-self-agent-signature`, `x-self-agent-timestamp` request headers.
