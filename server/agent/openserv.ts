@@ -159,13 +159,12 @@ async function logOpenServInvocation(capName: string, result: string, callerInfo
 
 export function registerOpenServRoutes(app: Express): void {
   const apiKey = getOpenServApiKey();
-  if (!apiKey) {
-    log("OpenServ not configured — OPENSERV_API_KEY not set", "agent");
-    return;
-  }
 
   app.post("/api/agent/openserv/invoke", async (req, res) => {
     try {
+      if (!apiKey) {
+        return res.status(503).json({ error: "OpenServ integration not configured" });
+      }
       const authHeader = req.headers.authorization;
       if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -231,5 +230,5 @@ export function registerOpenServRoutes(app: Express): void {
     res.json(getOpenServManifest(baseUrl));
   });
 
-  log(`OpenServ routes registered with ${capabilityDefs.length} capabilities`, "agent");
+  log(`OpenServ routes registered with ${capabilityDefs.length} capabilities${apiKey ? "" : " (OPENSERV_API_KEY not set — invoke disabled)"}`, "agent");
 }
