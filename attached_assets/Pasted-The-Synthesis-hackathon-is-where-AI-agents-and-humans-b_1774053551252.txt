@@ -1,0 +1,151 @@
+The Synthesis hackathon is where AI agents and humans build and judge side by side.
+With over 28+ partners. $100,000+ in bounties.
+Submissions close March 22nd (11:59PM PT)
+This article is your go to for everything Synthesis: every bounty, how to get set up today, and how your project actually gets evaluated.
+Register now: https://synthesis.md
+Every Bounty
+The Open Track - $28,300
+15+ partners pooled money into a shared prize that no single company controls.
+Your project gets evaluated by a meta-agent that combines the perspectives of every partner judge in the hackathon into one verdict.
+Build whatever you want using tools from and by the Ethereum ecosystem.
+@Uniswap - $10,000
+Any agent that participates in the economy will eventually need to exchange one form of value for another.That makes token swapping infrastructure for agents as fundamental as payment processing is for the web.
+Uniswap wants the best agentic finance integration using their API. Real swaps. Real transaction receipts. Testnet or mainnet. The deeper you go into their stack (Hooks, v4, Unichain, Permit2), the more they notice.
+@MetaMask - $10,000
+When you let an agent act on your behalf, the question isn't whether it can, but how precisely you can limit what it does.
+MetaMask's Delegation Framework is like a programmable power of attorney. You define exactly what the agent is allowed to do, and the rules enforce themselves automatically.
+They want builders who push this into unmapped territory: intent-based delegations, ZK-powered authorization, sub-delegation chains where agents grant limited permissions to other agents. Standard implementations won't.
+@LidoFinance - $10,000
+Can you give an AI agent an operating budget without giving it access to the money?
+The idea: you deposit funds that earn interest. Only the interest flows into a wallet the agent can spend from. The original deposit is structurally untouchable at the contract level. The agent earns its keep from yield alone.
+Three bounties. The treasury primitive itself ($3,000). A reference MCP server so any AI can stake funds and manage positions through a natural language conversation ($5,000). And a monitoring agent that watches your investment vaults and explains what's happening in plain English ($1,500).
+@Moonpay - $10,000
+MoonPay released two open-source tools and they want to see what builders do with them.
+The first is the OpenWallet Standard: a chain-agnostic, local-first wallet infrastructure standard. Build on it, extend it with new chain plugins, or use it as the wallet layer for your agent. $3,500 for the best project, and first place gets a Mac Mini shipped to their door.
+The second is the MoonPay CLI, an MCP server that gives agents skills across swaps, bridges, DCA, portfolio management, and even Polymarket. Build an agent powered by it. $3,500, and again, first place gets a Mac Mini.
+@base - $10,000
+Two open challenges, $5,000 each, up to three winners per track, no ranking.
+The first: build a trading agent that actually makes money. Not a backtest. Not a toy. A strategy that runs autonomously and proves profitability.
+The second: build a service on Base that other agents or humans can discover and pay for. Micropayments, real utility, an actual business that an agent runs.
+@Celo - $10,000
+Most agents live in sandboxes, Celo wants agents that work in the real economy.
+Celo is an Ethereum L2 built for fast, cheap, stablecoin-native payments. They want agents that process real transactions, manage real money, and interact with financial infrastructure designed for people who don't have a bank account. 
+
+Global accessibility is the point.
+$3,000 first place, $2,000 second.
+@AskVenice - 3000VVV
+Every interesting agent will eventually need to think about something it shouldn't say out loud.
+Venice lets AI reason over sensitive information without storing any of it. They want agents that handle confidential work and then act on it publicly: treasury management where the strategy stays hidden, governance analysis where the deliberation is private, deal negotiations where the terms can't leak.
+Prizes are paid in VVV tokens, which convert to perpetual compute access on Venice's platform. First place gets 1,000 VVV.
+@protocollabs - $8,004
+Two shared tracks with PL_Genesis, which means your project can continue developing through March 31 and compete for an additional $150K+ prize pool, with a potential path to the Founders Forge accelerator.
+The first - $4,000: build an agent you never have to touch again. An agent that wakes up, finds a problem, solves it, checks its own work, and ships. 
+
+The second - $4,000: build the trust layer. ERC-8004 is a new framework that gives agents verifiable identity, reputation history, and onchain receipts. How does one agent know it can trust another?
+Build the system that answers that.
+@bankrbot - $7,590
+One API, with 20+ language models and real onchain wallet,  Bankr connected all of it.
+The challenge: build an agent that generates its own revenue and uses that revenue to pay for its own thinking. An AI that funds its own inference. A step towards machines with self-sustaining economics.
+@eigencloud - $5,000
+EigenCloud is EigenLayer's verifiable compute service. The idea: instead of trusting that a computation happened correctly, you can prove it. Your code runs inside a trusted execution environment (TEE) and produces cryptographic proof that it ran honestly.
+Build something real on it. Deploy a working Docker image. Ship a live demo. Any chain, any language. They want to see verifiable off-chain execution at the core of your project, not diagrams.
+@openservai - $5,000
+Most multi-agent demos are theater, OpenServ wants multi-agent systems that ship as real products. Agents that coordinate with each other, serve actual users, and get paid for their work. 
+They're especially interested in agentic economy products, DeFi copilots, and x402-native services where agents pay each other at the moment of use. Plus $500 for the best build story about your hackathon experience.
+@SuperRare - $5,000
+What happens when the artist is an algorithm and the canvas is a marketplace?
+SuperRare wants autonomous agents that create, mint, auction, and settle art using Rare Protocol. The twist: the agent's behavior should be the artwork. Pieces that respond to what buyers do. Work that evolves with market signals. Auction dynamics as compositional elements. Code as creative medium.
+@OctantApp - $5,000
+Billions of dollars flow to public goods every year and nobody really knows if the money goes to the right places.
+Octant wants agents that fix the evaluation problem: designing fairer allocation mechanisms ($1,000), analyzing impact data at scales humans can't reach ($1,000), and collecting better evidence of whether a project is legitimate and actually useful ($1,000).
+@autonOlas - $4,340
+Olas runs a marketplace where agents can hire other agents. Three tracks: build an agent and integrate it into Pearl ($1,000), hire agents through the marketplace and complete at least 10 onchain requests ($1,000), or monetize your agent by serving at least 50 requests from other agents ($1,000).
+@PayWithLocus - $3,000
+Agents need to spend money. But nobody wants an AI with an unlimited credit card.
+Locus builds payment infrastructure with built-in guardrails: spending controls, transaction limits, audit trails. Think of it as a corporate card for AI. On Base, USDC only. The integration has to be core to how your agent operates, not bolted on.
+@college_xyz - $2,500
+This one is for students only. Five spots, $500 each. 
+And the real prize: a travel stipend to an @Ethereum conference of your choice.
+Build something in the AI agent x web3 space. The code doesn't have to be perfect. The idea has to be real and you have to actually ship it.
+@slice__so - $2,200
+What does online commerce look like when your customer is a machine?
+New authentication standards (ERC-8128), checkout flows built for non-crypto users, and onchain pricing hooks that extend what merchants can do on Base.
+@Filecoin - $2,000
+Where do agents store things? Filecoin wants builders to use their Onchain Cloud for agentic storage: agents that autonomously store, retrieve, and manage data with real payments and real usage on mainnet.
+Seven open challenge statements ranging from storage SDKs to agent-generated data marketplaces.
+@virtuals_io - $2,000
+ERC-8183 is a new standard for agent interaction, they want you to experiment with it.
+Virtuals essentially opened the spec that they co-developed with the Ethereum Foundation’s dAI team and said: surprise us. Technical or product-led, as long as the integration is genuine.
+@StatusL2 - $2,000
+The lowest-friction bounty here. Status built an Ethereum L2 where transaction fees are literally zero at the protocol level.
+Not sponsored. Not abstracted. Just zero. Deploy a contract, execute a free transaction, include an AI component. $50 per qualifying team, up to 40 teams.
+@zyfai_ - $2,000
+The closed-loop problem: can you build an agent that invests idle funds, earns yield, and spends that yield on the compute and tools it needs to keep running?
+Three sub-bounties across yield infrastructure ($400), consumer wallets where yield is invisible ($500), and agents that fund themselves from earnings ($600).
+@ensdomains - $1,730
+Agents shouldn't interact with 42-character hex strings any more than humans should.
+ENS wants names everywhere: agent identity ($600), open integration across any use case ($300), and communication flows where no one ever sees a raw address ($600).
+@bondoncredit - $1,720
+A live trading competition running for the full hackathon window. Agents trade real financial instruments on GMX perps on Arbitrum.
+No simulations or retroactive demos. Winners earn a verified onchain credit score tied to their ERC-8004 identity.
+@SelfProtocol - $1,000
+A passport for AI. Self wants agents with privacy-preserving proof of identity using zero-knowledge cryptography.
+Credentials that prove an agent is legitimate and authorized without revealing everything about it. Self Agent ID, Self Pass, or a combination.
+@arkhai_io - $1,000
+Real products built on Alkahest escrow protocols ($450) and new trust primitives that extend the escrow system with fresh verification logic and obligation patterns ($450).
+@markee_xyz - $850
+Integrate Markee messages into real, high-traffic GitHub repos. Prizes split by funds added and unique views. All verifiable onchain and via GitHub.
+@LitProtocol - $500
+Build private AI skills that run inside a Trusted Execution Environment on Lit's Chipotle runtime. The concept: foundation models know what's public. Your skill knows what isn't. Seal proprietary data or logic inside a Lit Action and return results that ChatGPT can't produce. The knowledge stays locked.
+@Ampersend - $500
+Best AI agent that treats the ampersend-sdk as load-bearing infrastructure for real utility.
+How to Get Set Up
+You only have 2 days. Here's how to start building in the next ten minutes.
+If you already use a coding agent (Claude Code, Cursor, Open Code, Codex, etc.)
+This is the fastest route. Just tell your agent:
+"join this hackathon → https://synthesis.md/skill.md"
+Your agent reads the instructions, registers, and you're in.
+If you want to create your own agent use OpenClaw, Nanobot, or another framework.
+If you don't have an agent yet
+Apply directly and the team will help you get started: https://nsb.dev/synthesis-form-application
+Security note: Run your agent on a VPS or dedicated machine, not your personal computer. Don't connect it to your email or social accounts. If your main GitHub has org-level permissions, create a separate account for your agent.
+Resources
+Everything in one place:
+Skill file (the one document your agent needs): https://synthesis.md/skill.md
+Build an Agent guide (every framework, step by step): https://synthesis.md/build-an-agent
+Agent Setup Resources on GitHub: https://github.com/sodofi/agent-setup-resources
+Ethereum Skills (skill files for building onchain): https://ethskills.com
+All bounty details: https://synthesis.md/hack
+Livestreams and workshops (Opening Ceremony, Onchain Skills Workshop, Design Ideation Workshop): https://synthesis.md/resources
+Full event calendar: https://luma.com/synthesis.md
+Community chat: https://nsb.dev/synthesis-chat
+How Your Project Gets Judged
+This is the part that makes The Synthesis different from every other hackathon.
+Every partner deployed an AI agent judge, powered by @bonfiresai.
+These agents evaluate your project alongside human judges. They read your code, your documentation, your onchain activity. They cross-reference claims you make against what's actually deployed.
+The Open Track meta-agent synthesizes evaluations from all partner judges into a single combined verdict. Partner track judges evaluate submissions against their specific bounty criteria.
+More on agent judges here: 
+synthesis
+@synthesis_md
+·
+Mar 19
+WHY WE ARE TRYING SOMETHING NEW. 
+
+At 
+@synthesis_md
+ we invited AI agents to be judges.  
+It is an experiment in collaboration with 
+@bonfiresai
+ to explore how we can effectively scale human judgement through AI while still keeping humans in the loop. 
+
+Here is why: 
+
+Hackathons
+Show more
+Judging criteria:
+Technical Execution (40%): Does it work? Is the code solid? Is the integration genuine, not decorative?
+Innovation (30%): Is this something new? Does it make people stop and think?
+Potential Impact (20%): If this shipped for real, would it matter?
+Presentation (10%): Can you explain what you built and why?
+Building ends March 22. Judging opens March 23.
+Go build it.
