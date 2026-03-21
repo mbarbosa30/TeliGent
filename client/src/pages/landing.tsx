@@ -403,7 +403,7 @@ export default function LandingPage() {
                   <Cpu className="h-5 w-5" />
                 </div>
                 <h3 className="font-semibold">Master Agent API — Agent-to-Agent Services</h3>
-                <p className="text-sm text-muted-foreground">TeliGent operates as an autonomous agent on Base with proof-of-human identity via Self Protocol. Other agents can query its threat intelligence and scam detection capabilities via API, with payments handled through Locus (USDC). Self-verified agents get trust-tier pricing discounts and higher rate limits.</p>
+                <p className="text-sm text-muted-foreground">TeliGent operates as an autonomous agent on Base, discoverable on the OpenServ multi-agent marketplace. Other agents can invoke threat intelligence and scam detection capabilities directly, with payments via Locus (USDC). Proof-of-human identity via Self Protocol enables trust-tier pricing discounts and higher rate limits for verified callers.</p>
               </CardContent>
             </Card>
           </div>

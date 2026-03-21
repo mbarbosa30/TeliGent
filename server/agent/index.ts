@@ -1,5 +1,6 @@
 import { getLocusApiKey, getLocusWalletAddress, getWalletStatus } from "./locus";
 import { getTeliGentSelfStatus } from "./self";
+import { getOpenServStatus } from "./openserv";
 
 export interface AgentIdentity {
   name: string;
@@ -22,6 +23,11 @@ export interface AgentIdentity {
     threatCheckAI: { price: string; currency: string; description: string };
     communityHealth: { price: string; currency: string; description: string };
   };
+  openServ: {
+    configured: boolean;
+    running: boolean;
+    capabilities: string[];
+  };
   endpoints: {
     identity: string;
     threatCheck: string;
@@ -38,10 +44,11 @@ export interface AgentIdentity {
 export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> {
   const walletStatus = await getWalletStatus();
   const selfStatus = await getTeliGentSelfStatus();
+  const openServStatus = getOpenServStatus();
 
   return {
     name: "TeliGent Master Agent",
-    version: "1.1.0",
+    version: "1.2.0",
     description: "Autonomous community protection agent with proof-of-human identity. Provides real-time scam detection, threat intelligence, and community health monitoring for Telegram groups and web platforms. Powered by deterministic pattern matching and AI analysis. Self-verified agents get trust-tier pricing discounts.",
     capabilities: [
       "scam_detection",
@@ -93,6 +100,11 @@ export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> 
         description: "Trust-tier: 50% discount for Self-verified agents — community health stats",
       },
     },
+    openServ: {
+      configured: openServStatus.configured,
+      running: openServStatus.running,
+      capabilities: openServStatus.capabilities,
+    },
     endpoints: {
       identity: `${baseUrl}/api/agent/identity`,
       threatCheck: `${baseUrl}/api/agent/services/threat-check`,
@@ -116,6 +128,13 @@ export interface AgentDashboardData {
     agentId: string | null;
     chain: string;
   };
+  openServStatus: {
+    configured: boolean;
+    running: boolean;
+    port: number;
+    capabilities: string[];
+    error: string | null;
+  };
   serviceStats: {
     totalRequests: number;
     totalEarnings: string;
@@ -129,6 +148,7 @@ export async function getAgentDashboard(baseUrl: string): Promise<AgentDashboard
   const identity = await getAgentIdentity(baseUrl);
   const apiKey = getLocusApiKey();
   const selfStatus = await getTeliGentSelfStatus();
+  const openServStatus = getOpenServStatus();
   const { storage } = await import("../storage");
 
   const stats = await storage.getAgentServiceStats();
@@ -137,6 +157,7 @@ export async function getAgentDashboard(baseUrl: string): Promise<AgentDashboard
     identity,
     isConfigured: !!apiKey,
     selfStatus,
+    openServStatus,
     serviceStats: stats,
   };
 }

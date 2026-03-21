@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Copy, Check, Cpu, Wallet, Activity, Shield, Zap, ExternalLink, Fingerprint, ShieldCheck } from "lucide-react";
+import { Loader2, Copy, Check, Cpu, Wallet, Activity, Shield, Zap, ExternalLink, Fingerprint, ShieldCheck, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AgentPage() {
@@ -43,6 +43,7 @@ export default function AgentPage() {
   const identity = dashboard?.identity;
   const stats = dashboard?.serviceStats;
   const selfStatus = dashboard?.selfStatus;
+  const openServStatus = dashboard?.openServStatus;
   const logs = dashboard?.recentLogs || [];
   const baseUrl = window.location.origin;
 
@@ -127,7 +128,7 @@ export default function AgentPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -253,6 +254,51 @@ export default function AgentPage() {
                 </div>
               );
             })}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="h-4 w-4" />
+              OpenServ Marketplace
+            </CardTitle>
+            <CardDescription>Multi-agent platform listing for discoverability</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Status</span>
+                <Badge variant={openServStatus?.running ? "default" : openServStatus?.configured ? "secondary" : "outline"} data-testid="badge-openserv-status">
+                  {openServStatus?.running ? "Running" : openServStatus?.configured ? "Configured" : "Not Configured"}
+                </Badge>
+              </div>
+              {openServStatus?.running && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Port</span>
+                  <span className="text-sm font-mono">{openServStatus.port}</span>
+                </div>
+              )}
+            </div>
+            {openServStatus?.capabilities && openServStatus.capabilities.length > 0 && (
+              <div className="pt-2 border-t space-y-2">
+                <p className="text-xs text-muted-foreground">Registered capabilities</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {openServStatus.capabilities.map((cap: string) => (
+                    <Badge key={cap} variant="outline" className="text-xs font-mono" data-testid={`badge-cap-${cap}`}>
+                      {cap}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="pt-2 border-t">
+              <p className="text-xs text-muted-foreground">
+                {openServStatus?.configured
+                  ? "TeliGent is available on the OpenServ multi-agent marketplace. Other agents can discover and invoke threat detection capabilities directly."
+                  : "Set OPENSERV_API_KEY to register on the OpenServ marketplace and make TeliGent's capabilities discoverable to other agents."}
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
