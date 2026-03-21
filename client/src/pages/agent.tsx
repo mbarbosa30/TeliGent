@@ -321,9 +321,23 @@ export default function AgentPage() {
                 <Badge variant="outline">{identity?.erc8004?.chain?.toUpperCase() || "BASE"}</Badge>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Status</span>
-                <Badge variant="secondary" data-testid="badge-erc8004-status">Registration Hosted</Badge>
+                <span className="text-sm text-muted-foreground">Mint Status</span>
+                <Badge variant={identity?.erc8004?.mintStatus === "minted" ? "default" : "secondary"} data-testid="badge-erc8004-status">
+                  {identity?.erc8004?.mintStatus === "minted" ? "Minted" : "Pending"}
+                </Badge>
               </div>
+              {identity?.erc8004?.contractAddress && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Contract</span>
+                  <span className="text-xs font-mono truncate max-w-[180px]" data-testid="text-erc8004-contract">{identity.erc8004.contractAddress}</span>
+                </div>
+              )}
+              {identity?.erc8004?.tokenId && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Token ID</span>
+                  <span className="text-xs font-mono" data-testid="text-erc8004-token">{identity.erc8004.tokenId}</span>
+                </div>
+              )}
             </div>
             <div className="pt-2 border-t">
               <p className="text-sm text-muted-foreground mb-2">Registration File</p>

@@ -48,8 +48,12 @@ export interface AgentIdentity {
   };
   erc8004: {
     registrationUrl: string;
-    chain: string;
     standard: string;
+    chain: string;
+    chainId: number;
+    contractAddress: string | null;
+    tokenId: string | null;
+    mintStatus: "pending" | "minted";
     description: string;
   };
   endpoints: {
