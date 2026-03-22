@@ -49,5 +49,4 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-SYNTHESIS_API_KEY = "sk-synth-bd3a7b345452209f3666f133a6ac4df830d1fb86d14268bd"
 LOCUS_WALLET_ADDRESS = "0x3b93fe5aeebe68582b68955b57621f34f994c27f"
