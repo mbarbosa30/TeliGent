@@ -88,7 +88,11 @@ async function sendAnnouncementToGroups(
       try {
         await bot.sendMessage(group.telegramChatId, message, { parse_mode: "Markdown" });
       } catch {
-        await bot.sendMessage(group.telegramChatId, message.replace(/[*_\[\]()]/g, ""));
+        const plainMessage = message
+          .replace(/\*([^*]+)\*/g, "$1")
+          .replace(/_([^_]+)_/g, "$1")
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+        await bot.sendMessage(group.telegramChatId, plainMessage);
       }
       sent++;
       console.log(`[celo-batch] Announcement sent to "${group.name}" (${group.telegramChatId}) for ${botName}`);
