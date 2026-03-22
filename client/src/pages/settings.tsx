@@ -17,7 +17,8 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription } fr
 import { useToast } from "@/hooks/use-toast";
 import { useBot } from "@/hooks/use-bot";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Settings, Bot, MessageSquare, Shield, Zap, Save, Globe, FileText, Loader2, Key, AlertTriangle, Trash2 } from "lucide-react";
+import { Settings, Bot, MessageSquare, Shield, Zap, Save, Globe, FileText, Loader2, Key, AlertTriangle, Trash2, Link, ExternalLink, Check } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -155,6 +156,31 @@ export default function SettingsPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to delete bot.", variant: "destructive" });
+    },
+  });
+
+  const { data: celoStatus } = useQuery<{
+    registered: boolean;
+    agentId: number | null;
+    txHash: string | null;
+    registeredAt: string | null;
+    explorerUrl: string | null;
+  }>({
+    queryKey: ["/api/bots", selectedBotId, "erc8004", "status"],
+    enabled: !!selectedBotId,
+  });
+
+  const celoRegisterMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bots/${selectedBotId}/erc8004/register`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "erc8004", "status"] });
+      toast({ title: "Registered on Celo", description: `Agent ID: ${data.agentId}. Transaction confirmed on-chain.` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Registration failed", description: err.message || "Could not register on Celo. Check wallet balance.", variant: "destructive" });
     },
   });
 
@@ -441,6 +467,83 @@ export default function SettingsPage() {
                     <FormDescription>Comma-separated words that trigger report detection</FormDescription>
                   </FormItem>
                 )} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Link className="h-5 w-5" />
+                  <CardTitle className="text-base">ERC-8004 — On-chain Identity</CardTitle>
+                </div>
+                <CardDescription>Register this bot as a verifiable on-chain agent on Celo</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {celoStatus?.registered ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span className="text-sm font-medium">Registered on Celo</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Agent ID</span>
+                        <Badge variant="default" className="font-mono" data-testid="badge-celo-agent-id">
+                          #{celoStatus.agentId}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Transaction</span>
+                        <a
+                          href={celoStatus.explorerUrl || "#"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-mono text-primary hover:underline flex items-center gap-1 truncate max-w-[220px]"
+                          data-testid="link-celo-tx"
+                        >
+                          {celoStatus.txHash?.slice(0, 10)}...{celoStatus.txHash?.slice(-8)}
+                          <ExternalLink className="h-3 w-3 shrink-0" />
+                        </a>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Registered</span>
+                        <span className="text-xs text-muted-foreground" data-testid="text-celo-registered-at">
+                          {celoStatus.registeredAt ? new Date(celoStatus.registeredAt).toLocaleDateString() : "—"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t">
+                      <p className="text-xs text-muted-foreground">
+                        This bot has a verifiable on-chain identity on Celo via the ERC-8004 Agent Identity Registry.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Register this bot on the ERC-8004 Agent Identity Registry on Celo. This creates a unique, verifiable on-chain identity with the bot's real stats and capabilities.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => celoRegisterMutation.mutate()}
+                      disabled={celoRegisterMutation.isPending}
+                      data-testid="button-register-celo"
+                    >
+                      {celoRegisterMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Registering on Celo...
+                        </>
+                      ) : (
+                        <>
+                          <Link className="h-4 w-4 mr-2" />
+                          Register on Celo
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

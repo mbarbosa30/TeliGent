@@ -684,6 +684,39 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/bots/:botId/erc8004/register", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const { getCeloRegistrationStatus, registerBotOnCelo } = await import("./agent/celo");
+      const existing = await getCeloRegistrationStatus(botId);
+      if (existing.registered) {
+        return res.status(409).json({ error: "Bot is already registered on Celo", ...existing });
+      }
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const result = await registerBotOnCelo(botId, baseUrl);
+      res.json({
+        success: true,
+        agentId: result.agentId,
+        txHash: result.txHash,
+        explorerUrl: `https://celoscan.io/tx/${result.txHash}`,
+      });
+    } catch (err: any) {
+      console.error(`[erc8004] Registration failed for bot ${req.params.botId}:`, err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/erc8004/status", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const { getCeloRegistrationStatus } = await import("./agent/celo");
+      const status = await getCeloRegistrationStatus(botId);
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/agent/dashboard", isAdminAuthenticated, async (req, res) => {
     try {
       const { getAgentDashboard } = await import("./agent/index");

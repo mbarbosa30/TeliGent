@@ -17,6 +17,7 @@ export async function runMigrations() {
     await ensureWidgetColumns(client);
     await ensureWidgetTables(client);
     await ensureAgentServiceLogsTable(client);
+    await ensureCeloColumns(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -292,6 +293,21 @@ async function ensureAgentServiceLogsTable(client: any) {
       await client.query(`ALTER TABLE agent_service_logs ADD COLUMN self_agent_address TEXT`);
       log("Added self_verified and self_agent_address columns to agent_service_logs");
     }
+  }
+}
+
+async function ensureCeloColumns(client: any) {
+  if (!(await columnExists(client, "bot_configs", "celo_agent_id"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN celo_agent_id INTEGER`);
+    log("Added celo_agent_id to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "celo_tx_hash"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN celo_tx_hash TEXT`);
+    log("Added celo_tx_hash to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "celo_registered_at"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN celo_registered_at TIMESTAMP`);
+    log("Added celo_registered_at to bot_configs");
   }
 }
 

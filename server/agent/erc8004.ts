@@ -163,15 +163,35 @@ interface ERC8004Status {
   description: string;
 }
 
-export function getERC8004Status(baseUrl: string): ERC8004Status {
+export async function getERC8004Status(baseUrl: string): Promise<ERC8004Status> {
+  let contractAddress: string | null = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432";
+  let tokenId: string | null = null;
+  let mintStatus: "pending" | "minted" = "pending";
+
+  try {
+    const { pool } = await import("../db");
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT celo_agent_id, celo_tx_hash FROM bot_configs WHERE celo_agent_id IS NOT NULL ORDER BY celo_registered_at ASC LIMIT 1`
+      );
+      if (rows.length > 0 && rows[0].celo_agent_id) {
+        tokenId = String(rows[0].celo_agent_id);
+        mintStatus = "minted";
+      }
+    } finally {
+      client.release();
+    }
+  } catch {}
+
   return {
     registrationUrl: `${baseUrl}/api/agent/erc8004/registration`,
     standard: "ERC-8004",
-    chain: "base",
-    chainId: 8453,
-    contractAddress: null,
-    tokenId: null,
-    mintStatus: "pending",
-    description: "On-chain agent identity and reputation standard (ERC-721 based). Registration file hosted at public URL; NFT minting anchors the URI on-chain. Contract address and token ID are populated after minting.",
+    chain: "celo",
+    chainId: 42220,
+    contractAddress,
+    tokenId,
+    mintStatus,
+    description: "On-chain agent identity anchored on Celo via the ERC-8004 Agent Identity Registry. Each bot is registered with its real stats and capabilities as a verifiable on-chain identity.",
   };
 }

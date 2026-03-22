@@ -139,7 +139,7 @@ export async function getAgentIdentity(baseUrl: string): Promise<AgentIdentity> 
     },
     payment: manifest.payment,
     trust: manifest.trust,
-    erc8004: getERC8004Status(baseUrl),
+    erc8004: await getERC8004Status(baseUrl),
     endpoints: {
       identity: `${baseUrl}/api/agent/identity`,
       threatCheck: `${baseUrl}/api/agent/services/threat-check`,
