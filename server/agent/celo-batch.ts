@@ -160,7 +160,7 @@ export async function batchRegisterAllBots(baseUrl: string, options?: { sendAnno
   results: BatchResult[];
   summary: { total: number; registered: number; skipped: number; failed: number; announcementsSent: number };
 }> {
-  const sendAnnouncements = options?.sendAnnouncements ?? true;
+  const sendAnnouncements = options?.sendAnnouncements ?? false;
   console.log("[celo-batch] Starting batch ERC-8004 registration on Celo...");
 
   const bots = await getEligibleBots();
