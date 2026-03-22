@@ -727,6 +727,18 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/erc8004/register-all", isAdminAuthenticated, async (req, res) => {
+    try {
+      const { batchRegisterAllBots } = await import("./agent/celo-batch");
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const result = await batchRegisterAllBots(baseUrl);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[admin] Batch ERC-8004 registration failed:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/agent/dashboard", isAdminAuthenticated, async (req, res) => {
     try {
       const { getAgentDashboard } = await import("./agent/index");
