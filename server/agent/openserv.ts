@@ -121,9 +121,12 @@ function resolveCapabilityFromPayload(body: any): { cap: CapabilityDef; args: an
       }
     }
 
-    const threatCap = capabilityDefs.find((c) => c.name === "threat-check");
-    if (threatCap && textContent.length > 0) {
-      return { cap: threatCap, args: { text: textContent }, callerInfo: buildCallerInfo(body) };
+    if (textContent.length >= 10) {
+      const threatCap = capabilityDefs.find((c) => c.name === "threat-check");
+      if (threatCap) {
+        log(`OpenServ: no explicit capability — defaulting to threat-check for text (${textContent.length} chars)`, "agent");
+        return { cap: threatCap, args: { text: textContent }, callerInfo: buildCallerInfo(body) };
+      }
     }
   }
 
