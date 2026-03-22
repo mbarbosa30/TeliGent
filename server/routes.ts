@@ -702,7 +702,17 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       console.error(`[erc8004] Registration failed for bot ${req.params.botId}:`, err.message);
-      res.status(500).json({ error: err.message });
+      const msg = err.message || "Registration failed";
+      if (msg.includes("already registered")) {
+        return res.status(409).json({ error: msg });
+      }
+      if (msg.includes("no group activity") || msg.includes("No group activity")) {
+        return res.status(400).json({ error: msg });
+      }
+      if (msg.includes("CELO_WALLET_PRIVATE_KEY")) {
+        return res.status(503).json({ error: "Celo wallet is not configured" });
+      }
+      res.status(500).json({ error: msg });
     }
   });
 

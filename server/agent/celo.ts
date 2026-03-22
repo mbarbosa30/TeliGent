@@ -158,14 +158,19 @@ export async function registerBotOnCelo(botId: number, baseUrl: string): Promise
     let agentId = 0;
     for (const log of receipt.logs) {
       try {
-        if (log.topics[0] === "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef") {
+        if (
+          log.address.toLowerCase() === REGISTRY_ADDRESS.toLowerCase() &&
+          log.topics[0] === "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+        ) {
           const parsed = Number(BigInt(log.topics[3] || "0"));
           if (parsed > 0) {
             agentId = parsed;
             break;
           }
         }
-      } catch {}
+      } catch (e) {
+        console.error("[erc8004] Error parsing Transfer event log:", e);
+      }
     }
 
     if (agentId === 0) {
