@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import { pool } from "../db";
-import { registerBotOnCelo } from "./celo";
+import { registerBotOnCelo, type RegistrationOverrides } from "./celo";
 
 interface BatchResult {
   botId: number;
@@ -13,6 +13,57 @@ interface BatchResult {
   announcementsSent?: number;
   announcementsFailed?: number;
 }
+
+const BOT_OVERRIDES: Record<number, RegistrationOverrides & { telegramName: string }> = {
+  3: {
+    telegramName: "SelfClaw",
+    nameOverride: "SelfClaw",
+    descriptionOverride: "Community Protector and Supporter | selfclaw.ai & t.me/SelfClaw | Agent powered by Teli.Gent",
+    externalUrl: "https://selfclaw.ai",
+  },
+  4: {
+    telegramName: "WhiteClaw",
+    nameOverride: "WhiteClaw",
+    descriptionOverride: "Meme Guardian and Community Defender | t.me/whiteclawman | Agent powered by Teli.Gent",
+    externalUrl: "https://teli.gent",
+  },
+  6: {
+    telegramName: "MiniPlay",
+    nameOverride: "MiniPlay",
+    descriptionOverride: "Community Shield and Player Ally | miniplay.studio & t.me/MiniPlay_AI_Bot | Agent powered by Teli.Gent",
+    externalUrl: "https://miniplay.studio",
+  },
+  16: {
+    telegramName: "Oracle360",
+    nameOverride: "Oracle360",
+    descriptionOverride: "Wisdom Keeper and Community Sentinel | t.me/oracle360 | Agent powered by Teli.Gent",
+    externalUrl: "https://teli.gent",
+  },
+  17: {
+    telegramName: "BuilderScout",
+    nameOverride: "BuilderScout",
+    descriptionOverride: "Builder Ally and Community Watchdog | builderscout.ai & t.me/BuilderScout | Agent powered by Teli.Gent",
+    externalUrl: "https://builderscout.ai",
+  },
+  18: {
+    telegramName: "TeliGent",
+    nameOverride: "TeliGent",
+    descriptionOverride: "Scam Hunter and Community Guardian | teli.gent & t.me/teli_gent | Agent powered by Teli.Gent",
+    externalUrl: "https://teli.gent",
+  },
+  22: {
+    telegramName: "NFTBootzBot",
+    nameOverride: "NFTBootzBot",
+    descriptionOverride: "Digital Conscience and Community Guard | nftbootz.dev & t.me/NFTB00TZ | Agent powered by Teli.Gent",
+    externalUrl: "https://nftbootz.dev",
+  },
+  34: {
+    telegramName: "Violet",
+    nameOverride: "Violet",
+    descriptionOverride: "Community Companion and Silent Protector | t.me/Raidsandshill | Agent powered by Teli.Gent",
+    externalUrl: "https://teli.gent",
+  },
+};
 
 async function getEligibleBots(): Promise<Array<{
   id: number;
@@ -105,10 +156,11 @@ async function sendAnnouncementToGroups(
   return { sent, failed };
 }
 
-export async function batchRegisterAllBots(baseUrl: string): Promise<{
+export async function batchRegisterAllBots(baseUrl: string, options?: { sendAnnouncements?: boolean; force?: boolean }): Promise<{
   results: BatchResult[];
   summary: { total: number; registered: number; skipped: number; failed: number; announcementsSent: number };
 }> {
+  const sendAnnouncements = options?.sendAnnouncements ?? true;
   console.log("[celo-batch] Starting batch ERC-8004 registration on Celo...");
 
   const bots = await getEligibleBots();
@@ -118,8 +170,9 @@ export async function batchRegisterAllBots(baseUrl: string): Promise<{
   let totalAnnouncements = 0;
 
   for (const bot of bots) {
-    if (bot.celoTxHash) {
-      console.log(`[celo-batch] Skipping bot ${bot.id} (${bot.botName}) — already registered`);
+    const override = BOT_OVERRIDES[bot.id];
+    if (!override) {
+      console.log(`[celo-batch] Skipping bot ${bot.id} (${bot.botName}) — no override config (no profile image)`);
       results.push({
         botId: bot.id,
         botName: bot.botName,
@@ -128,32 +181,54 @@ export async function batchRegisterAllBots(baseUrl: string): Promise<{
       continue;
     }
 
-    console.log(`[celo-batch] Registering bot ${bot.id} (${bot.botName}) — ${bot.groupCount} groups...`);
+    if (bot.celoTxHash && !options?.force) {
+      console.log(`[celo-batch] Skipping bot ${bot.id} (${override.telegramName}) — already registered`);
+      results.push({
+        botId: bot.id,
+        botName: override.telegramName,
+        status: "skipped",
+      });
+      continue;
+    }
+
+    const displayName = override.telegramName;
+    console.log(`[celo-batch] Registering bot ${bot.id} (${displayName}) — ${bot.groupCount} groups...`);
 
     try {
-      const { agentId, txHash } = await registerBotOnCelo(bot.id, baseUrl);
-      console.log(`[celo-batch] Bot ${bot.id} (${bot.botName}) registered: agentId=${agentId}, tx=${txHash}`);
+      const imageUrl = `${baseUrl}/bot-images/${bot.id}.jpg`;
+      const registrationOverrides: RegistrationOverrides & { force?: boolean } = {
+        nameOverride: override.nameOverride,
+        descriptionOverride: override.descriptionOverride,
+        imageUrl,
+        externalUrl: override.externalUrl,
+        force: options?.force,
+      };
+
+      const { agentId, txHash } = await registerBotOnCelo(bot.id, baseUrl, registrationOverrides);
+      console.log(`[celo-batch] Bot ${bot.id} (${displayName}) registered: agentId=${agentId}, tx=${txHash}`);
 
       let announcementsSent = 0;
       let announcementsFailed = 0;
 
-      const groups = await getGroupsForBot(bot.id);
-      if (groups.length > 0 && bot.botToken) {
-        const announcementResult = await sendAnnouncementToGroups(
-          bot.botToken,
-          bot.botName,
-          agentId,
-          txHash,
-          groups
-        );
-        announcementsSent = announcementResult.sent;
-        announcementsFailed = announcementResult.failed;
-        totalAnnouncements += announcementsSent;
+      if (sendAnnouncements) {
+        const groups = await getGroupsForBot(bot.id);
+        if (groups.length > 0 && bot.botToken) {
+          const announcementResult = await sendAnnouncementToGroups(
+            bot.botToken,
+            displayName,
+            agentId,
+            txHash,
+            groups
+          );
+          announcementsSent = announcementResult.sent;
+          announcementsFailed = announcementResult.failed;
+          totalAnnouncements += announcementsSent;
+        }
       }
 
       results.push({
         botId: bot.id,
-        botName: bot.botName,
+        botName: displayName,
         status: "registered",
         agentId,
         txHash,
@@ -162,22 +237,22 @@ export async function batchRegisterAllBots(baseUrl: string): Promise<{
         announcementsFailed,
       });
 
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 3000));
     } catch (err: any) {
       const msg = err.message || "";
       if (msg.includes("already registered")) {
-        console.log(`[celo-batch] Bot ${bot.id} (${bot.botName}) was already registered (concurrent run?)`);
+        console.log(`[celo-batch] Bot ${bot.id} (${displayName}) was already registered (concurrent run?)`);
         results.push({
           botId: bot.id,
-          botName: bot.botName,
+          botName: displayName,
           status: "skipped",
           error: msg,
         });
       } else {
-        console.error(`[celo-batch] Failed to register bot ${bot.id} (${bot.botName}): ${msg}`);
+        console.error(`[celo-batch] Failed to register bot ${bot.id} (${displayName}): ${msg}`);
         results.push({
           botId: bot.id,
-          botName: bot.botName,
+          botName: displayName,
           status: "failed",
           error: msg,
         });

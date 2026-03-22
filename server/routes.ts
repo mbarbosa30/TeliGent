@@ -727,11 +727,35 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/erc8004/clear", isAdminAuthenticated, async (req, res) => {
+    try {
+      const botIds = req.body?.botIds;
+      if (!botIds || !Array.isArray(botIds)) {
+        return res.status(400).json({ error: "botIds array required" });
+      }
+      const { pool } = await import("./db");
+      const client = await pool.connect();
+      try {
+        const result = await client.query(
+          `UPDATE bot_configs SET celo_agent_id = NULL, celo_tx_hash = NULL, celo_registered_at = NULL WHERE id = ANY($1::int[])`,
+          [botIds]
+        );
+        res.json({ cleared: result.rowCount, botIds });
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/admin/erc8004/register-all", isAdminAuthenticated, async (req, res) => {
     try {
       const { batchRegisterAllBots } = await import("./agent/celo-batch");
       const baseUrl = `${req.protocol}://${req.get("host")}`;
-      const result = await batchRegisterAllBots(baseUrl);
+      const sendAnnouncements = req.body?.sendAnnouncements !== false;
+      const force = req.body?.force === true;
+      const result = await batchRegisterAllBots(baseUrl, { sendAnnouncements, force });
       res.json(result);
     } catch (err: any) {
       console.error("[admin] Batch ERC-8004 registration failed:", err.message);

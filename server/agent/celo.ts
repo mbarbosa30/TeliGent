@@ -21,30 +21,40 @@ interface BotRegistrationData {
   capabilities: string[];
 }
 
-function buildAgentURI(data: BotRegistrationData, baseUrl: string): string {
-  const registration = {
-    "@context": "https://erc8004.org/v1",
-    type: "AgentRegistration",
-    name: data.botName,
-    description: data.description,
-    version: "1.0.0",
-    platform: "TeliGent",
-    external_url: "https://teli.gent",
+export interface RegistrationOverrides {
+  nameOverride?: string;
+  descriptionOverride?: string;
+  imageUrl?: string;
+  externalUrl?: string;
+}
+
+function buildAgentURI(data: BotRegistrationData, baseUrl: string, overrides?: RegistrationOverrides): string {
+  const name = overrides?.nameOverride || data.botName;
+  const description = overrides?.descriptionOverride || data.description;
+  const image = overrides?.imageUrl || null;
+  const externalUrl = overrides?.externalUrl || "https://teli.gent";
+
+  const metadata: Record<string, any> = {
+    name,
+    description,
+    external_url: externalUrl,
+    attributes: [
+      { trait_type: "Platform", value: "TeliGent" },
+      { trait_type: "Chain", value: "Celo" },
+      { trait_type: "Registry", value: "ERC-8004" },
+      { trait_type: "Groups Protected", value: data.groupsProtected, display_type: "number" },
+      { trait_type: "Members Served", value: data.membersServed, display_type: "number" },
+      { trait_type: "Conversations Handled", value: data.conversationsHandled, display_type: "number" },
+      { trait_type: "Knowledge Entries", value: data.knowledgeEntries, display_type: "number" },
+      ...data.capabilities.map(c => ({ trait_type: "Capability", value: c })),
+    ],
     properties: {
       botId: data.botId,
-      capabilities: data.capabilities,
-      stats: {
-        groupsProtected: data.groupsProtected,
-        membersServed: data.membersServed,
-        conversationsHandled: data.conversationsHandled,
-        knowledgeEntries: data.knowledgeEntries,
-      },
       endpoints: {
         platform: baseUrl,
         identity: `${baseUrl}/api/agent/identity`,
         agentCard: `${baseUrl}/.well-known/agent.json`,
       },
-      chain: "celo",
       registry: REGISTRY_ADDRESS,
       communication: {
         website: "https://teli.gent",
@@ -55,11 +65,14 @@ function buildAgentURI(data: BotRegistrationData, baseUrl: string): string {
         name: "TeliGent",
         url: "https://teli.gent",
       },
-      tags: ["telegram-bot", "community-protection", "scam-detection", "ai-agent"],
     },
   };
 
-  const jsonStr = JSON.stringify(registration);
+  if (image) {
+    metadata.image = image;
+  }
+
+  const jsonStr = JSON.stringify(metadata);
   const base64 = Buffer.from(jsonStr).toString("base64");
   return `data:application/json;base64,${base64}`;
 }
@@ -100,7 +113,7 @@ async function getBotStats(botId: number): Promise<BotRegistrationData> {
   }
 }
 
-export async function registerBotOnCelo(botId: number, baseUrl: string): Promise<{
+export async function registerBotOnCelo(botId: number, baseUrl: string, overrides?: RegistrationOverrides & { force?: boolean }): Promise<{
   agentId: number;
   txHash: string;
 }> {
@@ -120,9 +133,16 @@ export async function registerBotOnCelo(botId: number, baseUrl: string): Promise
       `SELECT celo_tx_hash FROM bot_configs WHERE id = $1 FOR UPDATE`,
       [botId]
     );
-    if (lockRows[0]?.celo_tx_hash) {
+    if (lockRows[0]?.celo_tx_hash && !overrides?.force) {
       await client.query("ROLLBACK");
       throw new Error("Bot is already registered on Celo");
+    }
+    if (lockRows[0]?.celo_tx_hash && overrides?.force) {
+      await client.query(
+        `UPDATE bot_configs SET celo_agent_id = NULL, celo_tx_hash = NULL, celo_registered_at = NULL WHERE id = $1`,
+        [botId]
+      );
+      console.log(`[erc8004] Force mode: cleared old registration for bot ${botId}`);
     }
 
     const formattedKey = (privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as Hex;
@@ -139,7 +159,7 @@ export async function registerBotOnCelo(botId: number, baseUrl: string): Promise
       transport: http(),
     });
 
-    const agentURI = buildAgentURI(botData, baseUrl);
+    const agentURI = buildAgentURI(botData, baseUrl, overrides);
 
     const txHash = await walletClient.writeContract({
       address: REGISTRY_ADDRESS,
