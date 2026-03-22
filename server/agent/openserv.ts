@@ -91,6 +91,51 @@ const capabilityDefs: CapabilityDef[] = [
   },
 ];
 
+const capabilityDefsByLength = [...capabilityDefs].sort((a, b) => b.name.length - a.name.length);
+
+function resolveCapabilityFromPayload(body: any): { cap: CapabilityDef; args: any; callerInfo: string } | null {
+  const capName = body.capability || body.task?.capability || null;
+  let capArgs = body.args || body.task?.args || {};
+
+  if (capName) {
+    const cap = capabilityDefs.find((c) => c.name === capName);
+    if (cap) {
+      if (Object.keys(cap.parameters).length > 0 && !capArgs.text) {
+        const textContent = body.task?.input || body.task?.description || body.task?.body || "";
+        if (textContent) capArgs = { ...capArgs, text: textContent };
+      }
+      return { cap, args: capArgs, callerInfo: buildCallerInfo(body) };
+    }
+  }
+
+  const taskDescription = body.task?.description || body.task?.body || "";
+  const taskInput = body.task?.input || "";
+  const textContent = taskInput || taskDescription;
+
+  if (textContent) {
+    const lowerText = textContent.toLowerCase();
+    for (const cap of capabilityDefsByLength) {
+      if (lowerText.includes(cap.name)) {
+        const resolvedArgs = Object.keys(cap.parameters).length > 0 ? { ...capArgs, text: textContent } : capArgs;
+        return { cap, args: resolvedArgs, callerInfo: buildCallerInfo(body) };
+      }
+    }
+
+    const threatCap = capabilityDefs.find((c) => c.name === "threat-check");
+    if (threatCap && textContent.length > 0) {
+      return { cap: threatCap, args: { text: textContent }, callerInfo: buildCallerInfo(body) };
+    }
+  }
+
+  return null;
+}
+
+function buildCallerInfo(body: any): string {
+  const wsId = body.workspaceId || body.workspace?.id || "unknown";
+  const taskId = body.taskId || body.task?.id || "unknown";
+  return `ws-${wsId}/task-${taskId}`;
+}
+
 export function getOpenServManifest(baseUrl: string) {
   const walletAddress = getLocusWalletAddress();
 
@@ -113,6 +158,10 @@ export function getOpenServManifest(baseUrl: string) {
     })),
     endpoints: {
       invoke: `${baseUrl}/api/agent/openserv/invoke`,
+      tools: capabilityDefs.reduce((acc, c) => {
+        acc[c.name] = `${baseUrl}/api/agent/openserv/tools/${c.name}`;
+        return acc;
+      }, {} as Record<string, string>),
       health: `${baseUrl}/api/agent/openserv/health`,
       identity: `${baseUrl}/api/agent/identity`,
       threatCheck: `${baseUrl}/api/agent/services/threat-check`,
@@ -125,6 +174,24 @@ export function getOpenServManifest(baseUrl: string) {
       protocol: "locus",
     },
     trust: {
+      provider: "self-protocol",
+      chain: "celo",
+      description: "Self-verified calling agents receive 50% pricing discount and higher rate limits (60/min vs 30/min)",
+      verificationHeaders: ["x-self-agent-address", "x-self-agent-signature", "x-self-agent-timestamp"],
+      tiers: [
+        {
+          name: "verified",
+          rateLimit: "60/min",
+          discount: "50%",
+          requirements: ["Self Protocol proof-of-human verification on Celo"],
+        },
+        {
+          name: "standard",
+          rateLimit: "30/min",
+          discount: "0%",
+          requirements: [],
+        },
+      ],
       selfProtocol: {
         chain: "celo",
         description: "Self-verified calling agents receive 50% pricing discount and higher rate limits (60/min vs 30/min)",
@@ -167,47 +234,78 @@ async function logOpenServInvocation(capName: string, result: string, callerInfo
   }
 }
 
+async function executeCapability(cap: CapabilityDef, args: any, callerInfo: string) {
+  const result = await cap.run(args);
+  totalInvocations++;
+  logOpenServInvocation(cap.name, result, callerInfo);
+  return result;
+}
+
 export function registerOpenServRoutes(app: Express): void {
   const apiKey = getOpenServApiKey();
 
+  function verifyAuth(req: any, res: any): boolean {
+    if (!apiKey) {
+      res.status(503).json({ error: "OpenServ integration not configured" });
+      return false;
+    }
+    const authHeader = req.headers.authorization;
+    if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
+      res.status(401).json({ error: "Unauthorized" });
+      return false;
+    }
+    return true;
+  }
+
   app.post("/api/agent/openserv/invoke", async (req, res) => {
     try {
-      if (!apiKey) {
-        return res.status(503).json({ error: "OpenServ integration not configured" });
-      }
-      const authHeader = req.headers.authorization;
-      if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
+      if (!verifyAuth(req, res)) return;
 
-      const { type, capability, args, taskId, workspaceId } = req.body;
+      const type = req.body.type || req.body.action?.type || req.body.action;
+      const normalizedType = typeof type === "string" ? type.replace(/-/g, "_").toLowerCase() : null;
 
-      if (type === "capability_invoke" || type === "do_task") {
-        const capName = capability || req.body.task?.capability;
-        const capArgs = args || req.body.task?.args || {};
-
-        const cap = capabilityDefs.find((c) => c.name === capName);
-        if (!cap) {
-          return res.status(404).json({ error: `Unknown capability: ${capName}` });
+      if (normalizedType === "capability_invoke" || normalizedType === "do_task") {
+        const resolved = resolveCapabilityFromPayload(req.body);
+        if (!resolved) {
+          return res.status(404).json({ error: "Could not resolve capability from request" });
         }
 
-        log(`OpenServ invocation: ${capName} (workspace: ${workspaceId || "N/A"}, task: ${taskId || "N/A"})`, "agent");
+        log(`OpenServ invocation: ${resolved.cap.name} (${resolved.callerInfo})`, "agent");
 
-        const result = await cap.run(capArgs);
-        totalInvocations++;
-
-        const callerInfo = `ws-${workspaceId || "unknown"}/task-${taskId || "unknown"}`;
-        logOpenServInvocation(capName, result, callerInfo);
+        const result = await executeCapability(resolved.cap, resolved.args, resolved.callerInfo);
 
         return res.json({
           success: true,
           result,
-          capability: capName,
-          taskId,
+          capability: resolved.cap.name,
+          taskId: req.body.taskId || req.body.task?.id,
         });
       }
 
-      if (type === "get_capabilities" || type === "list_capabilities") {
+      if (normalizedType === "respond_chat_message") {
+        const messages = req.body.messages || req.body.chatHistory || [];
+        const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+        const userText = lastMessage?.content || req.body.message || "";
+
+        if (userText) {
+          const resolved = resolveCapabilityFromPayload({ ...req.body, task: { input: userText } });
+          if (resolved) {
+            const result = await executeCapability(resolved.cap, resolved.args, buildCallerInfo(req.body));
+            return res.json({ success: true, result, type: "chat-response" });
+          }
+        }
+
+        return res.json({
+          success: true,
+          result: JSON.stringify({
+            message: "TeliGent Master Agent provides scam detection, threat intelligence, and community health monitoring. Send text to analyze or ask for community-health stats.",
+            capabilities: capabilityDefs.map((c) => c.name),
+          }),
+          type: "chat-response",
+        });
+      }
+
+      if (normalizedType === "get_capabilities" || normalizedType === "list_capabilities") {
         return res.json({
           capabilities: capabilityDefs.map((c) => ({
             name: c.name,
@@ -221,6 +319,30 @@ export function registerOpenServRoutes(app: Express): void {
       return res.status(400).json({ error: `Unknown request type: ${type}` });
     } catch (err: any) {
       log(`OpenServ request error: ${err.message}`, "agent");
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/agent/openserv/tools/:toolName", async (req, res) => {
+    try {
+      if (!verifyAuth(req, res)) return;
+
+      const { toolName } = req.params;
+      const cap = capabilityDefs.find((c) => c.name === toolName);
+      if (!cap) {
+        return res.status(404).json({ error: `Tool "${toolName}" not found` });
+      }
+
+      const args = req.body.args || req.body;
+      const callerInfo = buildCallerInfo(req.body);
+
+      log(`OpenServ tool call: ${toolName} (${callerInfo})`, "agent");
+
+      const result = await executeCapability(cap, args, callerInfo);
+
+      return res.json({ success: true, result });
+    } catch (err: any) {
+      log(`OpenServ tool error: ${err.message}`, "agent");
       return res.status(500).json({ error: err.message });
     }
   });

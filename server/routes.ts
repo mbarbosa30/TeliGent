@@ -513,10 +513,11 @@ export async function registerRoutes(
     try {
       const { getWalletStatus, getLocusWalletAddress } = await import("./agent/locus");
       const walletData = await getWalletStatus();
+      const address = getLocusWalletAddress() || walletData?.ownerAddress || null;
       res.json({
-        configured: !!walletData,
-        address: getLocusWalletAddress() || walletData?.ownerAddress || null,
-        status: walletData?.walletStatus || "not_configured",
+        configured: !!address,
+        address,
+        status: walletData?.walletStatus || (address ? "address_only" : "not_configured"),
         chain: walletData?.chain || "base",
       });
     } catch (err: any) {
