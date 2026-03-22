@@ -107,13 +107,21 @@ export async function registerBotOnCelo(botId: number, baseUrl: string): Promise
   const privateKey = process.env.CELO_WALLET_PRIVATE_KEY;
   if (!privateKey) throw new Error("CELO_WALLET_PRIVATE_KEY is not configured");
 
+  const botData = await getBotStats(botId);
+  if (botData.groupsProtected === 0) {
+    throw new Error("Bot has no group activity. Only bots with at least one active group can be registered on Celo.");
+  }
+
   const client = await pool.connect();
   try {
+    await client.query("BEGIN");
+
     const { rows: lockRows } = await client.query(
       `SELECT celo_tx_hash FROM bot_configs WHERE id = $1 FOR UPDATE`,
       [botId]
     );
     if (lockRows[0]?.celo_tx_hash) {
+      await client.query("ROLLBACK");
       throw new Error("Bot is already registered on Celo");
     }
 
@@ -131,7 +139,6 @@ export async function registerBotOnCelo(botId: number, baseUrl: string): Promise
       transport: http(),
     });
 
-    const botData = await getBotStats(botId);
     const agentURI = buildAgentURI(botData, baseUrl);
 
     const txHash = await walletClient.writeContract({
@@ -144,6 +151,7 @@ export async function registerBotOnCelo(botId: number, baseUrl: string): Promise
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
     if (receipt.status !== "success") {
+      await client.query("ROLLBACK");
       throw new Error(`Transaction reverted: ${txHash}`);
     }
 
@@ -151,10 +159,18 @@ export async function registerBotOnCelo(botId: number, baseUrl: string): Promise
     for (const log of receipt.logs) {
       try {
         if (log.topics[0] === "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef") {
-          agentId = Number(BigInt(log.topics[3] || "0"));
-          break;
+          const parsed = Number(BigInt(log.topics[3] || "0"));
+          if (parsed > 0) {
+            agentId = parsed;
+            break;
+          }
         }
       } catch {}
+    }
+
+    if (agentId === 0) {
+      await client.query("ROLLBACK");
+      throw new Error(`Registration transaction succeeded but could not extract agent ID from receipt: ${txHash}`);
     }
 
     await client.query(
@@ -162,7 +178,11 @@ export async function registerBotOnCelo(botId: number, baseUrl: string): Promise
       [agentId, txHash, botId]
     );
 
+    await client.query("COMMIT");
     return { agentId, txHash };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
   } finally {
     client.release();
   }
