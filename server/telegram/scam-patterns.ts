@@ -320,7 +320,8 @@ export const scamPatterns: ScamPattern[] = [
       (/\b(wall+ets?|accounts?)\s*(with|that\s*(has|have))\s*.{0,40}(transactions?|history|activit|dead\s*tokens?)/i.test(normalized) && /\d+\s*(sol|eth|usdt|btc|bnb)\b/i.test(raw)) ||
       (/\b(need|want|looking\s*for|buy)\b.{0,30}\b(solana|sol|eth|ethereum|crypto|btc|bitcoin)\b.{0,20}\b(wall+ets?|accounts?)\b/i.test(normalized) && /\b(pay|buy|write\s*me|contact|dm|pm)\b/i.test(normalized)) ||
       (/\b(need|want|looking\s*for|buy)\b.{0,30}\b(solana|sol|eth|ethereum|crypto|btc|bitcoin)\b.{0,20}\b(wall+ets?|accounts?)\b/i.test(normalized) && /\d+\s*(sol|eth|usdt|btc|bnb)\b/i.test(raw)) ||
-      (/\b(plenty|dead)\s*(tokens?)\b/i.test(normalized) && /\b(wall+ets?|accounts?)\b/i.test(normalized) && /\b(pay|buy|need|want|sell)\b/i.test(normalized)),
+      (/\b(plenty|dead)\s*(tokens?)\b/i.test(normalized) && /\b(wall+ets?|accounts?)\b/i.test(normalized) && /\b(pay|buy|need|want|sell)\b/i.test(normalized)) ||
+      (/\b(phantom|phantomm|solflare|solfare|soflare|metamask|metamas|trustwallet|trust\s*wallet)\b/i.test(normalized) && /\b(wall+ets?|accounts?)\b/i.test(normalized) && /\b(old|empty|aged|dead|transaction|history|month|year)\b/i.test(normalized) && /\b(pay|buy|sell|sol|eth|usdt|need|want|get\s*me)\b/i.test(normalized)),
   },
   {
     name: "pumpPromoSpam",
