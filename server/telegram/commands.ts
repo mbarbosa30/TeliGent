@@ -452,7 +452,7 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     usedChars += bankrText.length;
   }
 
-  const usernameClause = botUsername ? ` Your Telegram handle is @${botUsername} — when people mention @${botUsername}, they are talking to YOU.` : "";
+  const usernameClause = botUsername ? ` Your Telegram handle is @${botUsername}, when people mention @${botUsername}, they are talking to YOU.` : "";
   const systemPrompt = `You are "${config.botName}", a bot assistant in the Telegram group "${groupName}".${usernameClause}
 
 --- PERSONALITY & COMMUNICATION STYLE (HIGHEST PRIORITY) ---
