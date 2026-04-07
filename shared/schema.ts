@@ -25,6 +25,8 @@ export const botConfigs = pgTable("bot_configs", {
   reportKeywords: text("report_keywords").array().notNull().default(sql`ARRAY['report', 'issue', 'bug', 'problem', 'broken']`),
   widgetEnabled: boolean("widget_enabled").notNull().default(false),
   widgetKey: varchar("widget_key", { length: 64 }),
+  bankrEnabled: boolean("bankr_enabled").notNull().default(false),
+  bankrApiKey: text("bankr_api_key"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [

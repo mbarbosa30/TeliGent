@@ -106,8 +106,8 @@ export default function SettingsPage() {
         autoBanThreshold: config.autoBanThreshold ?? 0,
         trackReports: config.trackReports,
         reportKeywords: config.reportKeywords || ["report", "issue", "bug", "problem", "broken"],
-        bankrEnabled: (config as any).bankrEnabled ?? false,
-        bankrApiKey: (config as any).bankrApiKey ?? "",
+        bankrEnabled: config.bankrEnabled ?? false,
+        bankrApiKey: config.bankrApiKey ?? "",
       };
 
       if (isBotSwitch) {

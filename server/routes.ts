@@ -126,24 +126,10 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/config", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const config = (req as any).botConfig;
-      const { pool } = await import("./db");
-      const client = await pool.connect();
-      try {
-        const { rows } = await client.query(
-          `SELECT bankr_enabled, bankr_api_key FROM bot_configs WHERE id = $1`,
-          [config.id]
-        );
-        if (rows[0]) {
-          config.bankrEnabled = rows[0].bankr_enabled ?? false;
-          const rawKey = rows[0].bankr_api_key || "";
-          config.bankrApiKey = rawKey ? `${rawKey.slice(0, 6)}${"*".repeat(Math.max(0, rawKey.length - 6))}` : "";
-          config.hasBankrApiKey = !!rawKey;
-        }
-      } catch (_) {
-      } finally {
-        client.release();
-      }
+      const config = { ...(req as any).botConfig };
+      const rawKey = config.bankrApiKey || "";
+      config.bankrApiKey = rawKey ? `${rawKey.slice(0, 6)}${"*".repeat(Math.max(0, rawKey.length - 6))}` : "";
+      config.hasBankrApiKey = !!rawKey;
       res.json(config);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -163,32 +149,8 @@ export async function registerRoutes(
   app.patch("/api/bots/:botId/config", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
-      const { bankrEnabled, bankrApiKey, ...rest } = req.body;
-      const partial = insertBotConfigSchema.partial().parse(rest);
+      const partial = insertBotConfigSchema.partial().parse(req.body);
       const config = await storage.updateBotConfig(botId, partial);
-
-      if (bankrEnabled !== undefined || bankrApiKey !== undefined) {
-        const { pool } = await import("./db");
-        const client = await pool.connect();
-        try {
-          const sets: string[] = [];
-          const vals: any[] = [];
-          let idx = 1;
-          if (bankrEnabled !== undefined) {
-            sets.push(`bankr_enabled = $${idx++}`);
-            vals.push(bankrEnabled === true || bankrEnabled === "true");
-          }
-          if (bankrApiKey !== undefined) {
-            const key = typeof bankrApiKey === "string" ? bankrApiKey.trim().slice(0, 200) : "";
-            sets.push(`bankr_api_key = $${idx++}`);
-            vals.push(key || null);
-          }
-          vals.push(botId);
-          await client.query(`UPDATE bot_configs SET ${sets.join(", ")} WHERE id = $${idx}`, vals);
-        } finally {
-          client.release();
-        }
-      }
 
       if (partial.botToken !== undefined || partial.isActive !== undefined) {
         startBotEngine(app).catch(err => {

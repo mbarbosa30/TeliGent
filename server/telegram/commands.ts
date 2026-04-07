@@ -70,8 +70,7 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
   }
 
   if (command === "help") {
-    const bankrEnabled = (config as any).bankr_enabled || (config as any).bankrEnabled;
-    const priceCmd = bankrEnabled ? "\n/price <token> — Get real-time token price data" : "";
+    const priceCmd = config.bankrEnabled ? "\n/price <token> — Get real-time token price data" : "";
     const helpText = `*Available Commands:*
 
 /start — Introduction and project overview
@@ -101,8 +100,7 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
   }
 
   if (command === "price") {
-    const bankrEnabled = (config as any).bankr_enabled || (config as any).bankrEnabled;
-    if (!bankrEnabled) {
+    if (!config.bankrEnabled) {
       await sendBotMessage(bot, chatId, "Crypto intelligence is not enabled for this bot.", msg.message_id);
       return true;
     }
@@ -110,8 +108,7 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
       await sendBotMessage(bot, chatId, "Usage: /price <token>\nExample: /price ETH", msg.message_id);
       return true;
     }
-    const bankrApiKey = (config as any).bankr_api_key || (config as any).bankrApiKey;
-    const result = await getTokenPrice(args, bankrApiKey);
+    const result = await getTokenPrice(args, config.bankrApiKey);
     const response = result || `Could not fetch price data for "${args}". Try again in a moment.`;
     await sendBotMessage(bot, chatId, response, msg.message_id);
     await storage.createActivityLog(botConfigId, userId, {
@@ -377,14 +374,11 @@ Reply with ONLY "RESPOND" or "SKIP".`;
 }
 
 export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[], groupContext?: GroupContext | null): Promise<string> {
-  const bankrEnabled = (config as any).bankr_enabled || (config as any).bankrEnabled;
-  const bankrApiKey = (config as any).bankr_api_key || (config as any).bankrApiKey;
-
   const [knowledgeEntries, memories, bankrData] = await Promise.all([
     storage.getActiveKnowledgeEntries(botConfigId),
     storage.getBotMemories(botConfigId),
-    bankrEnabled && isCryptoQuery(userMessage)
-      ? queryBankr(userMessage, bankrApiKey).catch(() => null)
+    config.bankrEnabled && isCryptoQuery(userMessage)
+      ? queryBankr(userMessage, config.bankrApiKey).catch(() => null)
       : Promise.resolve(null),
   ]);
 
