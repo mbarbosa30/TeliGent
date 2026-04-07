@@ -329,7 +329,9 @@ export async function detectAndHandleScam(
     hit("dmServiceMenu") || hit("serviceListSpam") || hit("coldPitchPromo") ||
     hit("promoForHireSpam") || hit("volumeServiceSpam") || hit("tokenCallCard") || hit("channelManagementPitch") ||
     hit("fakeExchangeListing") || hasFinancialShillHypeResult || hit("investmentServicePitch") ||
-    hit("revenueSplitScam") || hit("formattedPitchScam") || hasLearnedPatternMatch;
+    hit("revenueSplitScam") || hit("formattedPitchScam") || hasLearnedPatternMatch ||
+    hit("vipCallBrag") || hit("testimonialProfitHype") || hit("fakeRefundExitScam") ||
+    hit("investorAccessPitch") || hit("channelForHirePromo");
 
   if (evasionDetected && hasAnyScamSignal) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Homoglyph evasion with scam content (character substitution to bypass filters)");
@@ -339,6 +341,9 @@ export async function detectAndHandleScam(
   }
   if (isImpersonator && (hit("migrationAirdropScam") || hit("privateMessageSolicitation") || hit("dmSolicitation"))) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Impersonation + scam (name mimics bot/group)");
+  }
+  if (hit("fakeRefundExitScam")) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("fakeRefundExitScam"));
   }
   if (hit("migrationAirdropScam")) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("migrationAirdropScam"));
@@ -378,6 +383,18 @@ export async function detectAndHandleScam(
   }
   if (hit("insiderCallSpam")) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("insiderCallSpam"));
+  }
+  if (hit("vipCallBrag")) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("vipCallBrag"));
+  }
+  if (hit("testimonialProfitHype")) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("testimonialProfitHype"));
+  }
+  if (hit("investorAccessPitch")) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("investorAccessPitch"));
+  }
+  if (hit("channelForHirePromo")) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("channelForHirePromo"));
   }
   if (hit("walletBuyingSelling")) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("walletBuyingSelling"));
@@ -500,6 +517,26 @@ export function runDeterministicScamCheck(text: string): { isScam: boolean; reas
 
   if (hit("cryptoGiveawayScam")) {
     return { isScam: true, reason: "Fake crypto giveaway scam — DM solicitation with free crypto lure" };
+  }
+
+  if (hit("fakeRefundExitScam")) {
+    return { isScam: true, reason: "Fake refund / exit scam — shutdown announcement with DM/hash request" };
+  }
+
+  if (hit("vipCallBrag")) {
+    return { isScam: true, reason: "VIP call / insider trading brag spam — multiplier claims with call results" };
+  }
+
+  if (hit("testimonialProfitHype")) {
+    return { isScam: true, reason: "Testimonial profit hype spam — fake profit claims with urgency" };
+  }
+
+  if (hit("investorAccessPitch")) {
+    return { isScam: true, reason: "Investor access pitch spam — offering investor network for token promotion" };
+  }
+
+  if (hit("channelForHirePromo")) {
+    return { isScam: true, reason: "Channel-for-hire promotion spam — offering channels for paid shilling" };
   }
 
   return { isScam: false, reason: "" };

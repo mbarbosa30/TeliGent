@@ -373,6 +373,58 @@ export const scamPatterns: ScamPattern[] = [
     detect: (_normalized, raw) =>
       /[📩📬📭📮✉💌📧]\s*(me|us|now)\b/i.test(raw) || /\b(send|drop|shoot)\s*(a\s*)?[📩📬📭📮✉💌📧]/i.test(raw),
   },
+  {
+    name: "vipCallBrag",
+    description: "VIP/insider call results bragging with multiplier claims or profit numbers",
+    reason: "VIP call / insider trading brag spam",
+    detect: (normalized, raw) =>
+      (/\b(vip|insider|premium|private)\b.{0,40}\b(call|signal|alert|pick|group|channel)\b/i.test(normalized) && /\d+[xхΧχ×]/i.test(raw)) ||
+      (/\d+[xхΧχ×]\b.{0,40}\b(vip|insider|premium|private)\s*(call|signal|alert|pick|group|channel)\b/i.test(raw)) ||
+      (/\b(called\s*at|call\s*was|from\s*(the|my|our)\s*call)\b/i.test(normalized) && /\d+[xхΧχ×]/i.test(raw)) ||
+      (/\b(ath|all[\s-]*time[\s-]*high)\b/i.test(normalized) && /\d+[xхΧχ×]/i.test(raw) && /\b(call|signal|vip|insider|boom|bullish)\b/i.test(normalized)) ||
+      (/\b(called\s*at)\b/i.test(normalized) && /\b(mc|market\s*cap|ath|all[\s-]*time[\s-]*high)\b/i.test(normalized) && /\d+[kKmM]?\b/i.test(raw)),
+  },
+  {
+    name: "testimonialProfitHype",
+    description: "Testimonial-style profit claims with urgency/FOMO language",
+    reason: "Testimonial profit hype spam",
+    detect: (normalized, raw) => {
+      const hasProfitClaim = /\$\s*\d[\d,.]*\s*[kKmM]?\b/.test(raw) || /\b(locked\s*in|made|earned|banked|pulled|secured|pocketed|cashed\s*out)\b.{0,20}\$?\d[\d,.]*\s*[kKmM]?\b/i.test(raw);
+      const hasTestimonial = /\b(member|trader|caller|subscriber|follower|user|person|people|guy|dude)\s*(just|already|recently)?\s*(locked|made|earned|banked|pulled|secured|pocketed|cashed)/i.test(normalized) || /\b(another|last|recent|latest)\s*(member|trader|caller|subscriber|win|result|call)\b/i.test(normalized);
+      const hasUrgency = /\b(next\s*(gem|play|call|move|one)|already\s*(loading|positioning|accumulating|moving)|smart\s*money|don'?t\s*miss|can'?t\s*afford|about\s*to|still\s*early|before\s*(it'?s?\s*too\s*late|everyone))\b/i.test(normalized) || /[🚀🔥💰📈💎]+.*[🚀🔥💰📈💎]+/u.test(raw);
+      return hasProfitClaim && (hasTestimonial || hasUrgency);
+    },
+  },
+  {
+    name: "fakeRefundExitScam",
+    description: "Fake project shutdown/refund announcements requesting DMs or transaction hashes",
+    reason: "Fake refund / exit scam",
+    detect: (normalized, _raw) =>
+      (/\b(refund|refunding)\b/i.test(normalized) && /\b(holder|buy|purchase|transaction|tx)\b/i.test(normalized) && /\b(dm|pm|inbox|message|send|hash|verification|verify)\b/i.test(normalized)) ||
+      (/\b(apologiz|apolog(y|ies)|sorry|unfortunat)\b/i.test(normalized) && /\b(refund|refunding|compensat)\b/i.test(normalized) && /\b(holder|investor|supporter|buyer|participant)\b/i.test(normalized)) ||
+      (/\b(shut\s*(down|ting)|wind\s*(down|ing)|ceas|discontinu|closing)\b/i.test(normalized) && /\b(refund|refunding|return\s*(the|your)|compensat)\b/i.test(normalized)) ||
+      (/\b(relaunch|re[\s-]*launch)\b/i.test(normalized) && /\b(refund|refunding)\b/i.test(normalized) && /\b(holder|dm|pm|send|hash|transaction)\b/i.test(normalized)),
+  },
+  {
+    name: "investorAccessPitch",
+    description: "Offering access to investors, traders, or whales for token promotion",
+    reason: "Investor access / token scaling pitch spam",
+    detect: (normalized, raw) =>
+      (/\b(access\s*to|connect\s*(you\s*)?with|network\s*of|pool\s*of)\b.{0,20}\d+\s*\+?\s*(genuine|real|active|serious|verified|organic|crypto)?\s*(investor|trader|whale|buyer|holder|enthusiast)s?\b/i.test(raw)) ||
+      (/\b\d+\s*\+?\s*(genuine|real|active|serious|verified|organic|crypto)\s*(investor|trader|whale|buyer|holder|enthusiast)s?\b/i.test(raw) && /\b(dm|pm|contact|message|inbox|reach)\b/i.test(normalized)) ||
+      (/\b(scal(e|ing)|grow(ing)?|boost(ing)?|promot(e|ing))\s*(your|ur)\s*(token|project|coin|community)\b/i.test(normalized) && /\b(investor|trader|whale|buyer)s?\b/i.test(normalized) && /\b(dm|pm|contact|message|strategy|expos|visibilit|engag)\b/i.test(normalized)) ||
+      (/\b(serious\s*about|ready\s*to)\s*(scal|grow|boost|promot|expand)/i.test(normalized) && /\b(investor|trader|whale|exposure|visibility|volume|engagement)\b/i.test(normalized) && /\b(dm|pm|contact|message|@\w+)\b/i.test(normalized)),
+  },
+  {
+    name: "channelForHirePromo",
+    description: "Offering Telegram channels/groups for paid crypto promotion or shilling",
+    reason: "Channel-for-hire promotion spam",
+    detect: (normalized, _raw) =>
+      (/\b(i\s*have|we\s*have|got)\b.{0,20}\b(telegram|tg|crypto)?\s*(channel|group|communit)s?\b.{0,30}\b(promot|market|shill|advertis|boost|post)\b/i.test(normalized)) ||
+      (/\b(telegram|tg)?\s*(channel|group|communit)s?\s*(for|available\s*for)\s*(promot|market|shill|advertis|boost|crypto)\b/i.test(normalized)) ||
+      (/\b(promot|market|shill|advertis)\b/i.test(normalized) && /\b(cheap|fast|quick|affordable|low\s*price|best\s*price|instant)\s*(price|post|promot|result|delivery)?\b/i.test(normalized) && /\b(contact|dm|pm|message|inbox|reach)\s*(me|us)?\b/i.test(normalized)) ||
+      (/\b(any\s*(project|token|coin)\s*needs?)\b.{0,30}\b(market|promot|shill|advertis|boost)\b/i.test(normalized) && /\b(contact|dm|pm|message|inbox|reach)\s*(me|us)?\b/i.test(normalized)),
+  },
 ];
 
 export interface FinancialHypeSignals {
@@ -385,8 +437,8 @@ export interface FinancialHypeSignals {
 
 export function detectFinancialHypeSignals(normalized: string, raw: string, isForwarded: boolean): FinancialHypeSignals {
   const hasMultiplierClaim = /\b(\d{2,})\s*[-–—]?\s*(\d+)?\s*[xхΧχ×](?=\s|$|[^\w])|\b\d+[xхΧχ×]\s*(gain|return|profit|potential|move|play|gem|from\s*here)\b/i.test(raw);
-  const hasPumpHypeLanguage = /\b(low[\s-]*(cap|mc)\s*(gem|play|pick|token|coin)?|hidden\s*gems?|new\s*gems?|found\s*.{0,10}gems?|next\s*\d+x|next\s*(play|move|call|gem)|moon\s*(shot|play|bag)|whale|rotate|rotating|accumulating|load(ing|ed)\s*(up|bag)|eye(ing)?\s*(a\s*few|some|these)|ape[ds]?\s*(in|into|now|early|before|this|it)|degen\s*(play|call|move)|don'?t\s*(sleep|fade)|early\s*(entry|bird|call)|bag\s*(these|this|it|now)|about\s*to\s*(pop|explode|moon|pump|rip|run|send|fly|break\s*out)|fill\s*(your|ur)\s*bag|lfg+\b|something\s*(huge|big|massive)\s*(is\s*)?(coming|brewing|loading|cooking)|get\s*ready|plays?\s*loading|print(ing)?\s*(money|gains?)|gonna\s*(be\s*)?print(ing)?)\b/i.test(normalized);
-  const hasFomoUrgency = /🔥.*💸|💸.*🔥|🚀.*💰|💰.*🚀|🚀\s*🚀|🔥\s*🔥|\b(before\s*(it'?s?\s*too\s*late|the\s*(pump|train|bus|ship)|whales|liftoff|breakout|everyone)|still\s*early|not\s*too\s*late|thank\s*me\s*later|you'?ll\s*regret|mark\s*my\s*words|remember\s*(this|i\s*told)|nfa\s*(but|tho|though)|this\s*is\s*(it|the\s*one)|train\s*leav(es|ing)|make\s*sure.{0,20}don'?t\s*miss|don'?t\s*miss\s*out|secure\s*(your|a|my)\s*(spot|place|position|allocation|slot))\b/i.test(normalized) || /🔥\s*🔥/i.test(raw) || /\b(in\s*private)\b.{0,20}\b\d+x\b/i.test(raw);
+  const hasPumpHypeLanguage = /\b(low[\s-]*(cap|mc)\s*(gem|play|pick|token|coin)?|hidden\s*gems?|new\s*gems?|found\s*.{0,10}gems?|next\s*\d+x|next\s*(play|move|call|gem)|moon\s*(shot|play|bag)|whale|rotate|rotating|accumulating|load(ing|ed)\s*(up|bag)|eye(ing)?\s*(a\s*few|some|these)|ape[ds]?\s*(in|into|now|early|before|this|it)|degen\s*(play|call|move)|don'?t\s*(sleep|fade)|early\s*(entry|bird|call)|bag\s*(these|this|it|now)|about\s*to\s*(pop|explode|moon|pump|rip|run|send|fly|break\s*out)|fill\s*(your|ur)\s*bag|lfg+\b|something\s*(huge|big|massive)\s*(is\s*)?(coming|brewing|loading|cooking)|get\s*ready|plays?\s*loading|print(ing)?\s*(money|gains?)|gonna\s*(be\s*)?print(ing)?|bullish|bearish|ath\b|all[\s-]*time[\s-]*high|vip\s*(call|signal|group|channel|access|now|pick)|called\s*at\s*\d|from\s*(the|my|our)\s*(call|signal)|smart\s*money|results?\s*speak|speak\s*louder|precision|isn'?t\s*luck)\b/i.test(normalized);
+  const hasFomoUrgency = /🔥.*💸|💸.*🔥|🚀.*💰|💰.*🚀|🚀\s*🚀|🔥\s*🔥|📈.*🔥|🔥.*📈|\b(before\s*(it'?s?\s*too\s*late|the\s*(pump|train|bus|ship)|whales|liftoff|breakout|everyone)|still\s*early|not\s*too\s*late|thank\s*me\s*later|you'?ll\s*regret|mark\s*my\s*words|remember\s*(this|i\s*told)|nfa\s*(but|tho|though)|this\s*is\s*(it|the\s*one)|train\s*leav(es|ing)|make\s*sure.{0,20}don'?t\s*miss|don'?t\s*miss\s*out|can'?t\s*afford\s*to\s*miss|afford\s*to\s*miss|secure\s*(your|a|my)\s*(spot|place|position|allocation|slot)|already\s*(loading|positioning|accumulating|moving))\b/i.test(normalized) || /🔥\s*🔥/i.test(raw) || /\b(in\s*private)\b.{0,20}\b\d+x\b/i.test(raw);
   const hasLowMcGemShill = /\b(low[\s-]*(cap|mc)|gems?)\b/i.test(normalized) && /\b(found|new|hidden|just\s*launched|launched)\b/i.test(normalized) && /\b(gem|mc|cap)\b/i.test(normalized);
 
   return { hasMultiplierClaim, hasPumpHypeLanguage, hasFomoUrgency, hasLowMcGemShill, isForwardedMessage: isForwarded };
