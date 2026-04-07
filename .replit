@@ -50,4 +50,3 @@ timeoutMs = 20000
 
 [userenv.shared]
 LOCUS_WALLET_ADDRESS = "0x3b93fe5aeebe68582b68955b57621f34f994c27f"
-BANKR_API_KEY = "bk_usr_hvULdR7Z_U9euzJxxRsED2JFBvva3sSCcy4sM75jt"
