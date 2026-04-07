@@ -101,7 +101,7 @@ If the message is NOT worth learning from, respond with EXACTLY:
       sourceUrl: null,
     });
 
-    lastLearnTimestamp.set(botConfigId, now);
+    lastLearnTimestamp.set(botConfigId, Date.now());
     log(`Real-time learning: saved "${parsed.title}" from ${userName} (bot ${botConfigId})`, "telegram");
   } catch (err: any) {
     log(`Real-time learning AI error: ${err.message}`, "telegram");
