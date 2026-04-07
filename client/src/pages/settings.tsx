@@ -121,9 +121,10 @@ export default function SettingsPage() {
   const mutation = useMutation({
     mutationFn: (data: SettingsForm) => {
       if (!selectedBotId) throw new Error("No bot selected");
-      const payload: Record<string, any> = { ...data };
-      if (payload.bankrApiKey && payload.bankrApiKey.includes("*")) {
-        delete payload.bankrApiKey;
+      const { bankrApiKey, ...rest } = data;
+      const payload: Partial<SettingsForm> = { ...rest };
+      if (!bankrApiKey || !bankrApiKey.includes("*")) {
+        payload.bankrApiKey = bankrApiKey;
       }
       return apiRequest("PATCH", `/api/bots/${selectedBotId}/config`, payload);
     },
