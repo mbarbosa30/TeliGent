@@ -18,6 +18,7 @@ export async function runMigrations() {
     await ensureWidgetTables(client);
     await ensureAgentServiceLogsTable(client);
     await ensureCeloColumns(client);
+    await ensureBankrColumns(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -308,6 +309,17 @@ async function ensureCeloColumns(client: any) {
   if (!(await columnExists(client, "bot_configs", "celo_registered_at"))) {
     await client.query(`ALTER TABLE bot_configs ADD COLUMN celo_registered_at TIMESTAMP`);
     log("Added celo_registered_at to bot_configs");
+  }
+}
+
+async function ensureBankrColumns(client: any) {
+  if (!(await columnExists(client, "bot_configs", "bankr_enabled"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN bankr_enabled BOOLEAN NOT NULL DEFAULT false`);
+    log("Added bankr_enabled to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "bankr_api_key"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN bankr_api_key TEXT`);
+    log("Added bankr_api_key to bot_configs");
   }
 }
 

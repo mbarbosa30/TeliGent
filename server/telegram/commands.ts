@@ -7,6 +7,7 @@ import { openai, sendBotMessage } from "./utils";
 import { normalizeUnicode } from "./normalization";
 import { runDeterministicScamCheck, extractKeyPhrases, clearLearnedPatternsCache } from "./scam-detection";
 import type { ChatMessage } from "./conversation-history";
+import { getTokenPrice, queryBankr, isCryptoQuery } from "./bankr";
 
 export { sendBotMessage };
 
@@ -69,11 +70,13 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
   }
 
   if (command === "help") {
+    const bankrEnabled = (config as any).bankr_enabled || (config as any).bankrEnabled;
+    const priceCmd = bankrEnabled ? "\n/price <token> — Get real-time token price data" : "";
     const helpText = `*Available Commands:*
 
 /start — Introduction and project overview
 /help — Show this list of commands
-/report — Reply to a message with /report to flag it for review
+/report — Reply to a message with /report to flag it for review${priceCmd}
 
 *Other ways to interact:*
 • Mention me with @${botUsername} to ask a question
@@ -94,6 +97,32 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
 
   if (command === "report") {
     await handleReportCommand(bot, msg, config, groupRecord, userName, args, userId, botConfigId, instance);
+    return true;
+  }
+
+  if (command === "price") {
+    const bankrEnabled = (config as any).bankr_enabled || (config as any).bankrEnabled;
+    if (!bankrEnabled) {
+      await sendBotMessage(bot, chatId, "Crypto intelligence is not enabled for this bot.", msg.message_id);
+      return true;
+    }
+    if (!args) {
+      await sendBotMessage(bot, chatId, "Usage: /price <token>\nExample: /price ETH", msg.message_id);
+      return true;
+    }
+    const bankrApiKey = (config as any).bankr_api_key || (config as any).bankrApiKey;
+    const result = await getTokenPrice(args, bankrApiKey);
+    const response = result || `Could not fetch price data for "${args}". Try again in a moment.`;
+    await sendBotMessage(bot, chatId, response, msg.message_id);
+    await storage.createActivityLog(botConfigId, userId, {
+      groupId: groupRecord?.id || null,
+      type: "command",
+      userName,
+      userMessage: `/price ${args}`,
+      botResponse: response,
+      isReport: false,
+      metadata: JSON.stringify({ command: "price", query: args }),
+    });
     return true;
   }
 
@@ -348,9 +377,15 @@ Reply with ONLY "RESPOND" or "SKIP".`;
 }
 
 export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[], groupContext?: GroupContext | null): Promise<string> {
-  const [knowledgeEntries, memories] = await Promise.all([
+  const bankrEnabled = (config as any).bankr_enabled || (config as any).bankrEnabled;
+  const bankrApiKey = (config as any).bankr_api_key || (config as any).bankrApiKey;
+
+  const [knowledgeEntries, memories, bankrData] = await Promise.all([
     storage.getActiveKnowledgeEntries(botConfigId),
     storage.getBotMemories(botConfigId),
+    bankrEnabled && isCryptoQuery(userMessage)
+      ? queryBankr(userMessage, bankrApiKey).catch(() => null)
+      : Promise.resolve(null),
   ]);
 
   const MAX_CONTEXT_CHARS = 8000;
@@ -416,6 +451,13 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     }
   }
 
+  let bankrSection = "";
+  if (bankrData) {
+    const bankrText = bankrData.slice(0, 1500);
+    bankrSection = `\n\n--- LIVE CRYPTO DATA (from Bankr) ---\n${bankrText}`;
+    usedChars += bankrText.length;
+  }
+
   const usernameClause = botUsername ? ` Your Telegram handle is @${botUsername} — when people mention @${botUsername}, they are talking to YOU.` : "";
   const systemPrompt = `You are "${config.botName}", a bot assistant in the Telegram group "${groupName}".${usernameClause}
 
@@ -425,7 +467,7 @@ The following instructions define your tone, personality, and communication styl
 ${config.personality}
 
 --- END PERSONALITY ---
-${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}${memoriesSection}
+${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}${memoriesSection}${bankrSection}
 
 --- YOUR ROLE ---
 - You are a community assistant and active participant in this group. Engage naturally with members.
@@ -440,7 +482,7 @@ ${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}${
 - NEVER talk about your moderation abilities, spam detection, or message deletion in normal responses.
 - NEVER claim you just "handled", "removed", or "deleted" a specific message.
 - If someone asks you about a link or message, give your honest opinion about it.
-- NEVER guess or improvise specific data like contract addresses, token prices, wallet addresses, stats, or numbers.
+- NEVER guess or improvise specific data like contract addresses, token prices, wallet addresses, stats, or numbers. If live crypto data is available in the context, use it to answer accurately.
 - NEVER ask users to send screenshots, timestamps, usernames, or "more details". Just answer directly.
 - NEVER mention admins, admin review, or "flagging for admins".
 - Be conversational and engaging. React to what people say, add humor when appropriate, and participate in group discussions naturally.

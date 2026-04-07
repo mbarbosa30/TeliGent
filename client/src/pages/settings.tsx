@@ -17,7 +17,7 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription } fr
 import { useToast } from "@/hooks/use-toast";
 import { useBot } from "@/hooks/use-bot";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Settings, Bot, MessageSquare, Shield, Zap, Save, Globe, FileText, Loader2, Key, AlertTriangle, Trash2, Link, ExternalLink, Check } from "lucide-react";
+import { Settings, Bot, MessageSquare, Shield, Zap, Save, Globe, FileText, Loader2, Key, AlertTriangle, Trash2, Link, ExternalLink, Check, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
@@ -47,6 +47,8 @@ const settingsSchema = z.object({
   autoBanThreshold: z.number().min(0).max(100),
   trackReports: z.boolean(),
   reportKeywords: z.array(z.string()),
+  bankrEnabled: z.boolean(),
+  bankrApiKey: z.string(),
 });
 
 type SettingsForm = z.infer<typeof settingsSchema>;
@@ -77,6 +79,8 @@ export default function SettingsPage() {
       autoBanThreshold: 0,
       trackReports: true,
       reportKeywords: ["report", "issue", "bug", "problem", "broken"],
+      bankrEnabled: false,
+      bankrApiKey: "",
     },
   });
 
@@ -102,6 +106,8 @@ export default function SettingsPage() {
         autoBanThreshold: config.autoBanThreshold ?? 0,
         trackReports: config.trackReports,
         reportKeywords: config.reportKeywords || ["report", "issue", "bug", "problem", "broken"],
+        bankrEnabled: (config as any).bankrEnabled ?? false,
+        bankrApiKey: (config as any).bankrApiKey ?? "",
       };
 
       if (isBotSwitch) {
@@ -115,7 +121,11 @@ export default function SettingsPage() {
   const mutation = useMutation({
     mutationFn: (data: SettingsForm) => {
       if (!selectedBotId) throw new Error("No bot selected");
-      return apiRequest("PATCH", `/api/bots/${selectedBotId}/config`, data);
+      const payload: Record<string, any> = { ...data };
+      if (payload.bankrApiKey && payload.bankrApiKey.includes("*")) {
+        delete payload.bankrApiKey;
+      }
+      return apiRequest("PATCH", `/api/bots/${selectedBotId}/config`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "config"] });
@@ -467,6 +477,52 @@ export default function SettingsPage() {
                     <FormDescription>Comma-separated words that trigger report detection</FormDescription>
                   </FormItem>
                 )} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-base">Crypto Intelligence</CardTitle>
+                </div>
+                <CardDescription>Real-time token prices and crypto data powered by Bankr</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField control={form.control} name="bankrEnabled" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <div>
+                      <FormLabel>Enable Crypto Intelligence</FormLabel>
+                      <FormDescription>Answer token price queries and crypto questions with live data</FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-bankr-enabled" />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                {form.watch("bankrEnabled") && (
+                  <FormField control={form.control} name="bankrApiKey" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bankr API Key (optional)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="bk_... (leave empty to use platform key)"
+                          {...field}
+                          data-testid="input-bankr-api-key"
+                        />
+                      </FormControl>
+                      <FormDescription>Override the platform API key with your own from bankr.bot/api</FormDescription>
+                    </FormItem>
+                  )} />
+                )}
+                {form.watch("bankrEnabled") && (
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-muted-foreground">
+                      When enabled, your bot responds to /price commands and enriches AI answers with live crypto data.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

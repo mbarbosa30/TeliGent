@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { storage } from "../storage";
 import { log } from "../index";
-import { db } from "../db";
+import { db, pool } from "../db";
 import { users } from "@shared/schema";
 import type { BotConfig } from "@shared/schema";
 import type { Express } from "express";
@@ -473,11 +473,27 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     const { bot, userId, botConfigId } = instance;
     log(`Message from ${msg.from?.first_name || "Unknown"}${msg.forward_date ? " [forwarded]" : ""} in "${msg.chat.title || "?"}" (user: ${userId}, bot: ${botConfigId}): "${msgText.substring(0, 80)}"`, "telegram");
 
-    const config = await storage.getBotConfig(botConfigId);
+    const config = await storage.getBotConfig(botConfigId) as any;
     if (!config || !config.isActive) {
       log(`Bot inactive or no config for bot ${botConfigId}`, "telegram");
       return;
     }
+
+    try {
+      const client = await pool.connect();
+      try {
+        const { rows } = await client.query(
+          `SELECT bankr_enabled, bankr_api_key FROM bot_configs WHERE id = $1`,
+          [botConfigId]
+        );
+        if (rows[0]) {
+          config.bankr_enabled = rows[0].bankr_enabled ?? false;
+          config.bankr_api_key = rows[0].bankr_api_key ?? null;
+        }
+      } finally {
+        client.release();
+      }
+    } catch (_) {}
 
     const chatId = msg.chat.id.toString();
     const userName = msg.from?.first_name || msg.from?.username || "Unknown";
