@@ -418,11 +418,25 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
   let knowledgeContext = "";
   if (knowledgeEntries.length > 0) {
     const maxKnowledge = Math.max(0, MAX_CONTEXT_CHARS - usedChars);
+    const queryLower = userMessage.toLowerCase();
+    const sorted = [...knowledgeEntries].sort((a, b) => {
+      const aTitle = a.title.toLowerCase();
+      const bTitle = b.title.toLowerCase();
+      const aMatch = queryLower.split(/\s+/).some(w => w.length > 2 && aTitle.includes(w)) ? 1 : 0;
+      const bMatch = queryLower.split(/\s+/).some(w => w.length > 2 && bTitle.includes(w)) ? 1 : 0;
+      return bMatch - aMatch;
+    });
     let kbText = "";
-    for (const e of knowledgeEntries) {
+    for (const e of sorted) {
       let entry = `[${e.category}] ${e.title}:\n${e.content}`;
       if (e.sourceUrl) entry += `\nSource: ${e.sourceUrl}`;
-      if (kbText.length + entry.length + 2 > maxKnowledge) break;
+      const remaining = maxKnowledge - kbText.length - 2;
+      if (remaining <= 0) break;
+      if (entry.length > remaining) {
+        const truncated = entry.slice(0, remaining - 20) + "\n[...truncated]";
+        kbText += (kbText ? "\n\n" : "") + truncated;
+        break;
+      }
       kbText += (kbText ? "\n\n" : "") + entry;
     }
     if (kbText) {

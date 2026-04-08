@@ -563,7 +563,13 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       }
 
       const groupContext = await fetchGroupContext(instance, chatId, msg.chat.id);
-      const response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory, groupContext);
+      let response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory, groupContext);
+
+      if (!response || !response.trim()) {
+        log(`AI returned empty response for ${userName}, retrying once...`, "telegram");
+        response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, undefined, groupContext);
+      }
+
       log(`AI response for ${userName}: "${(response || "").substring(0, 60)}..."`, "telegram");
 
       if (response && response.trim() && response.trim() !== "[[SKIP]]") {
@@ -594,8 +600,8 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       } else if (response && response.trim() === "[[SKIP]]") {
         log(`AI chose to skip message from ${userName}`, "telegram");
       } else if (!response || !response.trim()) {
-        log(`AI returned empty response for ${userName} — sending fallback`, "telegram");
-        await sendBotMessage(bot, msg.chat.id, "Sorry, I couldn't process that. Try asking again.", msg.message_id);
+        log(`AI returned empty response for ${userName} after retry — sending fallback`, "telegram");
+        await sendBotMessage(bot, msg.chat.id, "hmm not sure about that one, try asking differently", msg.message_id);
       }
     } catch (err: any) {
       log(`Error generating response for ${userName}: ${err.message}\n${err.stack || ""}`, "telegram");
