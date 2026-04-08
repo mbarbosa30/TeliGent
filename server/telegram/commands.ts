@@ -419,25 +419,28 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
   if (knowledgeEntries.length > 0) {
     const maxKnowledge = Math.max(0, MAX_CONTEXT_CHARS - usedChars);
     const queryLower = userMessage.toLowerCase();
+    const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
     const sorted = [...knowledgeEntries].sort((a, b) => {
-      const aTitle = a.title.toLowerCase();
-      const bTitle = b.title.toLowerCase();
-      const aMatch = queryLower.split(/\s+/).some(w => w.length > 2 && aTitle.includes(w)) ? 1 : 0;
-      const bMatch = queryLower.split(/\s+/).some(w => w.length > 2 && bTitle.includes(w)) ? 1 : 0;
-      return bMatch - aMatch;
+      const aText = `${a.title} ${a.category}`.toLowerCase();
+      const bText = `${b.title} ${b.category}`.toLowerCase();
+      const aScore = queryWords.filter(w => aText.includes(w)).length;
+      const bScore = queryWords.filter(w => bText.includes(w)).length;
+      return bScore - aScore;
     });
+    const TRUNCATION_MARKER = "\n[...truncated]";
     let kbText = "";
     for (const e of sorted) {
       let entry = `[${e.category}] ${e.title}:\n${e.content}`;
       if (e.sourceUrl) entry += `\nSource: ${e.sourceUrl}`;
-      const remaining = maxKnowledge - kbText.length - 2;
-      if (remaining <= 0) break;
+      const separator = kbText ? "\n\n" : "";
+      const remaining = maxKnowledge - kbText.length - separator.length;
+      if (remaining <= 50) break;
       if (entry.length > remaining) {
-        const truncated = entry.slice(0, remaining - 20) + "\n[...truncated]";
-        kbText += (kbText ? "\n\n" : "") + truncated;
+        const cutAt = Math.max(0, remaining - TRUNCATION_MARKER.length);
+        kbText += separator + entry.slice(0, cutAt) + TRUNCATION_MARKER;
         break;
       }
-      kbText += (kbText ? "\n\n" : "") + entry;
+      kbText += separator + entry;
     }
     if (kbText) {
       knowledgeContext = `\n\n--- KNOWLEDGE BASE ---\n${kbText}`;
