@@ -17,10 +17,21 @@ type Components = {
   pattern: number; confidence: number; contributor: number; depth: number;
   diversity: number; volume: number; growth: number; maturity: number;
 };
+type WisdomDetails = {
+  totalPatterns: number;
+  promotedKnown: number;
+  totalMentions: number;
+  kbEntries: number;
+  activeUsers30d: number;
+  activeUsers7d: number;
+  messages7d: number;
+  messagesPrev7d: number;
+  previousScore: number | null;
+};
 type Overview = {
   summary: string;
   bullets?: string[];
-  wisdom: { score: number; components: Components; details: any };
+  wisdom: { score: number; components: Components; details: WisdomDetails };
   messages7d: number;
   activityByDay: { day: string; count: number }[];
   topByMentions: CollectivePattern[];
@@ -310,9 +321,11 @@ export default function IntelligencePage() {
                           else if (kind === "strategy") chipClass = "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
                           else if (kind === "question") chipClass = "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-400";
                           else if (kind === "sentiment") {
-                            const sentVal = (p as any).sentiment;
-                            if (typeof sentVal === "number" && sentVal < -0.2) chipClass = "border-red-500/60 bg-red-500/10 text-red-700 dark:text-red-400";
-                            else if (typeof sentVal === "number" && sentVal > 0.2) chipClass = "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+                            const haystack = `${p.title} ${p.summary} ${p.keywords.join(" ")}`.toLowerCase();
+                            const negative = /(angry|frustrat|upset|hate|toxic|negative|complain|disappoint|bad|broken|worried|confus|fud)/.test(haystack);
+                            const positive = /(love|great|excit|happy|positive|hype|bullish|amazing|awesome|grateful|thank)/.test(haystack);
+                            if (negative && !positive) chipClass = "border-red-500/60 bg-red-500/10 text-red-700 dark:text-red-400";
+                            else if (positive && !negative) chipClass = "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
                             else chipClass = "border-slate-500/50 bg-slate-500/10 text-slate-700 dark:text-slate-300";
                           }
                           return (

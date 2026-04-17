@@ -131,40 +131,66 @@ If nothing qualifies, set save=false on both. NEVER include PII (wallets, emails
   }
   if (!raw) return;
 
+  interface CalibrationParsed {
+    quality?: { contribution?: number; domain_relevance?: number; overall?: number };
+    user_memory?: { save?: boolean; type?: string; content?: string } | null;
+    pattern?: { save?: boolean; kind?: string; title?: string; summary?: string; keywords?: unknown[] } | null;
+  }
+
   const m = raw.match(/\{[\s\S]*\}/);
   if (!m) return;
-  let parsed: any;
-  try { parsed = JSON.parse(m[0]); } catch { return; }
+  let parsed: CalibrationParsed;
+  try { parsed = JSON.parse(m[0]) as CalibrationParsed; } catch { return; }
 
-  const q = parsed?.quality || {};
+  const q = parsed.quality || {};
   const overall = Math.max(0, Math.min(100, Number(q.overall) || 0));
   const contribution = Math.max(0, Math.min(100, Number(q.contribution) || 0));
   const domainRelevance = Math.max(0, Math.min(100, Number(q.domain_relevance) || 0));
   log(`Calibration quality for ${userName}: contribution=${contribution} domain=${domainRelevance} overall=${overall} (triage=${triage.tier})`, "telegram");
 
-  if (overall < MIN_QUALITY_OVERALL) {
-    log(`Calibration gate: overall ${overall} < ${MIN_QUALITY_OVERALL}, skipping writes`, "telegram");
-    return;
-  }
+  const um = parsed.user_memory;
+  const pat = parsed.pattern;
+  const passed = overall >= MIN_QUALITY_OVERALL;
+  let savedUM = false;
+  let savedPattern = false;
 
-  if (allowUM && parsed?.user_memory?.save && parsed.user_memory.content) {
-    const c = redactPII(String(parsed.user_memory.content)).slice(0, 200);
-    const t = ["trait", "expertise", "interest", "role"].includes(parsed.user_memory.type) ? parsed.user_memory.type : "trait";
+  if (passed && allowUM && um?.save && typeof um.content === "string") {
+    const c = redactPII(um.content).slice(0, 200);
+    const t = um.type && ["trait", "expertise", "interest", "role"].includes(um.type) ? um.type : "trait";
     if (c.length >= 6) {
       await storage.upsertUserMemory(botConfigId, telegramUserId, userName.slice(0, 80), t, c, 65, overall, sourceActivityLogId);
+      savedUM = true;
       log(`User memory saved for ${userName}: [${t}] "${c.slice(0, 60)}" (q=${overall}, src=${sourceActivityLogId ?? "n/a"})`, "telegram");
     }
   }
 
-  if (allowPattern && parsed?.pattern?.save && parsed.pattern.title && parsed.pattern.summary) {
-    const kind = ["topic", "question", "pitfall", "strategy", "sentiment"].includes(parsed.pattern.kind) ? parsed.pattern.kind : "topic";
-    const title = redactPII(String(parsed.pattern.title)).slice(0, 80);
-    const summary = redactPII(String(parsed.pattern.summary)).slice(0, 240);
-    let kws = Array.isArray(parsed.pattern.keywords) ? parsed.pattern.keywords.map((k: any) => String(k).toLowerCase().slice(0, 24)).filter(Boolean) : [];
+  if (passed && allowPattern && pat?.save && typeof pat.title === "string" && typeof pat.summary === "string") {
+    const kind = pat.kind && ["topic", "question", "pitfall", "strategy", "sentiment"].includes(pat.kind) ? pat.kind : "topic";
+    const title = redactPII(pat.title).slice(0, 80);
+    const summary = redactPII(pat.summary).slice(0, 240);
+    let kws = Array.isArray(pat.keywords)
+      ? pat.keywords.filter((k): k is string | number => typeof k === "string" || typeof k === "number").map((k) => String(k).toLowerCase().slice(0, 24)).filter(Boolean)
+      : [];
     if (kws.length === 0) kws = extractKeywords(messageText, 6);
     if (title && summary) {
       const p = await storage.upsertCollectivePattern(botConfigId, telegramUserId, kind, title, summary, kws.slice(0, 8), overall, sourceActivityLogId);
+      savedPattern = true;
       log(`Pattern: [${kind}] "${title}" mentions=${p.mentionCount} users=${p.uniqueUsers} q=${overall} src=${sourceActivityLogId ?? "n/a"}`, "telegram");
     }
+  }
+
+  try {
+    await storage.recordCalibrationLog(botConfigId, telegramUserId, {
+      sourceActivityLogId,
+      triageTier: triage.tier,
+      contribution,
+      domainRelevance,
+      overall,
+      gated: !passed,
+      savedUserMemory: savedUM,
+      savedPattern,
+    });
+  } catch (err) {
+    log(`Calibration log persist error: ${(err as Error).message}`, "telegram");
   }
 }

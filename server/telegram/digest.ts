@@ -1,11 +1,30 @@
 import { storage } from "../storage";
 import { openai } from "./utils";
-import { computeWisdomScore } from "./wisdom";
+import { computeWisdomScore, type WisdomScoreResult } from "./wisdom";
+import type { CollectivePattern } from "@shared/schema";
 
-const cache = new Map<number, { at: number; data: any }>();
+export interface WeeklyDigest {
+  summary: string;
+  bullets: string[];
+  wisdom: WisdomScoreResult;
+  messages7d: number;
+  activityByDay: { day: string; count: number }[];
+  topByMentions: CollectivePattern[];
+  openQuestions: CollectivePattern[];
+  pitfalls: CollectivePattern[];
+  strategies: CollectivePattern[];
+  scoreTrend: { at: Date; score: number }[];
+}
+
+interface DigestParseShape {
+  summary?: unknown;
+  bullets?: unknown;
+}
+
+const cache = new Map<number, { at: number; data: WeeklyDigest }>();
 const TTL_MS = 30 * 60 * 1000;
 
-export async function generateWeeklyDigest(botConfigId: number): Promise<any> {
+export async function generateWeeklyDigest(botConfigId: number): Promise<WeeklyDigest> {
   const cached = cache.get(botConfigId);
   if (cached && Date.now() - cached.at < TTL_MS) return cached.data;
 
@@ -52,12 +71,12 @@ Rules:
       });
       const raw = resp.choices[0]?.message?.content?.trim() || "";
       try {
-        const parsed = JSON.parse(raw);
+        const parsed = JSON.parse(raw) as DigestParseShape;
         if (typeof parsed.summary === "string") summary = parsed.summary.trim();
         if (Array.isArray(parsed.bullets)) {
-          bullets = parsed.bullets
-            .filter((b: any) => typeof b === "string" && b.trim().length > 0)
-            .map((b: string) => b.trim().replace(/^[-*•]\s*/, ""))
+          bullets = (parsed.bullets as unknown[])
+            .filter((b): b is string => typeof b === "string" && b.trim().length > 0)
+            .map((b) => b.trim().replace(/^[-*•]\s*/, ""))
             .slice(0, 5);
         }
       } catch {}

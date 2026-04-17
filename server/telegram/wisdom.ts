@@ -11,7 +11,25 @@ export interface WisdomComponents {
   maturity: number;
 }
 
-export async function computeWisdomScore(botConfigId: number): Promise<{ score: number; components: WisdomComponents; details: any }> {
+export interface WisdomDetails {
+  totalPatterns: number;
+  promotedKnown: number;
+  totalMentions: number;
+  kbEntries: number;
+  activeUsers30d: number;
+  activeUsers7d: number;
+  messages7d: number;
+  messagesPrev7d: number;
+  previousScore: number | null;
+}
+
+export interface WisdomScoreResult {
+  score: number;
+  components: WisdomComponents;
+  details: WisdomDetails;
+}
+
+export async function computeWisdomScore(botConfigId: number): Promise<WisdomScoreResult> {
   const [patterns, kbEntries, recentUsers30, recentUsers7, snapshots, day14, day7] = await Promise.all([
     storage.getCollectivePatterns(botConfigId),
     storage.getActiveKnowledgeEntries(botConfigId),

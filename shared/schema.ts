@@ -264,6 +264,23 @@ export const dataCorrelations = pgTable("data_correlations", {
   index("idx_data_correlations_bot_lastseen").on(table.botConfigId, table.lastSeenAt),
 ]);
 
+export const calibrationLogs = pgTable("calibration_logs", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  telegramUserId: text("telegram_user_id").notNull(),
+  sourceActivityLogId: integer("source_activity_log_id"),
+  triageTier: text("triage_tier").notNull(),
+  contribution: integer("contribution").notNull(),
+  domainRelevance: integer("domain_relevance").notNull(),
+  overall: integer("overall").notNull(),
+  gated: boolean("gated").notNull().default(false),
+  savedUserMemory: boolean("saved_user_memory").notNull().default(false),
+  savedPattern: boolean("saved_pattern").notNull().default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_calibration_logs_bot_created").on(table.botConfigId, table.createdAt),
+]);
+
 export const wisdomSnapshots = pgTable("wisdom_snapshots", {
   id: serial("id").primaryKey(),
   botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
@@ -288,3 +305,7 @@ export type DataCorrelation = typeof dataCorrelations.$inferSelect;
 export type InsertDataCorrelation = z.infer<typeof insertDataCorrelationSchema>;
 
 export type WisdomSnapshot = typeof wisdomSnapshots.$inferSelect;
+
+export type CalibrationLog = typeof calibrationLogs.$inferSelect;
+export const insertCalibrationLogSchema = createInsertSchema(calibrationLogs).omit({ id: true, createdAt: true });
+export type InsertCalibrationLog = z.infer<typeof insertCalibrationLogSchema>;

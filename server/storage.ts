@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs } from "@shared/schema";
 import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot } from "@shared/schema";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 
@@ -433,10 +433,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updatePatternStatus(botConfigId: number, id: number, status: string, promotedKbId?: number | null): Promise<CollectivePattern | undefined> {
-    const updates: any = { status };
+    const updates: Partial<typeof collectivePatterns.$inferInsert> = { status };
     if (promotedKbId !== undefined) updates.promotedKbId = promotedKbId;
     const [updated] = await db.update(collectivePatterns).set(updates).where(and(eq(collectivePatterns.id, id), eq(collectivePatterns.botConfigId, botConfigId))).returning();
     return updated;
+  }
+
+  async recordCalibrationLog(
+    botConfigId: number,
+    telegramUserId: string,
+    data: {
+      sourceActivityLogId: number | null;
+      triageTier: string;
+      contribution: number;
+      domainRelevance: number;
+      overall: number;
+      gated: boolean;
+      savedUserMemory: boolean;
+      savedPattern: boolean;
+    },
+  ): Promise<void> {
+    await db.insert(calibrationLogs).values({
+      botConfigId,
+      telegramUserId,
+      sourceActivityLogId: data.sourceActivityLogId,
+      triageTier: data.triageTier,
+      contribution: data.contribution,
+      domainRelevance: data.domainRelevance,
+      overall: data.overall,
+      gated: data.gated,
+      savedUserMemory: data.savedUserMemory,
+      savedPattern: data.savedPattern,
+    });
   }
 
   async deletePattern(botConfigId: number, id: number): Promise<void> {
