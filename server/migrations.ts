@@ -476,6 +476,20 @@ async function ensureRewardsTables(client: any) {
     await client.query(`ALTER TABLE reward_distributions ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL`);
     log("Added group_id to reward_distributions");
   }
+  if (!(await columnExists(client, "reward_payouts", "explorer_url"))) {
+    await client.query(`ALTER TABLE reward_payouts ADD COLUMN explorer_url TEXT`);
+    log("Added explorer_url to reward_payouts");
+  }
+  if (!(await columnExists(client, "member_wallets", "self_verified"))) {
+    await client.query(`ALTER TABLE member_wallets ADD COLUMN self_verified BOOLEAN NOT NULL DEFAULT false`);
+    await client.query(`ALTER TABLE member_wallets ADD COLUMN self_verified_at TIMESTAMP`);
+    log("Added self_verified to member_wallets");
+  }
+  if (!(await columnExists(client, "bot_configs", "reward_max_per_user_per_period_verified"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN reward_max_per_user_per_period_verified INTEGER NOT NULL DEFAULT 2`);
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN reward_require_self_verified BOOLEAN NOT NULL DEFAULT false`);
+    log("Added reward verified cap columns to bot_configs");
+  }
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {

@@ -194,4 +194,43 @@ If nothing qualifies, set save=false on both. NEVER include PII (wallets, emails
   } catch (err) {
     log(`Calibration log persist error: ${(err as Error).message}`, "telegram");
   }
+
+  if (passed && overall >= 75) {
+    try {
+      await maybeSendShareToEarnPrompt(botConfigId, telegramUserId, sourceActivityLogId);
+    } catch (err: any) {
+      log(`Share-to-earn prompt error: ${err.message}`, "telegram");
+    }
+  }
+}
+
+const SHARE_PROMPT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const lastSharePrompt = new Map<string, number>();
+
+async function maybeSendShareToEarnPrompt(botConfigId: number, telegramUserId: string, sourceActivityLogId: number | null): Promise<void> {
+  if (!sourceActivityLogId) return;
+  const config = await storage.getBotConfig(botConfigId);
+  if (!config?.referralEnabled) return;
+  const key = `${botConfigId}:${telegramUserId}`;
+  const last = lastSharePrompt.get(key) || 0;
+  if (Date.now() - last < SHARE_PROMPT_COOLDOWN_MS) return;
+  const { db } = await import("../db");
+  const { activityLogs, groups } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+  const [logRow] = await db.select().from(activityLogs).where(eq(activityLogs.id, sourceActivityLogId)).limit(1);
+  if (!logRow?.groupId) return;
+  const [group] = await db.select().from(groups).where(eq(groups.id, logRow.groupId)).limit(1);
+  if (!group) return;
+  const { getActiveBotInstance } = await import("./instance-registry");
+  const { sendBotMessage } = await import("./utils");
+  const instance = getActiveBotInstance(botConfigId);
+  if (!instance) return;
+  const link = `https://t.me/${instance.botUsername}?start=ref_${telegramUserId}`;
+  const text = `Great contribution! Earn rewards by inviting people who'll help this community: ${link}`;
+  try {
+    await sendBotMessage(instance.bot, parseInt(group.telegramChatId, 10), text);
+    lastSharePrompt.set(key, Date.now());
+  } catch (err: any) {
+    log(`Share-to-earn send failed: ${err.message}`, "telegram");
+  }
 }

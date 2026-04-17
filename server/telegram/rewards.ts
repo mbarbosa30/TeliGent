@@ -53,7 +53,10 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
     const eligibleCandidates = [];
     for (const s of scores) {
       if (s.daysActive < minDays || s.score <= 0) continue;
-      if ((payoutCountByUser.get(s.telegramUserId) || 0) >= maxPerUser) continue;
+      const wallet = await storage.getMemberWallet(config.id, s.telegramUserId);
+      if (config.rewardRequireSelfVerified && !wallet?.selfVerified) continue;
+      const userCap = wallet?.selfVerified ? (config.rewardMaxPerUserPerPeriodVerified ?? maxPerUser) : maxPerUser;
+      if ((payoutCountByUser.get(s.telegramUserId) || 0) >= userCap) continue;
       const scamCount = await storage.getScamCountForUser(config.id, s.telegramUserId);
       if (scamCount > 0) continue;
       const banned = await storage.isUserAutoBanned(config.id, s.telegramUserId);
@@ -119,8 +122,8 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
       }
 
       try {
-        const { txHash } = await transferErc20({ chain, tokenAddress, recipient: wallet.walletAddress, amount: perWinnerAmount, decimals });
-        await storage.createRewardPayout({ ...baseRow, status: "sent", txHash });
+        const { txHash, explorerUrl } = await transferErc20({ chain, tokenAddress, recipient: wallet.walletAddress, amount: perWinnerAmount, decimals });
+        await storage.createRewardPayout({ ...baseRow, status: "sent", txHash, explorerUrl });
         payoutCountByUser.set(winner.telegramUserId, (payoutCountByUser.get(winner.telegramUserId) || 0) + 1);
         sent++;
       } catch (err: any) {
@@ -188,8 +191,8 @@ export async function payReferralReward(config: BotConfig, telegramUserId: strin
   }
 
   try {
-    const { txHash } = await transferErc20({ chain, tokenAddress, recipient: wallet.walletAddress, amount, decimals });
-    await storage.createRewardPayout({ ...baseRow, status: "sent", txHash });
+    const { txHash, explorerUrl } = await transferErc20({ chain, tokenAddress, recipient: wallet.walletAddress, amount, decimals });
+    await storage.createRewardPayout({ ...baseRow, status: "sent", txHash, explorerUrl });
     await storage.updateRewardDistribution(distribution.id, { status: "sent", completedAt: new Date() });
   } catch (err: any) {
     await storage.createRewardPayout({ ...baseRow, status: "failed", errorMessage: err.message?.slice(0, 500) });

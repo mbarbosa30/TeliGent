@@ -656,6 +656,32 @@ export class DatabaseStorage implements IStorage {
     } as ContributionScore));
   }
 
+  async listContributionScorePeriods(botConfigId: number, limit = 12): Promise<Array<{ periodStart: Date; periodEnd: Date }>> {
+    const rows = await db.execute(sql`
+      SELECT period_start, MAX(period_end) AS period_end
+      FROM contribution_scores
+      WHERE bot_config_id = ${botConfigId}
+      GROUP BY period_start
+      ORDER BY period_start DESC
+      LIMIT ${limit}
+    `);
+    return (rows.rows as any[]).map(r => ({ periodStart: r.period_start, periodEnd: r.period_end }));
+  }
+
+  async getContributionScoresForPeriod(botConfigId: number, periodStart: Date, limit = 50, groupId?: number | null): Promise<ContributionScore[]> {
+    const groupFilter = groupId === undefined ? sql`` : groupId === null ? sql`AND group_id IS NULL` : sql`AND group_id = ${groupId}`;
+    const rows = await db.execute(sql`
+      SELECT * FROM contribution_scores
+      WHERE bot_config_id = ${botConfigId} AND period_start = ${periodStart} ${groupFilter}
+      ORDER BY score DESC LIMIT ${limit}
+    `);
+    return (rows.rows as any[]).map(r => ({
+      id: r.id, botConfigId: r.bot_config_id, groupId: r.group_id, telegramUserId: r.telegram_user_id, userName: r.user_name,
+      periodStart: r.period_start, periodEnd: r.period_end, score: r.score, breakdown: r.breakdown,
+      daysActive: r.days_active, createdAt: r.created_at,
+    } as ContributionScore));
+  }
+
   async computeContributionAggregatesByGroup(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Array<{ groupId: number; telegramUserId: string; userName: string | null; calibrationSum: number; patternsCount: number; reportsCount: number; daysActive: number; messagesCount: number }>> {
     const rows = await db.execute(sql`
       WITH msgs AS (

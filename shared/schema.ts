@@ -46,6 +46,8 @@ export const botConfigs = pgTable("bot_configs", {
   referralRewardAmount: text("referral_reward_amount").default("0"),
   referralActivationDays: integer("referral_activation_days").notNull().default(3),
   rewardMaxPerUserPerPeriod: integer("reward_max_per_user_per_period").notNull().default(1),
+  rewardMaxPerUserPerPeriodVerified: integer("reward_max_per_user_per_period_verified").notNull().default(2),
+  rewardRequireSelfVerified: boolean("reward_require_self_verified").notNull().default(false),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
@@ -335,6 +337,8 @@ export const memberWallets = pgTable("member_wallets", {
   telegramUserId: text("telegram_user_id").notNull(),
   userName: text("user_name"),
   walletAddress: varchar("wallet_address", { length: 64 }).notNull(),
+  selfVerified: boolean("self_verified").notNull().default(false),
+  selfVerifiedAt: timestamp("self_verified_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
   uniqueIndex("idx_member_wallets_unique").on(table.botConfigId, table.telegramUserId),
@@ -387,6 +391,7 @@ export const rewardPayouts = pgTable("reward_payouts", {
   amount: text("amount").notNull().default("0"),
   status: text("status").notNull().default("pending"),
   txHash: text("tx_hash"),
+  explorerUrl: text("explorer_url"),
   errorMessage: text("error_message"),
   rank: integer("rank").notNull().default(0),
   score: integer("score").notNull().default(0),

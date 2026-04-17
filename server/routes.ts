@@ -872,8 +872,25 @@ export async function registerRoutes(
       const limit = Math.min(parseInt((req.query.limit as string) || "50"), 200);
       const groupIdRaw = req.query.groupId as string | undefined;
       const groupId = groupIdRaw === undefined || groupIdRaw === "" ? undefined : (groupIdRaw === "null" ? null : parseInt(groupIdRaw));
+      const periodStartRaw = req.query.periodStart as string | undefined;
+      if (periodStartRaw) {
+        const ps = new Date(periodStartRaw);
+        if (isNaN(ps.getTime())) return res.status(400).json({ error: "invalid periodStart" });
+        const scores = await storage.getContributionScoresForPeriod(botId, ps, limit, groupId as number | null | undefined);
+        return res.json(scores);
+      }
       const scores = await storage.getLatestContributionScores(botId, limit, groupId as number | null | undefined);
       res.json(scores);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/rewards/periods", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const periods = await storage.listContributionScorePeriods(botId, 24);
+      res.json(periods);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
