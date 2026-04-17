@@ -65,6 +65,24 @@ Output JSON only:
   } catch (err: any) {
     log(`Feedback persist error: ${err.message}`, "feedback");
   }
+
+  try {
+    const owner = await storage.getBotConfig(botConfigId);
+    if (owner) {
+      await storage.createActivityLog(botConfigId, owner.userId, {
+        groupId,
+        telegramUserId,
+        type: "message",
+        userName,
+        userMessage: text.slice(0, 1000),
+        botResponse: null,
+        isReport: false,
+        metadata: { feedbackReply: true, feedbackPromptId: prompt.id, feedbackTheme: prompt.theme || null },
+      });
+    }
+  } catch (err: any) {
+    log(`Feedback activity log error: ${err.message}`, "feedback");
+  }
 }
 
 export async function generateFeedbackDigest(botConfigId: number, sinceDays = 14): Promise<string> {
