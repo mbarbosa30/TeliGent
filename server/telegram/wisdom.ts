@@ -72,6 +72,12 @@ export async function maybeSnapshotWisdom(botConfigId: number): Promise<void> {
   lastSnapshotAt.set(botConfigId, now);
   try {
     const { score, components } = await computeWisdomScore(botConfigId);
-    await storage.createWisdomSnapshot(botConfigId, score, components);
+    let digest: string | null = null;
+    try {
+      const { generateWeeklyDigest } = await import("./digest");
+      const d = await generateWeeklyDigest(botConfigId);
+      digest = d?.summary || null;
+    } catch {}
+    await storage.createWisdomSnapshot(botConfigId, score, components, digest);
   } catch {}
 }

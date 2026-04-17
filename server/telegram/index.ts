@@ -522,12 +522,6 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       log(`Learning error: ${err.message}`, "telegram")
     );
 
-    maybeCalibrate(botConfigId, tgUserId, userName, messageText, conversationHistory, config.botName).catch(err =>
-      log(`Calibration error: ${err.message}`, "telegram")
-    );
-
-    maybeSnapshotWisdom(botConfigId).catch(() => {});
-
     const isReport = checkIfReport(messageText, config);
     if (isReport && config.trackReports) {
       await storage.createActivityLog(botConfigId, userId, {
@@ -542,13 +536,20 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     }
 
     const conversationHistory = getRecentMessages(botConfigId, chatId, 20);
+    const tgUserId = msg.from?.id?.toString() || "unknown";
+
+    maybeCalibrate(botConfigId, tgUserId, userName, messageText, conversationHistory, config.botName).catch(err =>
+      log(`Calibration error: ${err.message}`, "telegram")
+    );
+
+    maybeSnapshotWisdom(botConfigId).catch(() => {});
+
     const shouldRespond = await shouldBotRespond(msg, config, instance, conversationHistory);
     if (!shouldRespond) {
       log(`Not responding to "${messageText.substring(0, 40)}" from ${userName}`, "telegram");
       return;
     }
 
-    const tgUserId = msg.from?.id?.toString() || "unknown";
     const cooldownKey = `${chatId}:${tgUserId}`;
     const now = Date.now();
     const lastResponse = cooldowns.get(cooldownKey) || 0;

@@ -65,7 +65,7 @@ export interface IStorage {
   getPattern(botConfigId: number, id: number): Promise<CollectivePattern | undefined>;
 
   getWisdomSnapshots(botConfigId: number, limit?: number): Promise<WisdomSnapshot[]>;
-  createWisdomSnapshot(botConfigId: number, score: number, components: any): Promise<WisdomSnapshot>;
+  createWisdomSnapshot(botConfigId: number, score: number, components: any, digest?: string | null): Promise<WisdomSnapshot>;
 
   getActivityCountsByDay(botConfigId: number, days: number): Promise<{ day: string; count: number }[]>;
   countDistinctUsers(botConfigId: number, sinceDays: number): Promise<number>;
@@ -444,8 +444,8 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(wisdomSnapshots).where(eq(wisdomSnapshots.botConfigId, botConfigId)).orderBy(desc(wisdomSnapshots.createdAt)).limit(limit);
   }
 
-  async createWisdomSnapshot(botConfigId: number, score: number, components: any): Promise<WisdomSnapshot> {
-    const [created] = await db.insert(wisdomSnapshots).values({ botConfigId, score, components }).returning();
+  async createWisdomSnapshot(botConfigId: number, score: number, components: any, digest?: string | null): Promise<WisdomSnapshot> {
+    const [created] = await db.insert(wisdomSnapshots).values({ botConfigId, score, components, digest: digest ?? null }).returning();
     return created;
   }
 

@@ -261,6 +261,7 @@ export const wisdomSnapshots = pgTable("wisdom_snapshots", {
   botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
   score: integer("score").notNull(),
   components: jsonb("components").notNull(),
+  digest: text("digest"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
   index("idx_wisdom_snapshots_bot_created").on(table.botConfigId, table.createdAt),

@@ -259,18 +259,57 @@ export default function IntelligencePage() {
           </div>
         )}
 
-        {overview && overview.openQuestions.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2"><HelpCircle className="h-4 w-4" />Open community questions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {overview.openQuestions.map(p => (
-                <PatternCard key={p.id} pattern={p} botId={selectedBotId} />
-              ))}
-            </CardContent>
-          </Card>
+        {overview && (overview.openQuestions.length > 0 || overview.pitfalls.length > 0 || overview.strategies.length > 0) && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {overview.openQuestions.length > 0 && (
+              <Card>
+                <CardHeader><CardTitle className="text-base font-semibold flex items-center gap-2"><HelpCircle className="h-4 w-4" />Open questions</CardTitle></CardHeader>
+                <CardContent className="space-y-2">{overview.openQuestions.map(p => <PatternCard key={p.id} pattern={p} botId={selectedBotId} />)}</CardContent>
+              </Card>
+            )}
+            {overview.pitfalls.length > 0 && (
+              <Card>
+                <CardHeader><CardTitle className="text-base font-semibold flex items-center gap-2"><AlertOctagon className="h-4 w-4" />Pitfalls</CardTitle></CardHeader>
+                <CardContent className="space-y-2">{overview.pitfalls.map(p => <PatternCard key={p.id} pattern={p} botId={selectedBotId} />)}</CardContent>
+              </Card>
+            )}
+            {overview.strategies.length > 0 && (
+              <Card>
+                <CardHeader><CardTitle className="text-base font-semibold flex items-center gap-2"><Lightbulb className="h-4 w-4" />Strategies</CardTitle></CardHeader>
+                <CardContent className="space-y-2">{overview.strategies.map(p => <PatternCard key={p.id} pattern={p} botId={selectedBotId} />)}</CardContent>
+              </Card>
+            )}
+          </div>
         )}
+
+        {overview && (() => {
+          const actions: { label: string; reason: string }[] = [];
+          if (overview.openQuestions.length > 0) actions.push({ label: `Answer ${overview.openQuestions.length} open question${overview.openQuestions.length > 1 ? "s" : ""}`, reason: "Promote them to the knowledge base so the bot can respond automatically." });
+          if (overview.wisdom.components.depth < 30) actions.push({ label: "Grow the knowledge base", reason: "Depth score is low. Add a few key entries or promote recurring patterns." });
+          if (overview.wisdom.components.contributor < 30) actions.push({ label: "Encourage more participation", reason: "Few unique contributors in the last 30 days." });
+          if (overview.pitfalls.length > 0) actions.push({ label: `Address ${overview.pitfalls.length} pitfall${overview.pitfalls.length > 1 ? "s" : ""}`, reason: "Members are repeatedly running into the same problems." });
+          if (overview.wisdom.components.growth < 40) actions.push({ label: "Re-engage the community", reason: "Activity is trending down compared to the previous week." });
+          const top = actions.slice(0, 5);
+          if (top.length === 0) return null;
+          return (
+            <Card>
+              <CardHeader><CardTitle className="text-base font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4" />Suggested actions</CardTitle></CardHeader>
+              <CardContent>
+                <ol className="space-y-2">
+                  {top.map((a, i) => (
+                    <li key={i} className="flex gap-3" data-testid={`row-suggested-action-${i}`}>
+                      <span className="font-mono text-xs text-muted-foreground mt-1 w-4">{i + 1}.</span>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">{a.label}</div>
+                        <div className="text-xs text-muted-foreground">{a.reason}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
