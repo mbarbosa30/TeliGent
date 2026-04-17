@@ -597,13 +597,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertContributionScore(data: InsertContributionScore): Promise<ContributionScore> {
-    const [row] = await db.execute(sql`
-      INSERT INTO contribution_scores (bot_config_id, group_id, telegram_user_id, user_name, period_start, period_end, score, breakdown, days_active)
-      VALUES (${data.botConfigId}, ${data.groupId ?? null}, ${data.telegramUserId}, ${data.userName ?? null}, ${data.periodStart}, ${data.periodEnd}, ${data.score ?? 0}, ${JSON.stringify(data.breakdown ?? null)}::jsonb, ${data.daysActive ?? 0})
-      ON CONFLICT (bot_config_id, group_id, telegram_user_id, period_start)
-      DO UPDATE SET score = EXCLUDED.score, breakdown = EXCLUDED.breakdown, days_active = EXCLUDED.days_active, user_name = COALESCE(EXCLUDED.user_name, contribution_scores.user_name), period_end = EXCLUDED.period_end
+    const groupClause = data.groupId == null ? sql`group_id IS NULL` : sql`group_id = ${data.groupId}`;
+    const updated = await db.execute(sql`
+      UPDATE contribution_scores
+      SET score = ${data.score ?? 0}, breakdown = ${JSON.stringify(data.breakdown ?? null)}::jsonb,
+          days_active = ${data.daysActive ?? 0}, period_end = ${data.periodEnd},
+          user_name = COALESCE(${data.userName ?? null}, user_name)
+      WHERE bot_config_id = ${data.botConfigId}
+        AND ${groupClause}
+        AND telegram_user_id = ${data.telegramUserId}
+        AND period_start = ${data.periodStart}
       RETURNING *
-    `).then(r => r.rows as any[]);
+    `);
+    let row: any = (updated.rows as any[])[0];
+    if (!row) {
+      const inserted = await db.execute(sql`
+        INSERT INTO contribution_scores (bot_config_id, group_id, telegram_user_id, user_name, period_start, period_end, score, breakdown, days_active)
+        VALUES (${data.botConfigId}, ${data.groupId ?? null}, ${data.telegramUserId}, ${data.userName ?? null}, ${data.periodStart}, ${data.periodEnd}, ${data.score ?? 0}, ${JSON.stringify(data.breakdown ?? null)}::jsonb, ${data.daysActive ?? 0})
+        RETURNING *
+      `);
+      row = (inserted.rows as any[])[0];
+    }
     return {
       id: row.id,
       botConfigId: row.bot_config_id,
