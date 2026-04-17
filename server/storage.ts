@@ -739,6 +739,13 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async findProactivePromptByPostedMessage(botConfigId: number, postedMessageId: number): Promise<ProactivePrompt | undefined> {
+    const [row] = await db.select().from(proactivePrompts)
+      .where(and(eq(proactivePrompts.botConfigId, botConfigId), eq(proactivePrompts.postedMessageId, postedMessageId)))
+      .limit(1);
+    return row;
+  }
+
   async countRecentProactivePrompts(botConfigId: number, sinceHours: number): Promise<number> {
     const cutoff = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
     const rows = await db.execute(sql`
@@ -786,6 +793,43 @@ export class DatabaseStorage implements IStorage {
         eq(referrals.refereeTelegramUserId, refereeTelegramUserId),
         sql`${referrals.joinedGroupAt} IS NULL`,
       ));
+  }
+
+  async countCreditedReferralsByReferrer(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Map<string, number>> {
+    const rows = await db.execute(sql`
+      SELECT referrer_telegram_user_id AS uid, COUNT(*)::int AS c FROM referrals
+      WHERE bot_config_id = ${botConfigId} AND status = 'credited'
+        AND credited_at >= ${periodStart} AND credited_at < ${periodEnd}
+      GROUP BY referrer_telegram_user_id
+    `);
+    const map = new Map<string, number>();
+    for (const r of rows.rows as any[]) map.set(String(r.uid), Number(r.c));
+    return map;
+  }
+
+  async countProactiveRepliesByUser(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Map<string, number>> {
+    const rows = await db.execute(sql`
+      SELECT telegram_user_id AS uid, COUNT(*)::int AS c FROM activity_logs
+      WHERE bot_config_id = ${botConfigId}
+        AND telegram_user_id IS NOT NULL
+        AND created_at >= ${periodStart} AND created_at < ${periodEnd}
+        AND metadata->>'proactiveReply' = 'true'
+      GROUP BY telegram_user_id
+    `);
+    const map = new Map<string, number>();
+    for (const r of rows.rows as any[]) map.set(String(r.uid), Number(r.c));
+    return map;
+  }
+
+  async isUserAutoBanned(botConfigId: number, telegramUserId: string): Promise<boolean> {
+    const rows = await db.execute(sql`
+      SELECT 1 FROM activity_logs
+      WHERE bot_config_id = ${botConfigId}
+        AND telegram_user_id = ${telegramUserId}
+        AND metadata->>'reason' LIKE 'Auto-ban:%'
+      LIMIT 1
+    `);
+    return (rows.rows?.length || 0) > 0;
   }
 
   async countCreditedReferrals(botConfigId: number, telegramUserId: string, since: Date): Promise<number> {

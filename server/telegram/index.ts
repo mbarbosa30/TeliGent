@@ -633,6 +633,15 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
           timestamp: Date.now(),
         });
 
+        let proactiveReplyMeta: Record<string, unknown> | null = null;
+        if (msg.reply_to_message?.from?.id === instance.botTelegramId && msg.reply_to_message?.message_id) {
+          try {
+            const matched = await storage.findProactivePromptByPostedMessage(botConfigId, msg.reply_to_message.message_id);
+            if (matched) proactiveReplyMeta = { proactiveReply: true, proactivePromptId: matched.id };
+          } catch (err: any) {
+            log(`Proactive reply lookup error: ${err.message}`, "telegram");
+          }
+        }
         const responseLog = await storage.createActivityLog(botConfigId, userId, {
           groupId: groupRecord?.id || null,
           telegramUserId: tgUserId,
@@ -641,7 +650,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
           userMessage: messageText,
           botResponse: response,
           isReport: false,
-          metadata: null,
+          metadata: proactiveReplyMeta,
         });
 
         const updatedHistory = getRecentMessages(botConfigId, chatId, 20);

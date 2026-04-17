@@ -6,14 +6,18 @@ export const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-export async function sendBotMessage(bot: TelegramBot, chatId: number | string, text: string, replyToMessageId?: number) {
+export async function sendBotMessage(bot: TelegramBot, chatId: number | string, text: string, replyToMessageId?: number): Promise<TelegramBot.Message | null> {
   const opts: TelegramBot.SendMessageOptions = {};
   if (replyToMessageId) opts.reply_to_message_id = replyToMessageId;
   opts.parse_mode = "Markdown";
   try {
-    await bot.sendMessage(chatId, text, opts);
+    return await bot.sendMessage(chatId, text, opts);
   } catch {
     delete opts.parse_mode;
-    await bot.sendMessage(chatId, text, opts);
+    try {
+      return await bot.sendMessage(chatId, text, opts);
+    } catch {
+      return null;
+    }
   }
 }

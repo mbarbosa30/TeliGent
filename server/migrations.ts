@@ -461,6 +461,10 @@ async function ensureRewardsTables(client: any) {
     await client.query(`ALTER TABLE referrals ADD COLUMN joined_group_at TIMESTAMP`);
     log("Added joined_group_at to referrals");
   }
+  if (!(await columnExists(client, "proactive_prompts", "posted_message_id"))) {
+    await client.query(`ALTER TABLE proactive_prompts ADD COLUMN posted_message_id INTEGER`);
+    log("Added posted_message_id to proactive_prompts");
+  }
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {

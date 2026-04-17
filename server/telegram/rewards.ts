@@ -50,6 +50,8 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
     if ((payoutCountByUser.get(s.telegramUserId) || 0) >= maxPerUser) continue;
     const scamCount = await storage.getScamCountForUser(config.id, s.telegramUserId);
     if (scamCount > 0) continue;
+    const banned = await storage.isUserAutoBanned(config.id, s.telegramUserId);
+    if (banned) continue;
     eligibleCandidates.push(s);
     if (eligibleCandidates.length >= topN) break;
   }

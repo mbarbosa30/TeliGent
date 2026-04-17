@@ -403,6 +403,7 @@ export const proactivePrompts = pgTable("proactive_prompts", {
   rationale: text("rationale"),
   status: text("status").notNull().default("queued"),
   postedAt: timestamp("posted_at"),
+  postedMessageId: integer("posted_message_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
   index("idx_proactive_prompts_bot_status").on(table.botConfigId, table.status),

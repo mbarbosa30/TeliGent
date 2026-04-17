@@ -82,8 +82,8 @@ Output JSON only: {"question": "...", "rationale": "why we ask"}`;
       const instance = getActiveBotInstance(config.id);
       if (instance) {
         try {
-          await sendBotMessage(instance.bot, parseInt(group.telegramChatId, 10), question);
-          await storage.updateProactivePrompt(config.id, created.id, { status: "posted", postedAt: new Date() });
+          const sent = await sendBotMessage(instance.bot, parseInt(group.telegramChatId, 10), question);
+          await storage.updateProactivePrompt(config.id, created.id, { status: "posted", postedAt: new Date(), postedMessageId: sent?.message_id ?? null });
           anyPosted = true;
           perGroup.push({ groupId: group.id, outcome: "posted" });
           continue;
@@ -115,8 +115,8 @@ export async function postProactivePrompt(botConfigId: number, promptId: number)
   if (!instance) return { ok: false, reason: "bot not running" };
 
   try {
-    await sendBotMessage(instance.bot, parseInt(groupRow.telegramChatId, 10), prompt.question);
-    await storage.updateProactivePrompt(botConfigId, promptId, { status: "posted", postedAt: new Date() });
+    const sent = await sendBotMessage(instance.bot, parseInt(groupRow.telegramChatId, 10), prompt.question);
+    await storage.updateProactivePrompt(botConfigId, promptId, { status: "posted", postedAt: new Date(), postedMessageId: sent?.message_id ?? null });
     return { ok: true };
   } catch (err: any) {
     return { ok: false, reason: err.message };

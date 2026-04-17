@@ -142,7 +142,7 @@ app.use((req, res, next) => {
           }
           if (config.rewardsEnabled) {
             const periodMs = (config.rewardPeriodDays || 7) * 24 * 60 * 60 * 1000;
-            const last = config.rewardLastDistributionAt ? new Date(config.rewardLastDistributionAt as any).getTime() : 0;
+            const last = config.rewardLastDistributionAt ? new Date(config.rewardLastDistributionAt).getTime() : 0;
             if (Date.now() - last >= periodMs && !rewardsLocks.has(config.id)) {
               rewardsLocks.add(config.id);
               try {
