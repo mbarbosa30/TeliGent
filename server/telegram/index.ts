@@ -522,10 +522,12 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       log(`Learning error: ${err.message}`, "telegram")
     );
 
+    const tgUserId = msg.from?.id?.toString() || "unknown";
     const isReport = checkIfReport(messageText, config);
     if (isReport && config.trackReports) {
       await storage.createActivityLog(botConfigId, userId, {
         groupId: groupRecord?.id || null,
+        telegramUserId: tgUserId,
         type: "report",
         userName,
         userMessage: messageText,
@@ -536,29 +538,6 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     }
 
     const conversationHistory = getRecentMessages(botConfigId, chatId, 20);
-    const tgUserId = msg.from?.id?.toString() || "unknown";
-
-    let calibrationActivityLogId: number | null = null;
-    if (messageText && messageText.length >= 60 && !messageText.startsWith("/")) {
-      try {
-        const calLog = await storage.createActivityLog(botConfigId, userId, {
-          groupId: groupRecord?.id || null,
-          type: "calibration_source",
-          userName,
-          userMessage: messageText.slice(0, 1000),
-          botResponse: null,
-          isReport: false,
-          metadata: { telegramUserId: tgUserId, chatId: String(chatId) },
-        });
-        calibrationActivityLogId = calLog.id;
-      } catch {}
-    }
-
-    maybeCalibrate(botConfigId, tgUserId, userName, messageText, conversationHistory, config.botName, calibrationActivityLogId).catch(err =>
-      log(`Calibration error: ${err.message}`, "telegram")
-    );
-
-    maybeSnapshotWisdom(botConfigId).catch(() => {});
 
     const shouldRespond = await shouldBotRespond(msg, config, instance, conversationHistory);
     if (!shouldRespond) {
@@ -609,8 +588,9 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
           timestamp: Date.now(),
         });
 
-        await storage.createActivityLog(botConfigId, userId, {
+        const responseLog = await storage.createActivityLog(botConfigId, userId, {
           groupId: groupRecord?.id || null,
+          telegramUserId: tgUserId,
           type: "response",
           userName,
           userMessage: messageText,
@@ -618,6 +598,13 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
           isReport: false,
           metadata: null,
         });
+
+        const updatedHistory = getRecentMessages(botConfigId, chatId, 20);
+        maybeCalibrate(botConfigId, tgUserId, userName, messageText, updatedHistory, config.botName, responseLog.id).catch(err =>
+          log(`Calibration error: ${err.message}`, "telegram")
+        );
+
+        maybeSnapshotWisdom(botConfigId).catch(() => {});
 
         maybeExtractInsight(botConfigId, messageText, response, userName, conversationHistory, config.botName).catch(err =>
           log(`Insight extraction error: ${err.message}`, "telegram")

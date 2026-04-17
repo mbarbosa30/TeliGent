@@ -8,6 +8,7 @@ import { normalizeUnicode } from "./normalization";
 import { runDeterministicScamCheck, extractKeyPhrases, clearLearnedPatternsCache } from "./scam-detection";
 import type { ChatMessage } from "./conversation-history";
 import { getTokenPrice, queryBankr, isCryptoQuery } from "./bankr";
+import { triageMessage } from "./calibration";
 
 export { sendBotMessage };
 
@@ -374,14 +375,18 @@ Reply with ONLY "RESPOND" or "SKIP".`;
 }
 
 export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[], groupContext?: GroupContext | null, senderTelegramUserId?: string | null): Promise<string> {
+  const retrievalTriage = triageMessage(userMessage, conversationHistory || []);
+  const wantUserMem = senderTelegramUserId && (retrievalTriage.tier === "user_memory" || retrievalTriage.tier === "both");
+  const wantPatterns = retrievalTriage.tier === "pattern" || retrievalTriage.tier === "both" || retrievalTriage.tier === "user_memory";
+
   const [knowledgeEntries, memories, bankrData, userMems, patterns] = await Promise.all([
     storage.getActiveKnowledgeEntries(botConfigId),
     storage.getBotMemories(botConfigId),
     config.bankrEnabled && isCryptoQuery(userMessage)
       ? queryBankr(userMessage, config.bankrApiKey).catch(() => null)
       : Promise.resolve(null),
-    senderTelegramUserId ? storage.getUserMemoriesForUser(botConfigId, senderTelegramUserId).catch(() => []) : Promise.resolve([]),
-    storage.getCollectivePatterns(botConfigId).catch(() => []),
+    wantUserMem ? storage.getUserMemoriesForUser(botConfigId, senderTelegramUserId!).catch(() => []) : Promise.resolve([]),
+    wantPatterns ? storage.getCollectivePatterns(botConfigId).catch(() => []) : Promise.resolve([]),
   ]);
 
   const MAX_CONTEXT_CHARS = 8000;
