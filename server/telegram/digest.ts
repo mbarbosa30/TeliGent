@@ -28,16 +28,33 @@ export async function generateWeeklyDigest(botConfigId: number): Promise<WeeklyD
   const cached = cache.get(botConfigId);
   if (cached && Date.now() - cached.at < TTL_MS) return cached.data;
 
-  const [patterns, wisdom, day7, snapshots] = await Promise.all([
+  const [patterns, wisdom, day7, snapshots, kbEntries] = await Promise.all([
     storage.getCollectivePatterns(botConfigId),
     computeWisdomScore(botConfigId),
     storage.getActivityCountsByDay(botConfigId, 7),
     storage.getWisdomSnapshots(botConfigId, 14),
+    storage.getActiveKnowledgeEntries(botConfigId),
   ]);
+
+  const STOPWORDS = new Set(["the","a","an","is","it","to","of","in","on","for","and","or","but","i","you","we","they","this","that","be","do","what","how","why","when","where","can","does","with","at","as","by","from"]);
+  const tokenize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(w => w.length >= 3 && !STOPWORDS.has(w));
+  const kbTokenSets = kbEntries.map(e => new Set(tokenize(`${e.title} ${e.content}`)));
+  const isKbAnswerable = (p: CollectivePattern): boolean => {
+    const qTokens = new Set([...tokenize(`${p.title} ${p.summary}`), ...p.keywords.map(k => k.toLowerCase())]);
+    if (qTokens.size === 0) return false;
+    for (const kbSet of kbTokenSets) {
+      if (kbSet.size === 0) continue;
+      let overlap = 0;
+      qTokens.forEach(t => { if (kbSet.has(t)) overlap++; });
+      const ratio = overlap / qTokens.size;
+      if (ratio >= 0.5) return true;
+    }
+    return false;
+  };
 
   const recent = patterns.filter(p => Date.now() - new Date(p.lastSeenAt).getTime() < 7 * 24 * 3600 * 1000);
   const topByMentions = [...recent].sort((a, b) => b.mentionCount - a.mentionCount).slice(0, 8);
-  const newOpenQuestions = recent.filter(p => p.kind === "question" && p.status === "open").slice(0, 5);
+  const newOpenQuestions = recent.filter(p => p.kind === "question" && p.status === "open" && !isKbAnswerable(p)).slice(0, 5);
   const pitfalls = recent.filter(p => p.kind === "pitfall").slice(0, 5);
   const strategies = recent.filter(p => p.kind === "strategy").slice(0, 5);
 

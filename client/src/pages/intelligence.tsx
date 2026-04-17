@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useBot } from "@/hooks/use-bot";
-import { Bot, Sparkles, BookPlus, Trash2, CheckCheck, HelpCircle, AlertOctagon, Lightbulb, TrendingUp, Users, MessageSquare, Brain } from "lucide-react";
+import { Bot, Sparkles, BookPlus, Trash2, CheckCheck, HelpCircle, AlertOctagon, Lightbulb, TrendingUp, Users, MessageSquare, Brain, type LucideIcon } from "lucide-react";
 import type { CollectivePattern, UserMemory } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -52,7 +52,7 @@ const componentLabels: Record<keyof Components, string> = {
   maturity: "Maturity",
 };
 
-const kindIcon: Record<string, any> = {
+const kindIcon: Record<string, LucideIcon> = {
   topic: Sparkles,
   question: HelpCircle,
   pitfall: AlertOctagon,

@@ -6,7 +6,7 @@ import type { ChatMessage } from "./conversation-history";
 
 const CALIBRATION_COOLDOWN_MS = 4 * 60 * 1000;
 const USER_COOLDOWN_MS = 30 * 60 * 1000;
-const MIN_MESSAGE_LENGTH = 60;
+const MIN_PERSIST_LENGTH = 24;
 const MAX_PATTERNS_PER_BOT = 200;
 const MAX_USER_MEMORIES = 500;
 const MIN_QUALITY_OVERALL = 50;
@@ -19,12 +19,11 @@ export type Triage = { tier: "skip" | "user_memory" | "pattern" | "both"; reason
 
 export function triageMessage(messageText: string, conversationHistory: ChatMessage[]): Triage {
   const t = messageText.trim();
-  if (!t || t.length < MIN_MESSAGE_LENGTH) return { tier: "skip", reason: "too short" };
-  if (t.startsWith("/")) return { tier: "skip", reason: "command" };
+  if (!t) return { tier: "skip", reason: "empty" };
   const lower = t.toLowerCase();
-  const looksQuestion = /\?|\b(how|what|why|when|where|can someone|anyone know|is it possible)\b/i.test(t);
-  const looksSelfDisclosure = /\b(i am|i'm|i work|i build|i'm a|i'm an|i develop|my role|i specialize|i focus on)\b/i.test(lower);
-  const looksAdvice = /\b(tip|trick|recommend|always|never|avoid|watch out|be careful|strategy|approach)\b/i.test(lower);
+  const looksQuestion = /\?|\b(how|what|why|when|where|can someone|anyone know|is it possible|wen|gm|whats|what's)\b/i.test(t);
+  const looksSelfDisclosure = /\b(i am|i'm|im\s|i work|i build|i'm a|i'm an|i develop|my role|i specialize|i focus on|i hold|i bought|i made)\b/i.test(lower);
+  const looksAdvice = /\b(tip|trick|recommend|always|never|avoid|watch out|be careful|strategy|approach|pro tip|tldr)\b/i.test(lower);
   if (looksSelfDisclosure && (looksQuestion || looksAdvice)) return { tier: "both", reason: "self-disclosure + signal" };
   if (looksSelfDisclosure) return { tier: "user_memory", reason: "self-disclosure" };
   if (looksQuestion || looksAdvice) return { tier: "pattern", reason: "question/advice" };
@@ -42,6 +41,7 @@ export async function maybeCalibrate(
 ): Promise<void> {
   const triage = triageMessage(messageText, conversationHistory);
   if (triage.tier === "skip") return;
+  if (messageText.trim().length < MIN_PERSIST_LENGTH) return;
   const now = Date.now();
   const lastBot = lastBotCalibration.get(botConfigId) || 0;
   if (now - lastBot < CALIBRATION_COOLDOWN_MS) return;

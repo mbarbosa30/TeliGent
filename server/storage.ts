@@ -3,6 +3,17 @@ import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPat
 import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot } from "@shared/schema";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 
+export interface WisdomComponentsPayload {
+  pattern: number;
+  confidence: number;
+  contributor: number;
+  depth: number;
+  diversity: number;
+  volume: number;
+  growth: number;
+  maturity: number;
+}
+
 export interface IStorage {
   getBotConfigs(userId: string): Promise<BotConfig[]>;
   getBotConfig(botConfigId: number): Promise<BotConfig | undefined>;
@@ -65,7 +76,7 @@ export interface IStorage {
   getPattern(botConfigId: number, id: number): Promise<CollectivePattern | undefined>;
 
   getWisdomSnapshots(botConfigId: number, limit?: number): Promise<WisdomSnapshot[]>;
-  createWisdomSnapshot(botConfigId: number, score: number, components: any, digest?: string | null): Promise<WisdomSnapshot>;
+  createWisdomSnapshot(botConfigId: number, score: number, components: WisdomComponentsPayload, digest?: string | null): Promise<WisdomSnapshot>;
 
   getActivityCountsByDay(botConfigId: number, days: number): Promise<{ day: string; count: number }[]>;
   countDistinctUsers(botConfigId: number, sinceDays: number): Promise<number>;
@@ -475,7 +486,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(wisdomSnapshots).where(eq(wisdomSnapshots.botConfigId, botConfigId)).orderBy(desc(wisdomSnapshots.createdAt)).limit(limit);
   }
 
-  async createWisdomSnapshot(botConfigId: number, score: number, components: any, digest?: string | null): Promise<WisdomSnapshot> {
+  async createWisdomSnapshot(botConfigId: number, score: number, components: WisdomComponentsPayload, digest?: string | null): Promise<WisdomSnapshot> {
     const [created] = await db.insert(wisdomSnapshots).values({ botConfigId, score, components, digest: digest ?? null }).returning();
     return created;
   }
