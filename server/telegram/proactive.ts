@@ -14,6 +14,8 @@ export const FEEDBACK_THEMES = [
   "success_stories",
   "general",
 ] as const;
+export type FeedbackTheme = typeof FEEDBACK_THEMES[number];
+const FEEDBACK_THEME_SET: Set<string> = new Set(FEEDBACK_THEMES);
 
 const THEME_LABELS: Record<string, string> = {
   improvements: "what could be better",
@@ -26,8 +28,8 @@ const THEME_LABELS: Record<string, string> = {
 
 function pickFeedbackTheme(config: BotConfig, recentThemes: string[]): string | null {
   const enabledThemes = (config.feedbackThemes && config.feedbackThemes.length > 0)
-    ? config.feedbackThemes.filter(t => FEEDBACK_THEMES.includes(t as any))
-    : ["improvements", "feature_requests", "pain_points"];
+    ? config.feedbackThemes.filter((t): t is FeedbackTheme => FEEDBACK_THEME_SET.has(t))
+    : (["improvements", "feature_requests", "pain_points"] as FeedbackTheme[]);
   if (enabledThemes.length === 0) return null;
   const recentSet = new Set(recentThemes);
   const fresh = enabledThemes.filter(t => !recentSet.has(t));

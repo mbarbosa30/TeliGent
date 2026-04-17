@@ -1036,7 +1036,8 @@ export async function registerRoutes(
   app.get("/api/bots/:botId/feedback/stats", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId);
-      const sinceDays = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 30;
+      const sinceDaysRaw = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 30;
+      const sinceDays = Number.isFinite(sinceDaysRaw) && sinceDaysRaw > 0 && sinceDaysRaw <= 365 ? sinceDaysRaw : 30;
       const [byTheme, bySentiment] = await Promise.all([
         storage.countFeedbackByTheme(botId, sinceDays),
         storage.countFeedbackBySentiment(botId, sinceDays),
