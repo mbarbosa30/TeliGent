@@ -50,8 +50,9 @@ export async function processPendingReferrals(config: BotConfig): Promise<{ cred
         new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
         now,
       );
+      if (!ref.joinedGroupAt) continue;
       const refereeAgg = aggregates.find(a => a.telegramUserId === ref.refereeTelegramUserId);
-      const minDays = (config as any).referralActivationDays ?? DEFAULT_MIN_DAYS_FOR_CREDIT;
+      const minDays = config.referralActivationDays ?? DEFAULT_MIN_DAYS_FOR_CREDIT;
       if (!refereeAgg || refereeAgg.daysActive < minDays) continue;
 
       const referrerCredits = await storage.countCreditedReferrals(config.id, ref.referrerTelegramUserId, since);

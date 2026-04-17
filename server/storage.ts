@@ -778,6 +778,16 @@ export class DatabaseStorage implements IStorage {
     await db.update(referrals).set({ status: "credited", creditedAt: new Date() }).where(eq(referrals.id, id));
   }
 
+  async markReferralJoinedGroup(botConfigId: number, refereeTelegramUserId: string, telegramChatId: string): Promise<void> {
+    await db.update(referrals)
+      .set({ joinedGroupAt: new Date(), telegramChatId })
+      .where(and(
+        eq(referrals.botConfigId, botConfigId),
+        eq(referrals.refereeTelegramUserId, refereeTelegramUserId),
+        sql`${referrals.joinedGroupAt} IS NULL`,
+      ));
+  }
+
   async countCreditedReferrals(botConfigId: number, telegramUserId: string, since: Date): Promise<number> {
     const rows = await db.execute(sql`
       SELECT COUNT(*)::int AS c FROM referrals

@@ -159,10 +159,13 @@ app.use((req, res, next) => {
       }
     } catch (err: any) {
       log(`Scheduler tick error: ${err.message}`, "scheduler");
+    } finally {
+      schedulerRunning = false;
     }
   };
 
   setInterval(runRewardsScheduler, SCHEDULER_INTERVAL_MIN * 60 * 1000);
+  setTimeout(runRewardsScheduler, 30 * 1000);
 
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(

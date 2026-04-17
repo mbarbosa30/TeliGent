@@ -335,6 +335,7 @@ async function ensureRewardsColumns(client: any) {
     ["reward_period_days", "INTEGER NOT NULL DEFAULT 7"],
     ["reward_top_n", "INTEGER NOT NULL DEFAULT 5"],
     ["reward_amount_per_winner", "TEXT DEFAULT '0'"],
+    ["reward_pool_per_period", "TEXT DEFAULT '0'"],
     ["reward_min_days_active", "INTEGER NOT NULL DEFAULT 3"],
     ["reward_last_distribution_at", "TIMESTAMP"],
     ["proactive_enabled", "BOOLEAN NOT NULL DEFAULT false"],
@@ -449,12 +450,17 @@ async function ensureRewardsTables(client: any) {
       referee_user_name TEXT,
       telegram_chat_id TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
+      joined_group_at TIMESTAMP,
       credited_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
     )
   `);
   await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_referrals_unique_referee ON referrals (bot_config_id, referee_telegram_user_id)`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_referrals_bot_status ON referrals (bot_config_id, status)`);
+  if (!(await columnExists(client, "referrals", "joined_group_at"))) {
+    await client.query(`ALTER TABLE referrals ADD COLUMN joined_group_at TIMESTAMP`);
+    log("Added joined_group_at to referrals");
+  }
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {

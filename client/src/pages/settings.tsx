@@ -55,6 +55,7 @@ const settingsSchema = z.object({
   rewardTokenSymbol: z.string(),
   rewardTokenDecimals: z.number().min(0).max(36),
   rewardAmountPerWinner: z.string(),
+  rewardPoolPerPeriod: z.string(),
   rewardTopN: z.number().min(1).max(50),
   rewardPeriodDays: z.number().min(1).max(60),
   rewardMinDaysActive: z.number().min(0).max(60),
@@ -102,6 +103,7 @@ export default function SettingsPage() {
       rewardTokenSymbol: "TOKEN",
       rewardTokenDecimals: 18,
       rewardAmountPerWinner: "0",
+      rewardPoolPerPeriod: "0",
       rewardTopN: 5,
       rewardPeriodDays: 7,
       rewardMinDaysActive: 3,
@@ -144,6 +146,7 @@ export default function SettingsPage() {
         rewardTokenSymbol: config.rewardTokenSymbol ?? "TOKEN",
         rewardTokenDecimals: config.rewardTokenDecimals ?? 18,
         rewardAmountPerWinner: config.rewardAmountPerWinner ?? "0",
+        rewardPoolPerPeriod: config.rewardPoolPerPeriod ?? "0",
         rewardTopN: config.rewardTopN ?? 5,
         rewardPeriodDays: config.rewardPeriodDays ?? 7,
         rewardMinDaysActive: config.rewardMinDaysActive ?? 3,
@@ -586,10 +589,17 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel>Amount per Winner</FormLabel>
                           <FormControl><Input {...field} placeholder="100" data-testid="input-reward-amount" /></FormControl>
-                          <FormDescription>In token units (e.g. 100 = 100 $TELI)</FormDescription>
+                          <FormDescription>In token units (e.g. 100 = 100 $TELI). Used when no pool is set.</FormDescription>
                         </FormItem>
                       )} />
                     </div>
+                    <FormField control={form.control} name="rewardPoolPerPeriod" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Pool per Period (optional)</FormLabel>
+                        <FormControl><Input {...field} placeholder="0" data-testid="input-reward-pool" /></FormControl>
+                        <FormDescription>If set above 0, this whole pool is split equally among eligible winners (overrides Amount per Winner).</FormDescription>
+                      </FormItem>
+                    )} />
                     <div className="grid grid-cols-3 gap-3">
                       <FormField control={form.control} name="rewardTopN" render={({ field }) => (
                         <FormItem>

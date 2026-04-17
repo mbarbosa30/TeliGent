@@ -25,12 +25,13 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
   const tokenSymbol = config.rewardTokenSymbol || "TOKEN";
   const decimals = config.rewardTokenDecimals ?? 18;
   const amountPerWinner = config.rewardAmountPerWinner || "0";
+  const poolPerPeriod = config.rewardPoolPerPeriod || "0";
   const topN = config.rewardTopN || 5;
   const minDays = config.rewardMinDaysActive ?? 3;
   const maxPerUser = config.rewardMaxPerUserPerPeriod ?? 1;
 
-  if (!tokenAddress || amountPerWinner === "0") {
-    return { ok: false, reason: "token or amount not configured" };
+  if (!tokenAddress || (amountPerWinner === "0" && poolPerPeriod === "0")) {
+    return { ok: false, reason: "token, pool, or per-winner amount not configured" };
   }
 
   const scores = await computeContributorScores(config.id, period.start, period.end);
@@ -57,6 +58,17 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
     return { ok: false, reason: "no eligible contributors" };
   }
 
+  let perWinnerAmount = amountPerWinner;
+  if (poolPerPeriod !== "0") {
+    try {
+      const poolBig = BigInt(poolPerPeriod);
+      const share = poolBig / BigInt(eligibleCandidates.length);
+      if (share > 0n) perWinnerAmount = share.toString();
+    } catch {
+      log(`Invalid rewardPoolPerPeriod for bot ${config.id}: ${poolPerPeriod}`, "rewards");
+    }
+  }
+
   if (opts.dryRun) {
     return { ok: true, reason: "dry run", recipients: eligibleCandidates.length };
   }
@@ -70,7 +82,8 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
     tokenChain: chain,
     tokenAddress,
     tokenSymbol,
-    amountPerWinner,
+    amountPerWinner: perWinnerAmount,
+    notes: poolPerPeriod !== "0" ? `pool=${poolPerPeriod} share=${perWinnerAmount}` : null,
   });
 
   let sent = 0, failed = 0, skipped = 0;
@@ -83,7 +96,7 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
       telegramUserId: winner.telegramUserId,
       userName: winner.userName,
       walletAddress: wallet?.walletAddress ?? null,
-      amount: amountPerWinner,
+      amount: perWinnerAmount,
       rank: i + 1,
       score: winner.score,
       kind: "leaderboard",
@@ -101,7 +114,7 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
         chain,
         tokenAddress,
         recipient: wallet.walletAddress,
-        amount: amountPerWinner,
+        amount: perWinnerAmount,
         decimals,
       });
       await storage.createRewardPayout({ ...baseRow, status: "sent", txHash });

@@ -402,6 +402,19 @@ async function handleNewMembers(msg: TelegramBot.Message, instance: BotInstance)
 
     log(`Bot joined group: ${chatTitle} (user: ${userId})`, "telegram");
   }
+
+  const groupChatId = msg.chat.id.toString();
+  const linkedGroup = await storage.getGroupByChatId(botConfigId, groupChatId);
+  if (linkedGroup) {
+    for (const m of msg.new_chat_members) {
+      if (m.is_bot) continue;
+      try {
+        await storage.markReferralJoinedGroup(botConfigId, m.id.toString(), groupChatId);
+      } catch (err: any) {
+        log(`Referral join-link error for user ${m.id}: ${err.message}`, "telegram");
+      }
+    }
+  }
 }
 
 async function handleLeftMember(msg: TelegramBot.Message, instance: BotInstance) {

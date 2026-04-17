@@ -35,6 +35,7 @@ export const botConfigs = pgTable("bot_configs", {
   rewardPeriodDays: integer("reward_period_days").notNull().default(7),
   rewardTopN: integer("reward_top_n").notNull().default(5),
   rewardAmountPerWinner: text("reward_amount_per_winner").default("0"),
+  rewardPoolPerPeriod: text("reward_pool_per_period").default("0"),
   rewardMinDaysActive: integer("reward_min_days_active").notNull().default(3),
   rewardLastDistributionAt: timestamp("reward_last_distribution_at"),
   proactiveEnabled: boolean("proactive_enabled").notNull().default(false),
@@ -416,6 +417,7 @@ export const referrals = pgTable("referrals", {
   refereeUserName: text("referee_user_name"),
   telegramChatId: text("telegram_chat_id"),
   status: text("status").notNull().default("pending"),
+  joinedGroupAt: timestamp("joined_group_at"),
   creditedAt: timestamp("credited_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
