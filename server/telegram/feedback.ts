@@ -72,7 +72,7 @@ Output JSON only:
       await storage.createActivityLog(botConfigId, owner.userId, {
         groupId,
         telegramUserId,
-        type: "message",
+        type: "feedback_reply",
         userName,
         userMessage: text.slice(0, 1000),
         botResponse: null,
