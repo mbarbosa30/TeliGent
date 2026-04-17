@@ -75,6 +75,10 @@ export interface IStorage {
   deletePattern(botConfigId: number, id: number): Promise<void>;
   getPattern(botConfigId: number, id: number): Promise<CollectivePattern | undefined>;
 
+  getDataCorrelations(botConfigId: number, opts?: { patternId?: number; telegramUserId?: string; limit?: number }): Promise<DataCorrelation[]>;
+  upsertDataCorrelation(botConfigId: number, patternId: number, telegramUserId: string, sourceActivityLogId?: number | null): Promise<DataCorrelation>;
+  deleteDataCorrelationsForPattern(botConfigId: number, patternId: number): Promise<void>;
+
   getWisdomSnapshots(botConfigId: number, limit?: number): Promise<WisdomSnapshot[]>;
   createWisdomSnapshot(botConfigId: number, score: number, components: WisdomComponentsPayload, digest?: string | null): Promise<WisdomSnapshot>;
 
@@ -435,12 +439,37 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async upsertCorrelation(botConfigId: number, patternId: number, telegramUserId: string, sourceActivityLogId: number | null = null): Promise<void> {
+    await this.upsertDataCorrelation(botConfigId, patternId, telegramUserId, sourceActivityLogId);
+  }
+
+  async upsertDataCorrelation(botConfigId: number, patternId: number, telegramUserId: string, sourceActivityLogId: number | null = null): Promise<DataCorrelation> {
     const [existing] = await db.select().from(dataCorrelations).where(and(eq(dataCorrelations.patternId, patternId), eq(dataCorrelations.telegramUserId, telegramUserId))).limit(1);
     if (existing) {
-      await db.update(dataCorrelations).set({ weight: existing.weight + 1, lastSeenAt: new Date(), sourceActivityLogId: sourceActivityLogId ?? existing.sourceActivityLogId }).where(eq(dataCorrelations.id, existing.id));
-    } else {
-      await db.insert(dataCorrelations).values({ botConfigId, patternId, telegramUserId, weight: 1, sourceActivityLogId });
+      const [updated] = await db.update(dataCorrelations)
+        .set({ weight: existing.weight + 1, lastSeenAt: new Date(), sourceActivityLogId: sourceActivityLogId ?? existing.sourceActivityLogId })
+        .where(eq(dataCorrelations.id, existing.id))
+        .returning();
+      return updated;
     }
+    const [created] = await db.insert(dataCorrelations).values({ botConfigId, patternId, telegramUserId, weight: 1, sourceActivityLogId }).returning();
+    return created;
+  }
+
+  async getDataCorrelations(
+    botConfigId: number,
+    opts: { patternId?: number; telegramUserId?: string; limit?: number } = {},
+  ): Promise<DataCorrelation[]> {
+    const conditions = [eq(dataCorrelations.botConfigId, botConfigId)];
+    if (opts.patternId !== undefined) conditions.push(eq(dataCorrelations.patternId, opts.patternId));
+    if (opts.telegramUserId !== undefined) conditions.push(eq(dataCorrelations.telegramUserId, opts.telegramUserId));
+    return db.select().from(dataCorrelations)
+      .where(and(...conditions))
+      .orderBy(desc(dataCorrelations.lastSeenAt))
+      .limit(opts.limit ?? 100);
+  }
+
+  async deleteDataCorrelationsForPattern(botConfigId: number, patternId: number): Promise<void> {
+    await db.delete(dataCorrelations).where(and(eq(dataCorrelations.botConfigId, botConfigId), eq(dataCorrelations.patternId, patternId)));
   }
 
   async updatePatternStatus(botConfigId: number, id: number, status: string, promotedKbId?: number | null): Promise<CollectivePattern | undefined> {

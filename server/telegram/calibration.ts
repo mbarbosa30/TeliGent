@@ -1,7 +1,7 @@
 import { storage } from "../storage";
 import { log } from "../index";
 import { openai } from "./utils";
-import { redactPII, extractKeywords } from "./pii";
+import { redactPII, extractKeywords, sanitizeKeywords } from "./pii";
 import type { ChatMessage } from "./conversation-history";
 
 const CALIBRATION_COOLDOWN_MS = 4 * 60 * 1000;
@@ -168,10 +168,11 @@ If nothing qualifies, set save=false on both. NEVER include PII (wallets, emails
     const kind = pat.kind && ["topic", "question", "pitfall", "strategy", "sentiment"].includes(pat.kind) ? pat.kind : "topic";
     const title = redactPII(pat.title).slice(0, 80);
     const summary = redactPII(pat.summary).slice(0, 240);
-    let kws = Array.isArray(pat.keywords)
-      ? pat.keywords.filter((k): k is string | number => typeof k === "string" || typeof k === "number").map((k) => String(k).toLowerCase().slice(0, 24)).filter(Boolean)
+    const rawKws = Array.isArray(pat.keywords)
+      ? pat.keywords.filter((k): k is string | number => typeof k === "string" || typeof k === "number").map((k) => String(k))
       : [];
-    if (kws.length === 0) kws = extractKeywords(messageText, 6);
+    let kws = sanitizeKeywords(rawKws);
+    if (kws.length === 0) kws = sanitizeKeywords(extractKeywords(messageText, 8));
     if (title && summary) {
       const p = await storage.upsertCollectivePattern(botConfigId, telegramUserId, kind, title, summary, kws.slice(0, 8), overall, sourceActivityLogId);
       savedPattern = true;
