@@ -59,6 +59,9 @@ const settingsSchema = z.object({
   rewardTopN: z.number().min(1).max(50),
   rewardPeriodDays: z.number().min(1).max(60),
   rewardMinDaysActive: z.number().min(0).max(60),
+  rewardMaxPerUserPerPeriod: z.number().min(1).max(10),
+  rewardMaxPerUserPerPeriodVerified: z.number().min(1).max(20),
+  rewardRequireSelfVerified: z.boolean(),
   proactiveEnabled: z.boolean(),
   proactiveMode: z.string(),
   proactiveCadenceHours: z.number().min(1).max(720),
@@ -107,6 +110,9 @@ export default function SettingsPage() {
       rewardTopN: 5,
       rewardPeriodDays: 7,
       rewardMinDaysActive: 3,
+      rewardMaxPerUserPerPeriod: 1,
+      rewardMaxPerUserPerPeriodVerified: 2,
+      rewardRequireSelfVerified: false,
       proactiveEnabled: false,
       proactiveMode: "queue",
       proactiveCadenceHours: 24,
@@ -150,6 +156,9 @@ export default function SettingsPage() {
         rewardTopN: config.rewardTopN ?? 5,
         rewardPeriodDays: config.rewardPeriodDays ?? 7,
         rewardMinDaysActive: config.rewardMinDaysActive ?? 3,
+        rewardMaxPerUserPerPeriod: config.rewardMaxPerUserPerPeriod ?? 1,
+        rewardMaxPerUserPerPeriodVerified: config.rewardMaxPerUserPerPeriodVerified ?? 2,
+        rewardRequireSelfVerified: config.rewardRequireSelfVerified ?? false,
         proactiveEnabled: config.proactiveEnabled ?? false,
         proactiveMode: config.proactiveMode ?? "queue",
         proactiveCadenceHours: config.proactiveCadenceHours ?? 24,
@@ -620,6 +629,31 @@ export default function SettingsPage() {
                         </FormItem>
                       )} />
                     </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={form.control} name="rewardMaxPerUserPerPeriod" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Max wins per user / period</FormLabel>
+                          <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-reward-maxperuser" /></FormControl>
+                          <FormDescription>Base cap for unverified members.</FormDescription>
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="rewardMaxPerUserPerPeriodVerified" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Max wins per user / period (Self verified)</FormLabel>
+                          <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-reward-maxperuser-verified" /></FormControl>
+                          <FormDescription>Higher cap when the member has Self Protocol verification on file.</FormDescription>
+                        </FormItem>
+                      )} />
+                    </div>
+                    <FormField control={form.control} name="rewardRequireSelfVerified" render={({ field }) => (
+                      <FormItem className="flex items-center justify-between">
+                        <div>
+                          <FormLabel>Require Self Protocol verification</FormLabel>
+                          <FormDescription>If on, only members with proof-of-human verification are eligible for payouts.</FormDescription>
+                        </div>
+                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-reward-require-verified" /></FormControl>
+                      </FormItem>
+                    )} />
                   </div>
                 )}
 

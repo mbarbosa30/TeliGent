@@ -72,11 +72,15 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
 
   if (command === "help") {
     const priceCmd = config.bankrEnabled ? "\n/price <token> — Get real-time token price data" : "";
+    const rewardsCmds = config.rewardsEnabled
+      ? "\n/myscore — Your contribution score and rank this period\n/leaderboard — Top contributors this period\n/wallet 0xYourAddress — Set the wallet for receiving rewards"
+      : "";
+    const inviteCmd = config.referralEnabled ? "\n/invite — Your personal invite link to earn referral rewards" : "";
     const helpText = `*Available Commands:*
 
 /start — Introduction and project overview
 /help — Show this list of commands
-/report — Reply to a message with /report to flag it for review${priceCmd}
+/report — Reply to a message with /report to flag it for review${priceCmd}${rewardsCmds}${inviteCmd}
 
 *Other ways to interact:*
 • Mention me with @${botUsername} to ask a question
