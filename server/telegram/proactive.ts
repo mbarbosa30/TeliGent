@@ -97,7 +97,19 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
     }
 
     const useFeedback = feedbackEnabled && (open.length === 0 || Math.random() * 100 < mixRatio);
-    const topKbTopic = open.length > 0 ? open[0].title : null;
+    let topKbTopic: string | null = null;
+    if (useFeedback || (open.length === 0 && feedbackEnabled)) {
+      try {
+        const kb = await storage.getKnowledgeEntries(config.id);
+        const active = kb.filter(e => e.isActive);
+        if (active.length > 0) {
+          const pick = active[Math.floor(Math.random() * Math.min(5, active.length))];
+          topKbTopic = pick.topic || null;
+        }
+      } catch {
+        // optional personalisation, ignore failures
+      }
+    }
 
     let question = "";
     let rationale = "";

@@ -597,6 +597,11 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
             text: messageText,
           }).catch(err => log(`Feedback capture error: ${err.message}`, "telegram"));
           sendReaction(bot, msg.chat.id, msg.message_id, "🙏").catch(() => {});
+          const mentioned = messageText.toLowerCase().includes(`@${instance.botUsername.toLowerCase()}`);
+          if (!mentioned) {
+            log(`Captured feedback reply from ${userName}; suppressing AI response`, "telegram");
+            return;
+          }
         }
       } catch (err: any) {
         log(`Proactive reply lookup error: ${err.message}`, "telegram");
