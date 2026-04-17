@@ -1,0 +1,71 @@
+Here's a detailed walkthrough of how GuruForge turns raw chat into structured wisdom over time.
+
+The 4-Stage Pipeline (every message)
+When someone messages a Guru on Telegram, the message flows through four stages:
+
+1. Triage (fast)
+A small/cheap model reads the incoming message and quickly decides:
+
+What's the intent? (greeting, question, deep analysis, venting, etc.)
+How urgent is it?
+Which "memory tiers" does the Guru need to pull in to answer well?
+This step avoids loading expensive context for trivial messages like "hey" or "thanks."
+
+2. Context Retrieval (3 tiers of memory)
+Based on the triage result, the system gathers relevant background:
+
+Tier 1 — Recent history: the last few turns of this conversation.
+Tier 2 — Personal memory: long-term things known about this specific user (their goals, preferences, past decisions).
+Tier 3 — Collective wisdom: anonymized patterns learned from all users of this Guru (common questions, what tends to work, common pitfalls).
+Retrieval is done with a mix of keyword overlap and recency scoring, so the most relevant memories surface first.
+
+3. Inference (the actual reply)
+The main model (e.g. GPT‑4o tier) generates the response, weaving together the retrieved memories and patterns while staying in the Guru's defined personality/style.
+
+4. Calibration (asynchronous, after the reply is sent)
+This is the "learning" step — it runs in the background so the user doesn't wait. This is where conversation gets converted into structured knowledge.
+
+How a Conversation Becomes Categorized Knowledge
+In calibration, an LLM extracts two kinds of structured items from each exchange:
+
+Personal memories (saved per-user):
+
+goals — what they're trying to achieve
+preferences — how they like things
+history — what they've already done/tried
+decisions — choices they've made
+context — situational facts about them
+Before saving, the system runs a deduplication check (~60% keyword overlap with existing memories) so you don't end up with 50 versions of "user wants to lose weight."
+
+Collective insights (saved per-Guru, only if the user opted into Shared Learning):
+
+common_questions — recurring things people ask
+successful_strategies — approaches that worked
+pitfalls — things that consistently go wrong
+trends — emerging patterns over time
+Before any collective data is stored, it goes through a PII redactor that strips out names, locations, and other identifying details — so the Guru learns the pattern, not the person.
+
+Each turn is also scored on three quality dimensions (0.0–1.0): contribution quality, domain relevance, and overall quality. Low-quality turns contribute less (or nothing) to memory.
+
+How the Wisdom Score (0–100) Is Built
+Roughly every 5 calibration cycles, the Wisdom Score is recomputed as a weighted blend of 8 components:
+
+Component	Max	What it measures
+Pattern Score	20	How many distinct patterns the Guru has learned
+Confidence Score	12	How sure the model is about those patterns
+Contributor Score	18	How many different people contributed quality data
+Depth Score	10	Average depth/length of conversations
+Diversity Score	10	Variety across categories (not all one type)
+Volume Score	10	Log-scale of total pattern frequency
+Growth Score	10	Recent learning vs. prior snapshots
+Maturity Score	10	Age/longevity of the Guru
+This design rewards Gurus that are broad, deep, well‑sourced, confident, and growing — not just chatty.
+
+How It Persists & Compounds
+Four database tables make this durable:
+
+user_memories — the personal tier
+collective_patterns — the wisdom tier
+data_correlations — links each stored memory back to the messages that produced it (so you can audit why the Guru believes something)
+knowledge_snapshots — daily snapshots of total state, which power Growth Score and trend charts
+Every new conversation: triages → retrieves prior memory → answers in‑character → extracts new memories → updates scores. Over weeks and months, a Guru that started knowing nothing accumulates a personalized memory of each user and a sanitized, collective body of "what tends to be true in this domain" — that compounding is the wisdom.
