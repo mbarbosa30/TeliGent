@@ -209,3 +209,73 @@ export const insertAgentServiceLogSchema = createInsertSchema(agentServiceLogs).
 });
 export type AgentServiceLog = typeof agentServiceLogs.$inferSelect;
 export type InsertAgentServiceLog = z.infer<typeof insertAgentServiceLogSchema>;
+
+export const userMemories = pgTable("user_memories", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  telegramUserId: text("telegram_user_id").notNull(),
+  userName: text("user_name"),
+  type: text("type").notNull().default("trait"),
+  content: text("content").notNull(),
+  confidence: integer("confidence").notNull().default(60),
+  hitCount: integer("hit_count").notNull().default(1),
+  lastSeenAt: timestamp("last_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_user_memories_bot_user").on(table.botConfigId, table.telegramUserId),
+]);
+
+export const collectivePatterns = pgTable("collective_patterns", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull().default("topic"),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  keywords: text("keywords").array().notNull().default(sql`ARRAY[]::text[]`),
+  mentionCount: integer("mention_count").notNull().default(1),
+  uniqueUsers: integer("unique_users").notNull().default(1),
+  confidence: integer("confidence").notNull().default(60),
+  status: text("status").notNull().default("open"),
+  promotedKbId: integer("promoted_kb_id"),
+  firstSeenAt: timestamp("first_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  lastSeenAt: timestamp("last_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_collective_patterns_bot_kind").on(table.botConfigId, table.kind),
+  index("idx_collective_patterns_bot_status").on(table.botConfigId, table.status),
+]);
+
+export const dataCorrelations = pgTable("data_correlations", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  patternId: integer("pattern_id").notNull().references(() => collectivePatterns.id, { onDelete: "cascade" }),
+  telegramUserId: text("telegram_user_id").notNull(),
+  weight: integer("weight").notNull().default(1),
+  lastSeenAt: timestamp("last_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("idx_data_correlations_unique").on(table.patternId, table.telegramUserId),
+  index("idx_data_correlations_bot").on(table.botConfigId),
+]);
+
+export const wisdomSnapshots = pgTable("wisdom_snapshots", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  score: integer("score").notNull(),
+  components: jsonb("components").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_wisdom_snapshots_bot_created").on(table.botConfigId, table.createdAt),
+]);
+
+export const insertUserMemorySchema = createInsertSchema(userMemories).omit({ id: true, createdAt: true, lastSeenAt: true });
+export type UserMemory = typeof userMemories.$inferSelect;
+export type InsertUserMemory = z.infer<typeof insertUserMemorySchema>;
+
+export const insertCollectivePatternSchema = createInsertSchema(collectivePatterns).omit({ id: true, firstSeenAt: true, lastSeenAt: true });
+export type CollectivePattern = typeof collectivePatterns.$inferSelect;
+export type InsertCollectivePattern = z.infer<typeof insertCollectivePatternSchema>;
+
+export const insertDataCorrelationSchema = createInsertSchema(dataCorrelations).omit({ id: true, lastSeenAt: true });
+export type DataCorrelation = typeof dataCorrelations.$inferSelect;
+export type InsertDataCorrelation = z.infer<typeof insertDataCorrelationSchema>;
+
+export type WisdomSnapshot = typeof wisdomSnapshots.$inferSelect;

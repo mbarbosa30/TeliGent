@@ -21,6 +21,7 @@ import AccountPage from "@/pages/account";
 import LandingPage from "@/pages/landing";
 import SetupGuidePage from "@/pages/setup-guide";
 import MemoriesPage from "@/pages/memories";
+import IntelligencePage from "@/pages/intelligence";
 import WidgetPage from "@/pages/widget";
 import AgentPage from "@/pages/agent";
 import AdminPage from "@/pages/admin";
@@ -70,6 +71,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/knowledge" component={KnowledgeBase} />
       <Route path="/memories" component={MemoriesPage} />
+      <Route path="/intelligence" component={IntelligencePage} />
       <Route path="/activity" component={ActivityPage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/settings" component={SettingsPage} />

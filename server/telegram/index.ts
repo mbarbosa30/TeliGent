@@ -15,6 +15,8 @@ import { handleCommand, handleDeleteRequest, checkIfReport, shouldBotRespond, ge
 import { addMessage, getRecentMessages, cleanupOldHistories } from "./conversation-history";
 import { maybeLearnFromMessage } from "./realtime-learning";
 import { maybeExtractInsight } from "./conversation-insights";
+import { maybeCalibrate } from "./calibration";
+import { maybeSnapshotWisdom } from "./wisdom";
 import { scrapeUrl } from "../scraper";
 
 const activeBots = new Map<string, BotInstance>();
@@ -520,6 +522,12 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       log(`Learning error: ${err.message}`, "telegram")
     );
 
+    maybeCalibrate(botConfigId, tgUserId, userName, messageText, conversationHistory, config.botName).catch(err =>
+      log(`Calibration error: ${err.message}`, "telegram")
+    );
+
+    maybeSnapshotWisdom(botConfigId).catch(() => {});
+
     const isReport = checkIfReport(messageText, config);
     if (isReport && config.trackReports) {
       await storage.createActivityLog(botConfigId, userId, {
@@ -563,11 +571,11 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       }
 
       const groupContext = await fetchGroupContext(instance, chatId, msg.chat.id);
-      let response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory, groupContext);
+      let response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory, groupContext, tgUserId);
 
       if (!response || !response.trim()) {
         log(`AI returned empty response for ${userName}, retrying once...`, "telegram");
-        response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, undefined, groupContext);
+        response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, undefined, groupContext, tgUserId);
       }
 
       log(`AI response for ${userName}: "${(response || "").substring(0, 60)}..."`, "telegram");

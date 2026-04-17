@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot } from "@shared/schema";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 
 export interface IStorage {
@@ -52,6 +52,23 @@ export interface IStorage {
   getAgentServiceLogs(limit?: number): Promise<AgentServiceLog[]>;
   getAgentServiceLogByPaymentId(paymentId: string): Promise<AgentServiceLog | undefined>;
   getAgentServiceStats(): Promise<{ totalRequests: number; totalEarnings: string; requestsToday: number; verifiedRequests: number; unverifiedRequests: number }>;
+
+  getUserMemoriesForUser(botConfigId: number, telegramUserId: string): Promise<UserMemory[]>;
+  upsertUserMemory(botConfigId: number, telegramUserId: string, userName: string | null, type: string, content: string, confidence: number): Promise<UserMemory>;
+  countUserMemories(botConfigId: number): Promise<number>;
+  getRecentUserMemories(botConfigId: number, limit?: number): Promise<UserMemory[]>;
+
+  getCollectivePatterns(botConfigId: number, status?: string): Promise<CollectivePattern[]>;
+  upsertCollectivePattern(botConfigId: number, telegramUserId: string, kind: string, title: string, summary: string, keywords: string[]): Promise<CollectivePattern>;
+  updatePatternStatus(botConfigId: number, id: number, status: string, promotedKbId?: number | null): Promise<CollectivePattern | undefined>;
+  deletePattern(botConfigId: number, id: number): Promise<void>;
+  getPattern(botConfigId: number, id: number): Promise<CollectivePattern | undefined>;
+
+  getWisdomSnapshots(botConfigId: number, limit?: number): Promise<WisdomSnapshot[]>;
+  createWisdomSnapshot(botConfigId: number, score: number, components: any): Promise<WisdomSnapshot>;
+
+  getActivityCountsByDay(botConfigId: number, days: number): Promise<{ day: string; count: number }[]>;
+  countDistinctUsers(botConfigId: number, sinceDays: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -322,6 +339,135 @@ export class DatabaseStorage implements IStorage {
       verifiedRequests: verifiedCount.count,
       unverifiedRequests: totalCount.count - verifiedCount.count,
     };
+  }
+
+  async getUserMemoriesForUser(botConfigId: number, telegramUserId: string): Promise<UserMemory[]> {
+    return db.select().from(userMemories).where(and(eq(userMemories.botConfigId, botConfigId), eq(userMemories.telegramUserId, telegramUserId))).orderBy(desc(userMemories.lastSeenAt));
+  }
+
+  async getRecentUserMemories(botConfigId: number, limit = 50): Promise<UserMemory[]> {
+    return db.select().from(userMemories).where(eq(userMemories.botConfigId, botConfigId)).orderBy(desc(userMemories.lastSeenAt)).limit(limit);
+  }
+
+  async countUserMemories(botConfigId: number): Promise<number> {
+    const [r] = await db.select({ count: count() }).from(userMemories).where(eq(userMemories.botConfigId, botConfigId));
+    return r.count;
+  }
+
+  async upsertUserMemory(botConfigId: number, telegramUserId: string, userName: string | null, type: string, content: string, confidence: number): Promise<UserMemory> {
+    const existing = await db.select().from(userMemories).where(and(eq(userMemories.botConfigId, botConfigId), eq(userMemories.telegramUserId, telegramUserId)));
+    const norm = content.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).filter(Boolean);
+    for (const e of existing) {
+      const eNorm = e.content.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).filter(Boolean);
+      const overlap = norm.filter(w => eNorm.includes(w)).length;
+      const ratio = overlap / Math.max(norm.length, eNorm.length, 1);
+      if (ratio >= 0.6) {
+        const [updated] = await db.update(userMemories).set({
+          hitCount: e.hitCount + 1,
+          lastSeenAt: new Date(),
+          confidence: Math.min(95, Math.max(e.confidence, confidence)),
+          userName: userName || e.userName,
+        }).where(eq(userMemories.id, e.id)).returning();
+        return updated;
+      }
+    }
+    const [created] = await db.insert(userMemories).values({
+      botConfigId, telegramUserId, userName, type, content, confidence,
+    }).returning();
+    return created;
+  }
+
+  async getCollectivePatterns(botConfigId: number, status?: string): Promise<CollectivePattern[]> {
+    const filters = status
+      ? and(eq(collectivePatterns.botConfigId, botConfigId), eq(collectivePatterns.status, status))
+      : eq(collectivePatterns.botConfigId, botConfigId);
+    return db.select().from(collectivePatterns).where(filters).orderBy(desc(collectivePatterns.mentionCount), desc(collectivePatterns.lastSeenAt));
+  }
+
+  async getPattern(botConfigId: number, id: number): Promise<CollectivePattern | undefined> {
+    const [p] = await db.select().from(collectivePatterns).where(and(eq(collectivePatterns.id, id), eq(collectivePatterns.botConfigId, botConfigId))).limit(1);
+    return p;
+  }
+
+  async upsertCollectivePattern(botConfigId: number, telegramUserId: string, kind: string, title: string, summary: string, keywords: string[]): Promise<CollectivePattern> {
+    const existing = await db.select().from(collectivePatterns).where(and(eq(collectivePatterns.botConfigId, botConfigId), eq(collectivePatterns.kind, kind)));
+    const newKw = new Set(keywords.map(k => k.toLowerCase()));
+    let match: CollectivePattern | null = null;
+    let bestRatio = 0;
+    for (const e of existing) {
+      const exKw = new Set(e.keywords.map(k => k.toLowerCase()));
+      const overlap = [...newKw].filter(w => exKw.has(w)).length;
+      const ratio = overlap / Math.max(newKw.size, exKw.size, 1);
+      if (ratio > bestRatio) { bestRatio = ratio; match = e; }
+    }
+    if (match && bestRatio >= 0.5) {
+      const mergedKw = Array.from(new Set([...match.keywords, ...keywords])).slice(0, 12);
+      const [updated] = await db.update(collectivePatterns).set({
+        mentionCount: match.mentionCount + 1,
+        lastSeenAt: new Date(),
+        keywords: mergedKw,
+      }).where(eq(collectivePatterns.id, match.id)).returning();
+      await this.upsertCorrelation(botConfigId, updated.id, telegramUserId);
+      const [uniq] = await db.select({ c: count() }).from(dataCorrelations).where(eq(dataCorrelations.patternId, updated.id));
+      const [final] = await db.update(collectivePatterns).set({ uniqueUsers: uniq.c, confidence: Math.min(95, 50 + uniq.c * 5 + Math.min(20, updated.mentionCount)) }).where(eq(collectivePatterns.id, updated.id)).returning();
+      return final;
+    }
+    const [created] = await db.insert(collectivePatterns).values({
+      botConfigId, kind, title, summary, keywords: keywords.slice(0, 12),
+      mentionCount: 1, uniqueUsers: 1, confidence: 55, status: "open",
+    }).returning();
+    await this.upsertCorrelation(botConfigId, created.id, telegramUserId);
+    return created;
+  }
+
+  private async upsertCorrelation(botConfigId: number, patternId: number, telegramUserId: string): Promise<void> {
+    const [existing] = await db.select().from(dataCorrelations).where(and(eq(dataCorrelations.patternId, patternId), eq(dataCorrelations.telegramUserId, telegramUserId))).limit(1);
+    if (existing) {
+      await db.update(dataCorrelations).set({ weight: existing.weight + 1, lastSeenAt: new Date() }).where(eq(dataCorrelations.id, existing.id));
+    } else {
+      await db.insert(dataCorrelations).values({ botConfigId, patternId, telegramUserId, weight: 1 });
+    }
+  }
+
+  async updatePatternStatus(botConfigId: number, id: number, status: string, promotedKbId?: number | null): Promise<CollectivePattern | undefined> {
+    const updates: any = { status };
+    if (promotedKbId !== undefined) updates.promotedKbId = promotedKbId;
+    const [updated] = await db.update(collectivePatterns).set(updates).where(and(eq(collectivePatterns.id, id), eq(collectivePatterns.botConfigId, botConfigId))).returning();
+    return updated;
+  }
+
+  async deletePattern(botConfigId: number, id: number): Promise<void> {
+    await db.delete(collectivePatterns).where(and(eq(collectivePatterns.id, id), eq(collectivePatterns.botConfigId, botConfigId)));
+  }
+
+  async getWisdomSnapshots(botConfigId: number, limit = 30): Promise<WisdomSnapshot[]> {
+    return db.select().from(wisdomSnapshots).where(eq(wisdomSnapshots.botConfigId, botConfigId)).orderBy(desc(wisdomSnapshots.createdAt)).limit(limit);
+  }
+
+  async createWisdomSnapshot(botConfigId: number, score: number, components: any): Promise<WisdomSnapshot> {
+    const [created] = await db.insert(wisdomSnapshots).values({ botConfigId, score, components }).returning();
+    return created;
+  }
+
+  async getActivityCountsByDay(botConfigId: number, days: number): Promise<{ day: string; count: number }[]> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const rows = await db.execute(sql`
+      SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day, COUNT(*)::int AS count
+      FROM activity_logs
+      WHERE bot_config_id = ${botConfigId} AND created_at >= ${cutoff}
+      GROUP BY 1 ORDER BY 1 ASC
+    `);
+    return (rows.rows as any[]).map(r => ({ day: r.day, count: Number(r.count) }));
+  }
+
+  async countDistinctUsers(botConfigId: number, sinceDays: number): Promise<number> {
+    const cutoff = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+    const rows = await db.execute(sql`
+      SELECT COUNT(DISTINCT telegram_user_id)::int AS c
+      FROM activity_logs
+      WHERE bot_config_id = ${botConfigId} AND created_at >= ${cutoff} AND telegram_user_id IS NOT NULL
+    `);
+    return Number((rows.rows[0] as any)?.c || 0);
   }
 }
 

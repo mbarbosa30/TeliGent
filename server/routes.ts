@@ -318,6 +318,93 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bots/:botId/intelligence/overview", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const { generateWeeklyDigest } = await import("./telegram/digest");
+      const data = await generateWeeklyDigest(botId);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/intelligence/patterns", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const patterns = await storage.getCollectivePatterns(botId, status);
+      res.json(patterns);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/bots/:botId/intelligence/patterns/:id/status", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const id = parseInt(req.params.id as string);
+      const status = String(req.body.status || "open");
+      if (!["open", "known", "resolved", "ignored"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+      const updated = await storage.updatePatternStatus(botId, id, status);
+      if (!updated) return res.status(404).json({ error: "Pattern not found" });
+      const { invalidateDigestCache } = await import("./telegram/digest");
+      invalidateDigestCache(botId);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/bots/:botId/intelligence/patterns/:id", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const id = parseInt(req.params.id as string);
+      await storage.deletePattern(botId, id);
+      const { invalidateDigestCache } = await import("./telegram/digest");
+      invalidateDigestCache(botId);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bots/:botId/intelligence/patterns/:id/promote", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const id = parseInt(req.params.id as string);
+      const userId = getUserId(req);
+      const pattern = await storage.getPattern(botId, id);
+      if (!pattern) return res.status(404).json({ error: "Pattern not found" });
+      const entry = await storage.createKnowledgeEntry(botId, userId, {
+        title: pattern.title.slice(0, 100),
+        content: pattern.summary,
+        category: pattern.kind === "question" ? "faq" : "general",
+        isActive: true,
+        sourceUrl: null,
+      });
+      await storage.updatePatternStatus(botId, id, "known", entry.id);
+      const { invalidateDigestCache } = await import("./telegram/digest");
+      invalidateDigestCache(botId);
+      res.json({ entry, pattern });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/intelligence/user-memories", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const memories = await storage.getRecentUserMemories(botId, limit);
+      res.json(memories);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/admin/stats", isAdminAuthenticated, apiRateLimit, async (req, res) => {
     try {
       const stats = await storage.adminGetStats();
@@ -358,7 +445,7 @@ export async function registerRoutes(
 
   app.post("/api/bots/:botId/widget/enable", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(req.params.botId as string);
       const widgetKey = crypto.randomBytes(24).toString("hex");
       await storage.updateBotConfig(botId, { widgetEnabled: true, widgetKey });
       res.json({ widgetKey });
@@ -369,7 +456,7 @@ export async function registerRoutes(
 
   app.post("/api/bots/:botId/widget/disable", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(req.params.botId as string);
       await storage.updateBotConfig(botId, { widgetEnabled: false });
       res.json({ success: true });
     } catch (err: any) {
@@ -379,7 +466,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/widget/conversations", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(req.params.botId as string);
       const conversations = await storage.getWidgetConversations(botId);
       res.json(conversations);
     } catch (err: any) {
