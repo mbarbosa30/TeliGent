@@ -538,7 +538,23 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     const conversationHistory = getRecentMessages(botConfigId, chatId, 20);
     const tgUserId = msg.from?.id?.toString() || "unknown";
 
-    maybeCalibrate(botConfigId, tgUserId, userName, messageText, conversationHistory, config.botName).catch(err =>
+    let calibrationActivityLogId: number | null = null;
+    if (messageText && messageText.length >= 60 && !messageText.startsWith("/")) {
+      try {
+        const calLog = await storage.createActivityLog(botConfigId, userId, {
+          groupId: groupRecord?.id || null,
+          type: "calibration_source",
+          userName,
+          userMessage: messageText.slice(0, 1000),
+          botResponse: null,
+          isReport: false,
+          metadata: { telegramUserId: tgUserId, chatId: String(chatId) },
+        });
+        calibrationActivityLogId = calLog.id;
+      } catch {}
+    }
+
+    maybeCalibrate(botConfigId, tgUserId, userName, messageText, conversationHistory, config.botName, calibrationActivityLogId).catch(err =>
       log(`Calibration error: ${err.message}`, "telegram")
     );
 

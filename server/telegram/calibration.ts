@@ -9,10 +9,27 @@ const USER_COOLDOWN_MS = 30 * 60 * 1000;
 const MIN_MESSAGE_LENGTH = 60;
 const MAX_PATTERNS_PER_BOT = 200;
 const MAX_USER_MEMORIES = 500;
+const MIN_QUALITY_OVERALL = 50;
 
 const lastBotCalibration = new Map<number, number>();
 const lastUserCalibration = new Map<string, number>();
 const inProgress = new Set<number>();
+
+export type Triage = { tier: "skip" | "user_memory" | "pattern" | "both"; reason: string };
+
+export function triageMessage(messageText: string, conversationHistory: ChatMessage[]): Triage {
+  const t = messageText.trim();
+  if (!t || t.length < MIN_MESSAGE_LENGTH) return { tier: "skip", reason: "too short" };
+  if (t.startsWith("/")) return { tier: "skip", reason: "command" };
+  const lower = t.toLowerCase();
+  const looksQuestion = /\?|\b(how|what|why|when|where|can someone|anyone know|is it possible)\b/i.test(t);
+  const looksSelfDisclosure = /\b(i am|i'm|i work|i build|i'm a|i'm an|i develop|my role|i specialize|i focus on)\b/i.test(lower);
+  const looksAdvice = /\b(tip|trick|recommend|always|never|avoid|watch out|be careful|strategy|approach)\b/i.test(lower);
+  if (looksSelfDisclosure && (looksQuestion || looksAdvice)) return { tier: "both", reason: "self-disclosure + signal" };
+  if (looksSelfDisclosure) return { tier: "user_memory", reason: "self-disclosure" };
+  if (looksQuestion || looksAdvice) return { tier: "pattern", reason: "question/advice" };
+  return { tier: "pattern", reason: "default" };
+}
 
 export async function maybeCalibrate(
   botConfigId: number,
@@ -20,10 +37,11 @@ export async function maybeCalibrate(
   userName: string,
   messageText: string,
   conversationHistory: ChatMessage[],
-  botName: string
+  botName: string,
+  sourceActivityLogId?: number | null,
 ): Promise<void> {
-  if (!messageText || messageText.length < MIN_MESSAGE_LENGTH) return;
-  if (messageText.startsWith("/")) return;
+  const triage = triageMessage(messageText, conversationHistory);
+  if (triage.tier === "skip") return;
   const now = Date.now();
   const lastBot = lastBotCalibration.get(botConfigId) || 0;
   if (now - lastBot < CALIBRATION_COOLDOWN_MS) return;
@@ -36,7 +54,7 @@ export async function maybeCalibrate(
   lastUserCalibration.set(userKey, now);
 
   try {
-    await doCalibrate(botConfigId, telegramUserId, userName, messageText, conversationHistory, botName);
+    await doCalibrate(botConfigId, telegramUserId, userName, messageText, conversationHistory, botName, triage, sourceActivityLogId ?? null);
   } catch (err: any) {
     lastBotCalibration.delete(botConfigId);
     log(`Calibration error: ${err.message}`, "telegram");
@@ -51,14 +69,16 @@ async function doCalibrate(
   userName: string,
   messageText: string,
   conversationHistory: ChatMessage[],
-  botName: string
+  botName: string,
+  triage: Triage,
+  sourceActivityLogId: number | null,
 ): Promise<void> {
   const [umCount, patterns] = await Promise.all([
     storage.countUserMemories(botConfigId),
     storage.getCollectivePatterns(botConfigId),
   ]);
-  const allowUM = umCount < MAX_USER_MEMORIES;
-  const allowPattern = patterns.length < MAX_PATTERNS_PER_BOT;
+  const allowUM = umCount < MAX_USER_MEMORIES && (triage.tier === "user_memory" || triage.tier === "both");
+  const allowPattern = patterns.length < MAX_PATTERNS_PER_BOT && (triage.tier === "pattern" || triage.tier === "both");
   if (!allowUM && !allowPattern) return;
 
   const safeText = redactPII(messageText).slice(0, 800);
@@ -69,9 +89,15 @@ async function doCalibrate(
 
 Return ONE compact JSON object:
 {
+  "quality": { "contribution": 0-100, "domain_relevance": 0-100, "overall": 0-100 },
   "user_memory": { "save": bool, "type": "trait|expertise|interest|role", "content": "max 180 chars, no PII" } or null,
   "pattern": { "save": bool, "kind": "topic|question|pitfall|strategy|sentiment", "title": "max 60 chars", "summary": "max 200 chars", "keywords": ["3-6 lowercase words"] } or null
 }
+
+Quality scoring rubric (be strict):
+- contribution: substantive new info vs noise/filler/banter
+- domain_relevance: relevant to a community topic vs off-topic chatter
+- overall: weighted blend (lower of the two if either is bad)
 
 User memory rules:
 - Save ONLY if the message reveals a stable trait (skill, role, interest, preference) about the speaker themselves.
@@ -86,7 +112,7 @@ Pattern rules:
 
 Existing patterns (avoid duplicates of these titles): ${existingPatternTitles || "none"}
 
-If nothing qualifies, return {"user_memory": null, "pattern": null}. NEVER include PII (wallets, emails, phones, IDs).`;
+If nothing qualifies, set save=false on both. NEVER include PII (wallets, emails, phones, IDs).`;
 
   let raw = "";
   try {
@@ -94,9 +120,9 @@ If nothing qualifies, return {"user_memory": null, "pattern": null}. NEVER inclu
       model: "gpt-5.2",
       messages: [
         { role: "system", content: sys },
-        { role: "user", content: `Recent context:\n${recent}\n\nNew message from ${userName}: ${safeText}` },
+        { role: "user", content: `Triage hint: tier=${triage.tier} (${triage.reason})\nRecent context:\n${recent}\n\nNew message from ${userName}: ${safeText}` },
       ],
-      max_completion_tokens: 250,
+      max_completion_tokens: 320,
     });
     raw = resp.choices[0]?.message?.content?.trim() || "";
   } catch (err: any) {
@@ -110,12 +136,23 @@ If nothing qualifies, return {"user_memory": null, "pattern": null}. NEVER inclu
   let parsed: any;
   try { parsed = JSON.parse(m[0]); } catch { return; }
 
+  const q = parsed?.quality || {};
+  const overall = Math.max(0, Math.min(100, Number(q.overall) || 0));
+  const contribution = Math.max(0, Math.min(100, Number(q.contribution) || 0));
+  const domainRelevance = Math.max(0, Math.min(100, Number(q.domain_relevance) || 0));
+  log(`Calibration quality for ${userName}: contribution=${contribution} domain=${domainRelevance} overall=${overall} (triage=${triage.tier})`, "telegram");
+
+  if (overall < MIN_QUALITY_OVERALL) {
+    log(`Calibration gate: overall ${overall} < ${MIN_QUALITY_OVERALL}, skipping writes`, "telegram");
+    return;
+  }
+
   if (allowUM && parsed?.user_memory?.save && parsed.user_memory.content) {
     const c = redactPII(String(parsed.user_memory.content)).slice(0, 200);
     const t = ["trait", "expertise", "interest", "role"].includes(parsed.user_memory.type) ? parsed.user_memory.type : "trait";
     if (c.length >= 6) {
-      await storage.upsertUserMemory(botConfigId, telegramUserId, userName.slice(0, 80), t, c, 65);
-      log(`User memory saved for ${userName}: [${t}] "${c.slice(0, 60)}"`, "telegram");
+      await storage.upsertUserMemory(botConfigId, telegramUserId, userName.slice(0, 80), t, c, 65, overall, sourceActivityLogId);
+      log(`User memory saved for ${userName}: [${t}] "${c.slice(0, 60)}" (q=${overall}, src=${sourceActivityLogId ?? "n/a"})`, "telegram");
     }
   }
 
@@ -126,8 +163,8 @@ If nothing qualifies, return {"user_memory": null, "pattern": null}. NEVER inclu
     let kws = Array.isArray(parsed.pattern.keywords) ? parsed.pattern.keywords.map((k: any) => String(k).toLowerCase().slice(0, 24)).filter(Boolean) : [];
     if (kws.length === 0) kws = extractKeywords(messageText, 6);
     if (title && summary) {
-      const p = await storage.upsertCollectivePattern(botConfigId, telegramUserId, kind, title, summary, kws.slice(0, 8));
-      log(`Pattern: [${kind}] "${title}" mentions=${p.mentionCount} users=${p.uniqueUsers}`, "telegram");
+      const p = await storage.upsertCollectivePattern(botConfigId, telegramUserId, kind, title, summary, kws.slice(0, 8), overall, sourceActivityLogId);
+      log(`Pattern: [${kind}] "${title}" mentions=${p.mentionCount} users=${p.uniqueUsers} q=${overall} src=${sourceActivityLogId ?? "n/a"}`, "telegram");
     }
   }
 }

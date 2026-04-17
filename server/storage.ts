@@ -54,12 +54,12 @@ export interface IStorage {
   getAgentServiceStats(): Promise<{ totalRequests: number; totalEarnings: string; requestsToday: number; verifiedRequests: number; unverifiedRequests: number }>;
 
   getUserMemoriesForUser(botConfigId: number, telegramUserId: string): Promise<UserMemory[]>;
-  upsertUserMemory(botConfigId: number, telegramUserId: string, userName: string | null, type: string, content: string, confidence: number): Promise<UserMemory>;
+  upsertUserMemory(botConfigId: number, telegramUserId: string, userName: string | null, type: string, content: string, confidence: number, qualityScore?: number, sourceActivityLogId?: number | null): Promise<UserMemory>;
   countUserMemories(botConfigId: number): Promise<number>;
   getRecentUserMemories(botConfigId: number, limit?: number): Promise<UserMemory[]>;
 
   getCollectivePatterns(botConfigId: number, status?: string): Promise<CollectivePattern[]>;
-  upsertCollectivePattern(botConfigId: number, telegramUserId: string, kind: string, title: string, summary: string, keywords: string[]): Promise<CollectivePattern>;
+  upsertCollectivePattern(botConfigId: number, telegramUserId: string, kind: string, title: string, summary: string, keywords: string[], qualityScore?: number, sourceActivityLogId?: number | null): Promise<CollectivePattern>;
   updatePatternStatus(botConfigId: number, id: number, status: string, promotedKbId?: number | null): Promise<CollectivePattern | undefined>;
   deletePattern(botConfigId: number, id: number): Promise<void>;
   getPattern(botConfigId: number, id: number): Promise<CollectivePattern | undefined>;
@@ -354,7 +354,7 @@ export class DatabaseStorage implements IStorage {
     return r.count;
   }
 
-  async upsertUserMemory(botConfigId: number, telegramUserId: string, userName: string | null, type: string, content: string, confidence: number): Promise<UserMemory> {
+  async upsertUserMemory(botConfigId: number, telegramUserId: string, userName: string | null, type: string, content: string, confidence: number, qualityScore: number = 0, sourceActivityLogId: number | null = null): Promise<UserMemory> {
     const existing = await db.select().from(userMemories).where(and(eq(userMemories.botConfigId, botConfigId), eq(userMemories.telegramUserId, telegramUserId)));
     const norm = content.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).filter(Boolean);
     for (const e of existing) {
@@ -372,7 +372,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
     const [created] = await db.insert(userMemories).values({
-      botConfigId, telegramUserId, userName, type, content, confidence,
+      botConfigId, telegramUserId, userName, type, content, confidence, qualityScore, sourceActivityLogId,
     }).returning();
     return created;
   }
@@ -389,7 +389,7 @@ export class DatabaseStorage implements IStorage {
     return p;
   }
 
-  async upsertCollectivePattern(botConfigId: number, telegramUserId: string, kind: string, title: string, summary: string, keywords: string[]): Promise<CollectivePattern> {
+  async upsertCollectivePattern(botConfigId: number, telegramUserId: string, kind: string, title: string, summary: string, keywords: string[], qualityScore: number = 0, sourceActivityLogId: number | null = null): Promise<CollectivePattern> {
     const existing = await db.select().from(collectivePatterns).where(and(eq(collectivePatterns.botConfigId, botConfigId), eq(collectivePatterns.kind, kind)));
     const newKw = new Set(keywords.map(k => k.toLowerCase()));
     let match: CollectivePattern | null = null;
@@ -406,8 +406,10 @@ export class DatabaseStorage implements IStorage {
         mentionCount: match.mentionCount + 1,
         lastSeenAt: new Date(),
         keywords: mergedKw,
+        qualityScore: Math.max(match.qualityScore, qualityScore),
+        lastSourceActivityLogId: sourceActivityLogId ?? match.lastSourceActivityLogId,
       }).where(eq(collectivePatterns.id, match.id)).returning();
-      await this.upsertCorrelation(botConfigId, updated.id, telegramUserId);
+      await this.upsertCorrelation(botConfigId, updated.id, telegramUserId, sourceActivityLogId);
       const [uniq] = await db.select({ c: count() }).from(dataCorrelations).where(eq(dataCorrelations.patternId, updated.id));
       const [final] = await db.update(collectivePatterns).set({ uniqueUsers: uniq.c, confidence: Math.min(95, 50 + uniq.c * 5 + Math.min(20, updated.mentionCount)) }).where(eq(collectivePatterns.id, updated.id)).returning();
       return final;
@@ -415,17 +417,18 @@ export class DatabaseStorage implements IStorage {
     const [created] = await db.insert(collectivePatterns).values({
       botConfigId, kind, title, summary, keywords: keywords.slice(0, 12),
       mentionCount: 1, uniqueUsers: 1, confidence: 55, status: "open",
+      qualityScore, lastSourceActivityLogId: sourceActivityLogId,
     }).returning();
-    await this.upsertCorrelation(botConfigId, created.id, telegramUserId);
+    await this.upsertCorrelation(botConfigId, created.id, telegramUserId, sourceActivityLogId);
     return created;
   }
 
-  private async upsertCorrelation(botConfigId: number, patternId: number, telegramUserId: string): Promise<void> {
+  private async upsertCorrelation(botConfigId: number, patternId: number, telegramUserId: string, sourceActivityLogId: number | null = null): Promise<void> {
     const [existing] = await db.select().from(dataCorrelations).where(and(eq(dataCorrelations.patternId, patternId), eq(dataCorrelations.telegramUserId, telegramUserId))).limit(1);
     if (existing) {
-      await db.update(dataCorrelations).set({ weight: existing.weight + 1, lastSeenAt: new Date() }).where(eq(dataCorrelations.id, existing.id));
+      await db.update(dataCorrelations).set({ weight: existing.weight + 1, lastSeenAt: new Date(), sourceActivityLogId: sourceActivityLogId ?? existing.sourceActivityLogId }).where(eq(dataCorrelations.id, existing.id));
     } else {
-      await db.insert(dataCorrelations).values({ botConfigId, patternId, telegramUserId, weight: 1 });
+      await db.insert(dataCorrelations).values({ botConfigId, patternId, telegramUserId, weight: 1, sourceActivityLogId });
     }
   }
 

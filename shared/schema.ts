@@ -218,7 +218,9 @@ export const userMemories = pgTable("user_memories", {
   type: text("type").notNull().default("trait"),
   content: text("content").notNull(),
   confidence: integer("confidence").notNull().default(60),
+  qualityScore: integer("quality_score").notNull().default(0),
   hitCount: integer("hit_count").notNull().default(1),
+  sourceActivityLogId: integer("source_activity_log_id"),
   lastSeenAt: timestamp("last_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
@@ -237,6 +239,8 @@ export const collectivePatterns = pgTable("collective_patterns", {
   confidence: integer("confidence").notNull().default(60),
   status: text("status").notNull().default("open"),
   promotedKbId: integer("promoted_kb_id"),
+  qualityScore: integer("quality_score").notNull().default(0),
+  lastSourceActivityLogId: integer("last_source_activity_log_id"),
   firstSeenAt: timestamp("first_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   lastSeenAt: timestamp("last_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
@@ -250,6 +254,7 @@ export const dataCorrelations = pgTable("data_correlations", {
   patternId: integer("pattern_id").notNull().references(() => collectivePatterns.id, { onDelete: "cascade" }),
   telegramUserId: text("telegram_user_id").notNull(),
   weight: integer("weight").notNull().default(1),
+  sourceActivityLogId: integer("source_activity_log_id"),
   lastSeenAt: timestamp("last_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
   uniqueIndex("idx_data_correlations_unique").on(table.patternId, table.telegramUserId),

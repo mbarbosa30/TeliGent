@@ -201,6 +201,16 @@ export default function IntelligencePage() {
                   </div>
                 </div>
                 <p className="text-sm pt-2 border-t" data-testid="text-digest-summary">{overview.summary}</p>
+                {overview.scoreTrend.length > 1 && (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer select-none">Past digest history ({overview.scoreTrend.length} snapshots)</summary>
+                    <ul className="mt-2 space-y-1 font-mono">
+                      {overview.scoreTrend.slice(-8).reverse().map((s, i) => (
+                        <li key={i} data-testid={`row-snapshot-${i}`}>{format(new Date(s.at), "MMM d, HH:mm")} — score {s.score}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </>
             ) : (
               <p className="text-sm text-muted-foreground">No data yet. Add a bot, connect to a group, and intelligence will start building.</p>
@@ -257,6 +267,48 @@ export default function IntelligencePage() {
               </CardContent>
             </Card>
           </div>
+        )}
+
+        {patterns.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4" />Topic map</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {(["topic", "question", "pitfall", "strategy", "sentiment"] as const).map(kind => {
+                  const items = patterns.filter(p => p.kind === kind).slice(0, 12);
+                  const Icon = kindIcon[kind];
+                  return (
+                    <div key={kind} className="space-y-2 border p-3" data-testid={`topic-map-col-${kind}`}>
+                      <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
+                        <Icon className="h-3 w-3" />
+                        <span>{kind}</span>
+                        <span className="ml-auto font-mono">{items.length}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {items.length === 0 ? (
+                          <span className="text-xs text-muted-foreground/60">none</span>
+                        ) : items.map(p => {
+                          const intensity = Math.min(1, p.mentionCount / 10);
+                          const fontSize = 11 + Math.round(intensity * 4);
+                          return (
+                            <span
+                              key={p.id}
+                              className="border px-1.5 py-0.5 leading-tight"
+                              style={{ fontSize, opacity: 0.5 + intensity * 0.5 }}
+                              title={`${p.title} — ${p.mentionCount}x`}
+                              data-testid={`topic-chip-${p.id}`}
+                            >{p.title}</span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {overview && (overview.openQuestions.length > 0 || overview.pitfalls.length > 0 || overview.strategies.length > 0) && (
