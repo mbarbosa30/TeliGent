@@ -102,7 +102,8 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
 
   if (command === "myscore") {
     const tgUserId = msg.from?.id?.toString() || "unknown";
-    const latest = await storage.getLatestContributionScores(botConfigId, 200);
+    const scopeGroupId = groupRecord?.id ?? undefined;
+    const latest = await storage.getLatestContributionScores(botConfigId, 200, scopeGroupId);
     const me = latest.find(s => s.telegramUserId === tgUserId);
     const rank = me ? (latest.findIndex(s => s.telegramUserId === tgUserId) + 1) : 0;
     const wallet = await storage.getMemberWallet(botConfigId, tgUserId);
@@ -116,12 +117,13 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
   }
 
   if (command === "leaderboard") {
-    const top = await storage.getLatestContributionScores(botConfigId, 10);
+    const scopeGroupId = groupRecord?.id ?? undefined;
+    const top = await storage.getLatestContributionScores(botConfigId, 10, scopeGroupId);
     if (top.length === 0) {
       await sendBotMessage(bot, chatId, "No leaderboard data yet for this period.", msg.message_id);
       return true;
     }
-    const lines = ["*Top contributors this period:*"];
+    const lines = [groupRecord ? "*Top contributors in this group:*" : "*Top contributors this period:*"];
     top.forEach((s, i) => {
       const name = s.userName || s.telegramUserId;
       lines.push(`${i + 1}. ${name} — ${s.score} pts`);

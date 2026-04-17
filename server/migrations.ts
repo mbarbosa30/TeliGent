@@ -465,6 +465,17 @@ async function ensureRewardsTables(client: any) {
     await client.query(`ALTER TABLE proactive_prompts ADD COLUMN posted_message_id INTEGER`);
     log("Added posted_message_id to proactive_prompts");
   }
+  if (!(await columnExists(client, "contribution_scores", "group_id"))) {
+    await client.query(`ALTER TABLE contribution_scores ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE`);
+    await client.query(`DROP INDEX IF EXISTS idx_contribution_scores_unique`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contribution_scores_unique_grp ON contribution_scores (bot_config_id, group_id, telegram_user_id, period_start)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_contribution_scores_bot_group_period ON contribution_scores (bot_config_id, group_id, period_start)`);
+    log("Added group_id to contribution_scores");
+  }
+  if (!(await columnExists(client, "reward_distributions", "group_id"))) {
+    await client.query(`ALTER TABLE reward_distributions ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL`);
+    log("Added group_id to reward_distributions");
+  }
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {

@@ -598,15 +598,16 @@ export class DatabaseStorage implements IStorage {
 
   async upsertContributionScore(data: InsertContributionScore): Promise<ContributionScore> {
     const [row] = await db.execute(sql`
-      INSERT INTO contribution_scores (bot_config_id, telegram_user_id, user_name, period_start, period_end, score, breakdown, days_active)
-      VALUES (${data.botConfigId}, ${data.telegramUserId}, ${data.userName ?? null}, ${data.periodStart}, ${data.periodEnd}, ${data.score ?? 0}, ${JSON.stringify(data.breakdown ?? null)}::jsonb, ${data.daysActive ?? 0})
-      ON CONFLICT (bot_config_id, telegram_user_id, period_start)
+      INSERT INTO contribution_scores (bot_config_id, group_id, telegram_user_id, user_name, period_start, period_end, score, breakdown, days_active)
+      VALUES (${data.botConfigId}, ${data.groupId ?? null}, ${data.telegramUserId}, ${data.userName ?? null}, ${data.periodStart}, ${data.periodEnd}, ${data.score ?? 0}, ${JSON.stringify(data.breakdown ?? null)}::jsonb, ${data.daysActive ?? 0})
+      ON CONFLICT (bot_config_id, group_id, telegram_user_id, period_start)
       DO UPDATE SET score = EXCLUDED.score, breakdown = EXCLUDED.breakdown, days_active = EXCLUDED.days_active, user_name = COALESCE(EXCLUDED.user_name, contribution_scores.user_name), period_end = EXCLUDED.period_end
       RETURNING *
     `).then(r => r.rows as any[]);
     return {
       id: row.id,
       botConfigId: row.bot_config_id,
+      groupId: row.group_id,
       telegramUserId: row.telegram_user_id,
       userName: row.user_name,
       periodStart: row.period_start,
@@ -624,20 +625,72 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(contributionScores.score));
   }
 
-  async getLatestContributionScores(botConfigId: number, limit = 20): Promise<ContributionScore[]> {
+  async getLatestContributionScores(botConfigId: number, limit = 20, groupId?: number | null): Promise<ContributionScore[]> {
+    const groupFilter = groupId === undefined ? sql`` : groupId === null ? sql`AND group_id IS NULL` : sql`AND group_id = ${groupId}`;
     const rows = await db.execute(sql`
       WITH latest AS (
-        SELECT MAX(period_start) AS ps FROM contribution_scores WHERE bot_config_id = ${botConfigId}
+        SELECT MAX(period_start) AS ps FROM contribution_scores WHERE bot_config_id = ${botConfigId} ${groupFilter}
       )
       SELECT * FROM contribution_scores
-      WHERE bot_config_id = ${botConfigId} AND period_start = (SELECT ps FROM latest)
+      WHERE bot_config_id = ${botConfigId} ${groupFilter} AND period_start = (SELECT ps FROM latest)
       ORDER BY score DESC LIMIT ${limit}
     `);
     return (rows.rows as any[]).map(r => ({
-      id: r.id, botConfigId: r.bot_config_id, telegramUserId: r.telegram_user_id, userName: r.user_name,
+      id: r.id, botConfigId: r.bot_config_id, groupId: r.group_id, telegramUserId: r.telegram_user_id, userName: r.user_name,
       periodStart: r.period_start, periodEnd: r.period_end, score: r.score, breakdown: r.breakdown,
       daysActive: r.days_active, createdAt: r.created_at,
     } as ContributionScore));
+  }
+
+  async computeContributionAggregatesByGroup(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Array<{ groupId: number; telegramUserId: string; userName: string | null; calibrationSum: number; patternsCount: number; reportsCount: number; daysActive: number; messagesCount: number }>> {
+    const rows = await db.execute(sql`
+      WITH msgs AS (
+        SELECT group_id, telegram_user_id, MAX(user_name) AS user_name,
+               COUNT(*) FILTER (WHERE type = 'message') AS messages_count,
+               COUNT(*) FILTER (WHERE is_report = true) AS reports_count,
+               COUNT(DISTINCT date_trunc('day', created_at)) AS days_active
+        FROM activity_logs
+        WHERE bot_config_id = ${botConfigId}
+          AND created_at >= ${periodStart} AND created_at < ${periodEnd}
+          AND telegram_user_id IS NOT NULL AND group_id IS NOT NULL
+        GROUP BY group_id, telegram_user_id
+      ),
+      calib AS (
+        SELECT al.group_id, cl.telegram_user_id, COALESCE(SUM(cl.overall), 0) AS calibration_sum
+        FROM calibration_logs cl
+        JOIN activity_logs al ON al.id = cl.activity_log_id
+        WHERE cl.bot_config_id = ${botConfigId}
+          AND cl.created_at >= ${periodStart} AND cl.created_at < ${periodEnd}
+          AND al.group_id IS NOT NULL
+        GROUP BY al.group_id, cl.telegram_user_id
+      ),
+      pats AS (
+        SELECT al.group_id, dc.telegram_user_id, COUNT(*) AS patterns_count
+        FROM data_correlations dc
+        JOIN activity_logs al ON al.id = dc.source_activity_log_id
+        WHERE dc.bot_config_id = ${botConfigId}
+          AND dc.last_seen_at >= ${periodStart} AND dc.last_seen_at < ${periodEnd}
+          AND al.group_id IS NOT NULL
+        GROUP BY al.group_id, dc.telegram_user_id
+      )
+      SELECT m.group_id, m.telegram_user_id, m.user_name,
+             COALESCE(c.calibration_sum, 0) AS calibration_sum,
+             COALESCE(p.patterns_count, 0) AS patterns_count,
+             m.reports_count, m.days_active, m.messages_count
+      FROM msgs m
+      LEFT JOIN calib c ON c.telegram_user_id = m.telegram_user_id AND c.group_id = m.group_id
+      LEFT JOIN pats p ON p.telegram_user_id = m.telegram_user_id AND p.group_id = m.group_id
+    `);
+    return (rows.rows as any[]).map(r => ({
+      groupId: Number(r.group_id),
+      telegramUserId: r.telegram_user_id,
+      userName: r.user_name,
+      calibrationSum: Number(r.calibration_sum) || 0,
+      patternsCount: Number(r.patterns_count) || 0,
+      reportsCount: Number(r.reports_count) || 0,
+      daysActive: Number(r.days_active) || 0,
+      messagesCount: Number(r.messages_count) || 0,
+    }));
   }
 
   async computeContributionAggregates(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Array<{ telegramUserId: string; userName: string | null; calibrationSum: number; patternsCount: number; reportsCount: number; daysActive: number; messagesCount: number }>> {

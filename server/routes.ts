@@ -870,7 +870,9 @@ export async function registerRoutes(
     try {
       const botId = parseInt(req.params.botId);
       const limit = Math.min(parseInt((req.query.limit as string) || "50"), 200);
-      const scores = await storage.getLatestContributionScores(botId, limit);
+      const groupIdRaw = req.query.groupId as string | undefined;
+      const groupId = groupIdRaw === undefined || groupIdRaw === "" ? undefined : (groupIdRaw === "null" ? null : parseInt(groupIdRaw));
+      const scores = await storage.getLatestContributionScores(botId, limit, groupId as number | null | undefined);
       res.json(scores);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

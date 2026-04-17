@@ -343,6 +343,7 @@ export const memberWallets = pgTable("member_wallets", {
 export const contributionScores = pgTable("contribution_scores", {
   id: serial("id").primaryKey(),
   botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  groupId: integer("group_id").references(() => groups.id, { onDelete: "cascade" }),
   telegramUserId: text("telegram_user_id").notNull(),
   userName: text("user_name"),
   periodStart: timestamp("period_start").notNull(),
@@ -352,13 +353,15 @@ export const contributionScores = pgTable("contribution_scores", {
   daysActive: integer("days_active").notNull().default(0),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
-  uniqueIndex("idx_contribution_scores_unique").on(table.botConfigId, table.telegramUserId, table.periodStart),
+  uniqueIndex("idx_contribution_scores_unique_grp").on(table.botConfigId, table.groupId, table.telegramUserId, table.periodStart),
   index("idx_contribution_scores_bot_period").on(table.botConfigId, table.periodStart),
+  index("idx_contribution_scores_bot_group_period").on(table.botConfigId, table.groupId, table.periodStart),
 ]);
 
 export const rewardDistributions = pgTable("reward_distributions", {
   id: serial("id").primaryKey(),
   botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  groupId: integer("group_id").references(() => groups.id, { onDelete: "set null" }),
   periodStart: timestamp("period_start").notNull(),
   periodEnd: timestamp("period_end").notNull(),
   status: text("status").notNull().default("pending"),
