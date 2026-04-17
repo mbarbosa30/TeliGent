@@ -101,10 +101,6 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
   }
 
   if (command === "myscore") {
-    if (!config.rewardsEnabled) {
-      await sendBotMessage(bot, chatId, "Rewards are not enabled for this community.", msg.message_id);
-      return true;
-    }
     const tgUserId = msg.from?.id?.toString() || "unknown";
     const latest = await storage.getLatestContributionScores(botConfigId, 200);
     const me = latest.find(s => s.telegramUserId === tgUserId);
@@ -120,10 +116,6 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
   }
 
   if (command === "leaderboard") {
-    if (!config.rewardsEnabled) {
-      await sendBotMessage(bot, chatId, "Rewards are not enabled for this community.", msg.message_id);
-      return true;
-    }
     const top = await storage.getLatestContributionScores(botConfigId, 10);
     if (top.length === 0) {
       await sendBotMessage(bot, chatId, "No leaderboard data yet for this period.", msg.message_id);

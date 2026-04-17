@@ -163,14 +163,25 @@ function RewardsPanels({ botId }: { botId: number | null }) {
           {payouts.length > 0 && (
             <div className="mt-4 space-y-1">
               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Recent payouts</div>
-              {payouts.slice(0, 8).map((p: any) => (
-                <div key={p.id} className="flex items-center justify-between text-xs font-mono border-b last:border-b-0 py-1" data-testid={`row-payout-${p.id}`}>
-                  <span className="truncate max-w-[180px]">{p.userName || p.telegramUserId}</span>
-                  <span className="truncate max-w-[150px]">{p.walletAddress?.slice(0, 8)}...{p.walletAddress?.slice(-6)}</span>
-                  <Badge variant={p.status === "sent" ? "default" : p.status === "failed" ? "destructive" : "secondary"}>{p.status}</Badge>
-                  {p.txHash && <span className="text-muted-foreground truncate max-w-[100px]">{p.txHash.slice(0, 10)}...</span>}
-                </div>
-              ))}
+              {payouts.slice(0, 8).map((p: any) => {
+                const dist = distributions.find((d: any) => d.id === p.distributionId);
+                const chain = dist?.tokenChain || "base";
+                const explorerBase = chain === "celo" ? "https://celoscan.io/tx/" : "https://basescan.org/tx/";
+                return (
+                  <div key={p.id} className="flex items-center justify-between text-xs font-mono border-b last:border-b-0 py-1" data-testid={`row-payout-${p.id}`}>
+                    <span className="truncate max-w-[160px]">{p.userName || p.telegramUserId}</span>
+                    <span className="truncate max-w-[140px]">{p.walletAddress?.slice(0, 8)}...{p.walletAddress?.slice(-6)}</span>
+                    <Badge variant={p.status === "sent" ? "default" : p.status === "failed" ? "destructive" : "secondary"}>{p.status}</Badge>
+                    {p.txHash ? (
+                      <a href={explorerBase + p.txHash} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate max-w-[120px]" data-testid={`link-tx-${p.id}`}>
+                        {p.txHash.slice(0, 10)}...
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground/50">—</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>

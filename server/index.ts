@@ -125,11 +125,15 @@ app.use((req, res, next) => {
       const { maybeRunProactiveForBot } = await import("./telegram/proactive");
       const { runRewardsForBot } = await import("./telegram/rewards");
       const { processPendingReferrals } = await import("./telegram/referrals");
-      const { getCurrentPeriod } = await import("./telegram/reputation");
+      const { getCurrentPeriod, computeContributorScores, persistContributorScores } = await import("./telegram/reputation");
 
       const configs = await storage.getAllActiveConfigs();
       for (const config of configs) {
         try {
+          const period = getCurrentPeriod(config.rewardPeriodDays || 7);
+          const scores = await computeContributorScores(config.id, period.start, period.end);
+          await persistContributorScores(config.id, period.start, period.end, scores);
+
           if (config.proactiveEnabled) {
             await maybeRunProactiveForBot(config);
           }

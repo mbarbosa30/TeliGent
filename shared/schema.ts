@@ -43,6 +43,8 @@ export const botConfigs = pgTable("bot_configs", {
   proactiveLastAt: timestamp("proactive_last_at"),
   referralEnabled: boolean("referral_enabled").notNull().default(false),
   referralRewardAmount: text("referral_reward_amount").default("0"),
+  referralActivationDays: integer("referral_activation_days").notNull().default(3),
+  rewardMaxPerUserPerPeriod: integer("reward_max_per_user_per_period").notNull().default(1),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [

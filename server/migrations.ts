@@ -343,6 +343,8 @@ async function ensureRewardsColumns(client: any) {
     ["proactive_last_at", "TIMESTAMP"],
     ["referral_enabled", "BOOLEAN NOT NULL DEFAULT false"],
     ["referral_reward_amount", "TEXT DEFAULT '0'"],
+    ["referral_activation_days", "INTEGER NOT NULL DEFAULT 3"],
+    ["reward_max_per_user_per_period", "INTEGER NOT NULL DEFAULT 1"],
   ];
   for (const [name, def] of cols) {
     if (!(await columnExists(client, "bot_configs", name))) {

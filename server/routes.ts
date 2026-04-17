@@ -915,9 +915,10 @@ export async function registerRoutes(
       const botId = parseInt(req.params.botId);
       const config = await storage.getBotConfig(botId);
       if (!config) return res.status(404).json({ error: "Bot not found" });
-      const { getRewardWalletAddress } = await import("./agent/erc20");
+      const erc20 = await import("./agent/erc20");
       try {
-        const { address, source } = getRewardWalletAddress((config.rewardTokenChain || "base") as any);
+        const chain = (config.rewardTokenChain || "base") as import("./agent/erc20").RewardChain;
+        const { address, source } = erc20.getRewardWalletAddress(chain);
         res.json({ configured: true, address, keySource: source, chain: config.rewardTokenChain || "base" });
       } catch (err: any) {
         res.json({ configured: false, error: err.message, chain: config.rewardTokenChain || "base" });
@@ -944,7 +945,7 @@ export async function registerRoutes(
       const config = await storage.getBotConfig(botId);
       if (!config) return res.status(404).json({ error: "Bot not found" });
       const { maybeRunProactiveForBot } = await import("./telegram/proactive");
-      const result = await maybeRunProactiveForBot({ ...config, proactiveEnabled: true } as any);
+      const result = await maybeRunProactiveForBot({ ...config, proactiveEnabled: true });
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -967,7 +968,7 @@ export async function registerRoutes(
     try {
       const botId = parseInt(req.params.botId);
       const promptId = parseInt(req.params.promptId);
-      const updated = await storage.updateProactivePrompt(botId, promptId, { status: "skipped" } as any);
+      const updated = await storage.updateProactivePrompt(botId, promptId, { status: "skipped" });
       res.json(updated || { ok: false });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
