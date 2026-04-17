@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bot, Shield, Brain, Zap, Users, Globe, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown, Cpu } from "lucide-react";
+import { Bot, Shield, Brain, Zap, Users, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown, Cpu, Trophy, Code2, LineChart } from "lucide-react";
 import { SiX, SiTelegram } from "react-icons/si";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -253,6 +253,26 @@ const FAQ_ITEMS = [
     question: "Can I manage multiple Telegram groups with one account?",
     answer: "Yes, TeliGent supports multi-group management. You can deploy your bot across multiple Telegram groups and monitor all activity, scam reports, and conversations from a single dashboard."
   },
+  {
+    question: "How do token rewards for top contributors work?",
+    answer: "Each bot owner can enable a Passive CEO Rewards Loop: TeliGent scores members on real signals (helpful answers, scam reports validated, days active, calibration feedback) and pays out an ERC-20 token of your choice on Base or Celo every period. You set the token, amount per winner or pool size, top N, minimum days active, and per-user caps. Members register their wallet with /wallet — TeliGent never custodies funds, the bot wallet sends the transfer directly."
+  },
+  {
+    question: "Can I run a referral program?",
+    answer: "Yes. Members get a personal invite link via /invite (a /start ref_<id> deep link). When invitees join and stay active for the configured activation window, the referrer is credited and eligible for referral rewards. Self Protocol verified members can be granted higher per-period caps."
+  },
+  {
+    question: "Does TeliGent have crypto market data built in?",
+    answer: "Optionally yes. Enable the Bankr integration on a bot to add a /price <token> command and have live token and market data injected into AI responses for crypto questions — useful for token communities and DeFi groups."
+  },
+  {
+    question: "Can I embed the AI on my website too?",
+    answer: "Yes. TeliGent ships an embeddable chat widget that reuses the same AI engine, knowledge base, and memories as your Telegram bot, so your website visitors get the exact same on-brand support experience."
+  },
+  {
+    question: "Can other AI agents call TeliGent's threat intelligence?",
+    answer: "Yes. TeliGent exposes its scam detection and community-health signals as an agent-to-agent API. It is discoverable on the OpenServ marketplace, has a verifiable on-chain identity via ERC-8004, and accepts USDC payments on Base via Locus. Self Protocol verified callers get pricing discounts and higher rate limits."
+  },
 ];
 
 function FAQSection() {
@@ -344,8 +364,8 @@ export default function LandingPage() {
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Brain className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Knowledge-Driven AI Responses</h3>
-                <p className="text-sm text-muted-foreground">Your bot learns from your website, knowledge base, and project details. Every response is grounded in real context — like having a support agent who actually knows your product.</p>
+                <h3 className="font-semibold">Grounded AI Responses</h3>
+                <p className="text-sm text-muted-foreground">Your bot pulls answers from your website, knowledge base, and recent conversation memory. It also learns new facts from substantive messages over time, so the longer it runs, the better it supports your community.</p>
               </CardContent>
             </Card>
             <Card>
@@ -374,7 +394,7 @@ export default function LandingPage() {
                   <Zap className="h-5 w-5" />
                 </div>
                 <h3 className="font-semibold">AI-Assisted Group Moderation</h3>
-                <p className="text-sm text-muted-foreground">Members can flag suspicious messages with /report. Your bot evaluates reports with AI, takes action automatically, and learns new threat patterns as it goes.</p>
+                <p className="text-sm text-muted-foreground">Members flag suspicious messages with /report. Your bot evaluates reports with AI, takes action automatically, and learns new threat patterns as it goes.</p>
               </CardContent>
             </Card>
             <Card>
@@ -383,27 +403,45 @@ export default function LandingPage() {
                   <Users className="h-5 w-5" />
                 </div>
                 <h3 className="font-semibold">Multi-Group Management</h3>
-                <p className="text-sm text-muted-foreground">Deploy your bot across multiple Telegram groups. Monitor activity, track scam reports, and manage all your communities from a single dashboard.</p>
+                <p className="text-sm text-muted-foreground">Deploy your bot across multiple Telegram groups. Monitor activity, scam reports, and conversations from a single dashboard.</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6 space-y-3">
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <Globe className="h-5 w-5" />
+                  <Trophy className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Auto-Learning Knowledge Base</h3>
-                <p className="text-sm text-muted-foreground">Paste your website URL and your bot absorbs it. Add knowledge base entries for specific topics. It also learns from conversations — the more it knows, the better it supports your community.</p>
+                <h3 className="font-semibold">Passive CEO Rewards Loop</h3>
+                <p className="text-sm text-muted-foreground">Score top contributors on real signals, run a per-group leaderboard, and pay out any ERC-20 token on Base or Celo each period. Built-in referrals with /invite, share-to-earn prompts, and Self Protocol gating for higher caps. You set the rules, the bot runs the loop.</p>
               </CardContent>
             </Card>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-1 gap-4 max-w-lg mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="pt-6 space-y-3">
+                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
+                  <LineChart className="h-5 w-5" />
+                </div>
+                <h3 className="font-semibold">Crypto Intelligence (Bankr)</h3>
+                <p className="text-sm text-muted-foreground">Optional per-bot integration with Bankr for live token prices and market data. Adds a /price command and enriches AI answers with real-time crypto context — perfect for token communities and DeFi groups.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6 space-y-3">
+                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
+                  <Code2 className="h-5 w-5" />
+                </div>
+                <h3 className="font-semibold">Embeddable Web Chat Widget</h3>
+                <p className="text-sm text-muted-foreground">Drop a single script tag on your website and get the same on-brand AI agent your Telegram members talk to — same knowledge base, same memories, same voice.</p>
+              </CardContent>
+            </Card>
             <Card className="border-foreground/20">
               <CardContent className="pt-6 space-y-3">
                 <div className="flex h-10 w-10 items-center justify-center border bg-muted">
                   <Cpu className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold">Master Agent API — Agent-to-Agent Services</h3>
-                <p className="text-sm text-muted-foreground">TeliGent operates as an autonomous agent on Base with verifiable on-chain identity via ERC-8004, discoverable on the OpenServ multi-agent marketplace. Other agents can invoke threat intelligence and scam detection capabilities directly, with payments via Locus (USDC). Proof-of-human identity via Self Protocol enables trust-tier pricing discounts and higher rate limits for verified callers.</p>
+                <h3 className="font-semibold">Master Agent API & On-Chain Identity</h3>
+                <p className="text-sm text-muted-foreground">Every bot can register an on-chain identity via ERC-8004 on Celo. The platform itself is discoverable on the OpenServ marketplace and exposes scam detection to other agents, with USDC payments on Base via Locus and trust-tier pricing for Self Protocol verified callers.</p>
               </CardContent>
             </Card>
           </div>
