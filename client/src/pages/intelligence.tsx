@@ -19,6 +19,7 @@ type Components = {
 };
 type Overview = {
   summary: string;
+  bullets?: string[];
   wisdom: { score: number; components: Components; details: any };
   messages7d: number;
   activityByDay: { day: string; count: number }[];
@@ -200,7 +201,19 @@ export default function IntelligencePage() {
                     <TrendSparkline values={trendValues} />
                   </div>
                 </div>
-                <p className="text-sm pt-2 border-t" data-testid="text-digest-summary">{overview.summary}</p>
+                <div className="pt-2 border-t space-y-2">
+                  <p className="text-sm" data-testid="text-digest-summary">{overview.summary}</p>
+                  {overview.bullets && overview.bullets.length > 0 && (
+                    <ul className="space-y-1.5 mt-2" data-testid="list-digest-bullets">
+                      {overview.bullets.map((b, i) => (
+                        <li key={i} className="flex gap-2 text-sm" data-testid={`bullet-digest-${i}`}>
+                          <span className="text-muted-foreground font-mono shrink-0">›</span>
+                          <span>{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 {overview.scoreTrend.length > 1 && (
                   <details className="text-xs text-muted-foreground">
                     <summary className="cursor-pointer select-none">Past digest history ({overview.scoreTrend.length} snapshots)</summary>
@@ -292,12 +305,22 @@ export default function IntelligencePage() {
                         ) : items.map(p => {
                           const intensity = Math.min(1, p.mentionCount / 10);
                           const fontSize = 11 + Math.round(intensity * 4);
+                          let chipClass = "border-foreground/40 bg-foreground/5 text-foreground";
+                          if (kind === "pitfall") chipClass = "border-red-500/60 bg-red-500/10 text-red-700 dark:text-red-400";
+                          else if (kind === "strategy") chipClass = "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+                          else if (kind === "question") chipClass = "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+                          else if (kind === "sentiment") {
+                            const sentVal = (p as any).sentiment;
+                            if (typeof sentVal === "number" && sentVal < -0.2) chipClass = "border-red-500/60 bg-red-500/10 text-red-700 dark:text-red-400";
+                            else if (typeof sentVal === "number" && sentVal > 0.2) chipClass = "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+                            else chipClass = "border-slate-500/50 bg-slate-500/10 text-slate-700 dark:text-slate-300";
+                          }
                           return (
                             <span
                               key={p.id}
-                              className="border px-1.5 py-0.5 leading-tight"
-                              style={{ fontSize, opacity: 0.5 + intensity * 0.5 }}
-                              title={`${p.title} — ${p.mentionCount}x`}
+                              className={`border px-1.5 py-0.5 leading-tight ${chipClass}`}
+                              style={{ fontSize, opacity: 0.55 + intensity * 0.45 }}
+                              title={`${p.title} (${p.mentionCount}x)`}
                               data-testid={`topic-chip-${p.id}`}
                             >{p.title}</span>
                           );

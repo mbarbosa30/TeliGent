@@ -400,7 +400,7 @@ export class DatabaseStorage implements IStorage {
       const ratio = overlap / Math.max(newKw.size, exKw.size, 1);
       if (ratio > bestRatio) { bestRatio = ratio; match = e; }
     }
-    if (match && bestRatio >= 0.5) {
+    if (match && bestRatio >= 0.6) {
       const mergedKw = Array.from(new Set([...match.keywords, ...keywords])).slice(0, 12);
       const [updated] = await db.update(collectivePatterns).set({
         mentionCount: match.mentionCount + 1,

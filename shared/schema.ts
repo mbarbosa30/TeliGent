@@ -225,6 +225,7 @@ export const userMemories = pgTable("user_memories", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
   index("idx_user_memories_bot_user").on(table.botConfigId, table.telegramUserId),
+  index("idx_user_memories_bot_created").on(table.botConfigId, table.createdAt),
 ]);
 
 export const collectivePatterns = pgTable("collective_patterns", {
@@ -246,6 +247,7 @@ export const collectivePatterns = pgTable("collective_patterns", {
 }, (table) => [
   index("idx_collective_patterns_bot_kind").on(table.botConfigId, table.kind),
   index("idx_collective_patterns_bot_status").on(table.botConfigId, table.status),
+  index("idx_collective_patterns_bot_lastseen").on(table.botConfigId, table.lastSeenAt),
 ]);
 
 export const dataCorrelations = pgTable("data_correlations", {
@@ -259,6 +261,7 @@ export const dataCorrelations = pgTable("data_correlations", {
 }, (table) => [
   uniqueIndex("idx_data_correlations_unique").on(table.patternId, table.telegramUserId),
   index("idx_data_correlations_bot").on(table.botConfigId),
+  index("idx_data_correlations_bot_lastseen").on(table.botConfigId, table.lastSeenAt),
 ]);
 
 export const wisdomSnapshots = pgTable("wisdom_snapshots", {

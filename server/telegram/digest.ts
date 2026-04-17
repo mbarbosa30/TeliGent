@@ -24,17 +24,43 @@ export async function generateWeeklyDigest(botConfigId: number): Promise<any> {
 
   const messages7d = day7.reduce((s, d) => s + d.count, 0);
   let summary = "";
+  let bullets: string[] = [];
   if (topByMentions.length > 0) {
     try {
-      const prompt = `Write a concise 3-sentence weekly community summary for a Telegram group manager. Mention the wisdom score (${wisdom.score}/100), total messages this week (${messages7d}), and the single most active topic. Be plain, no marketing fluff, no emoji, no em dashes.
+      const prompt = `You are summarizing one week of community activity for a Telegram group manager.
 
-Top topics: ${topByMentions.map(p => `"${p.title}" (${p.mentionCount}x)`).join(", ")}`;
+Stats:
+- Wisdom score: ${wisdom.score}/100
+- Messages this week: ${messages7d}
+- Top topics: ${topByMentions.map(p => `"${p.title}" (${p.mentionCount}x, ${p.kind})`).join(", ")}
+- Open questions: ${newOpenQuestions.map(p => `"${p.title}"`).join(", ") || "none"}
+- Pitfalls: ${pitfalls.map(p => `"${p.title}"`).join(", ") || "none"}
+- Strategies: ${strategies.map(p => `"${p.title}"`).join(", ") || "none"}
+
+Output JSON only, no prose, no markdown fences:
+{"summary":"<one short sentence>","bullets":["<insight 1>","<insight 2>","<insight 3>","<insight 4>","<insight 5>"]}
+
+Rules:
+- Exactly 3 to 5 bullets, each a short standalone insight, no bullet markers in the text.
+- Plain language. No emoji. No em dashes. No marketing fluff.
+- Each bullet must reference real data from above (a topic name, a count, a trend, an open question, etc).`;
       const resp = await openai.chat.completions.create({
         model: "gpt-5-mini",
         messages: [{ role: "user", content: prompt }],
-        max_completion_tokens: 200,
+        max_completion_tokens: 600,
+        response_format: { type: "json_object" },
       });
-      summary = resp.choices[0]?.message?.content?.trim() || "";
+      const raw = resp.choices[0]?.message?.content?.trim() || "";
+      try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.summary === "string") summary = parsed.summary.trim();
+        if (Array.isArray(parsed.bullets)) {
+          bullets = parsed.bullets
+            .filter((b: any) => typeof b === "string" && b.trim().length > 0)
+            .map((b: string) => b.trim().replace(/^[-*•]\s*/, ""))
+            .slice(0, 5);
+        }
+      } catch {}
     } catch {}
   }
   if (!summary) {
@@ -42,9 +68,20 @@ Top topics: ${topByMentions.map(p => `"${p.title}" (${p.mentionCount}x)`).join("
       ? `Quiet week. ${messages7d} messages tracked. Wisdom score is ${wisdom.score}/100.`
       : `${messages7d} messages this week. Top topic: "${topByMentions[0].title}" (${topByMentions[0].mentionCount} mentions). Wisdom score is ${wisdom.score}/100.`;
   }
+  if (bullets.length < 3) {
+    bullets = [];
+    bullets.push(`Wisdom score sits at ${wisdom.score}/100 with ${messages7d} messages logged this week.`);
+    if (topByMentions[0]) bullets.push(`Most discussed: "${topByMentions[0].title}" with ${topByMentions[0].mentionCount} mentions.`);
+    if (newOpenQuestions[0]) bullets.push(`${newOpenQuestions.length} open question${newOpenQuestions.length === 1 ? "" : "s"} unresolved, starting with "${newOpenQuestions[0].title}".`);
+    if (pitfalls[0]) bullets.push(`Recurring pitfall: "${pitfalls[0].title}" (${pitfalls[0].mentionCount} mentions).`);
+    if (strategies[0]) bullets.push(`Working strategy: "${strategies[0].title}" came up ${strategies[0].mentionCount} times.`);
+    if (bullets.length < 3) bullets.push(`${recent.length} active patterns tracked across ${recent.filter(p => p.kind === "topic").length} topics.`);
+    bullets = bullets.slice(0, 5);
+  }
 
   const result = {
     summary,
+    bullets,
     wisdom,
     messages7d,
     activityByDay: day7,
