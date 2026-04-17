@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useBot } from "@/hooks/use-bot";
-import { Bot, Sparkles, BookPlus, Trash2, CheckCheck, HelpCircle, AlertOctagon, Lightbulb, TrendingUp, Users, MessageSquare, Brain, type LucideIcon } from "lucide-react";
+import { Bot, Sparkles, BookPlus, Trash2, CheckCheck, HelpCircle, AlertOctagon, Lightbulb, TrendingUp, Users, MessageSquare, Brain, MessageCircle, type LucideIcon } from "lucide-react";
 import type { CollectivePattern, UserMemory } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -221,6 +221,8 @@ function RewardsPanels({ botId }: { botId: number | null }) {
         </CardContent>
       </Card>
 
+      <FeedbackPanel botId={botId!} />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2"><Users className="h-4 w-4" />Referrals</CardTitle>
@@ -243,6 +245,110 @@ function RewardsPanels({ botId }: { botId: number | null }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function FeedbackPanel({ botId }: { botId: number }) {
+  const { toast } = useToast();
+  const [theme, setTheme] = useState<string>("all");
+  const [sentiment, setSentiment] = useState<string>("all");
+  const [digest, setDigest] = useState<string | null>(null);
+
+  const { data: items = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/bots", botId, "feedback", { theme, sentiment }],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (theme !== "all") params.set("theme", theme);
+      if (sentiment !== "all") params.set("sentiment", sentiment);
+      params.set("sinceDays", "30");
+      const res = await fetch(`/api/bots/${botId}/feedback?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load feedback");
+      return res.json();
+    },
+  });
+  const { data: stats } = useQuery<any>({ queryKey: ["/api/bots", botId, "feedback", "stats"] });
+
+  const runDigest = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bots/${botId}/feedback/digest`, { sinceDays: 14 });
+      return res.json();
+    },
+    onSuccess: (res: any) => {
+      setDigest(res.digest);
+      toast({ title: "Digest generated", description: `Last ${res.sinceDays} days` });
+    },
+    onError: (err: any) => toast({ title: "Digest failed", description: err.message, variant: "destructive" }),
+  });
+
+  const themeOptions = ["all", "improvements", "feature_requests", "pain_points", "missing_info", "success_stories", "general"];
+  const sentimentOptions = ["all", "positive", "neutral", "negative"];
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+        <CardTitle className="text-base font-semibold flex items-center gap-2"><MessageCircle className="h-4 w-4" />Community Feedback</CardTitle>
+        <Button size="sm" variant="outline" onClick={() => runDigest.mutate()} disabled={runDigest.isPending} data-testid="button-feedback-digest">
+          {runDigest.isPending ? "Summarising..." : "Generate digest"}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Select value={theme} onValueChange={setTheme}>
+            <SelectTrigger className="w-[180px]" data-testid="select-feedback-theme"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {themeOptions.map(t => <SelectItem key={t} value={t}>{t === "all" ? "All themes" : t}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={sentiment} onValueChange={setSentiment}>
+            <SelectTrigger className="w-[160px]" data-testid="select-feedback-sentiment"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {sentimentOptions.map(s => <SelectItem key={s} value={s}>{s === "all" ? "All sentiment" : s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {stats?.byTheme && stats.byTheme.length > 0 && (
+          <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 font-mono">
+            {stats.byTheme.slice(0, 6).map((s: any, i: number) => (
+              <span key={i} data-testid={`stat-theme-${s.theme || "unknown"}`}>{s.theme || "unknown"}: {s.count}</span>
+            ))}
+          </div>
+        )}
+
+        {digest && (
+          <div className="border p-3 text-xs whitespace-pre-wrap" data-testid="text-feedback-digest">{digest}</div>
+        )}
+
+        {isLoading ? (
+          <Skeleton className="h-20 w-full" />
+        ) : items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No feedback captured yet. Members reply to the bot's feedback prompts to build this stream.</p>
+        ) : (
+          <ScrollArea className="h-[260px] pr-2">
+            <div className="space-y-2">
+              {items.map((it: any) => (
+                <div key={it.id} className="border-b last:border-b-0 pb-2" data-testid={`row-feedback-${it.id}`}>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex gap-1">
+                      {it.theme && <Badge variant="secondary" className="text-xs">{it.theme}</Badge>}
+                      {it.category && <Badge variant="outline" className="text-xs">{it.category}</Badge>}
+                      {it.sentiment && (
+                        <Badge variant={it.sentiment === "negative" ? "destructive" : it.sentiment === "positive" ? "default" : "secondary"} className="text-xs">{it.sentiment}</Badge>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground font-mono">{it.userName || it.telegramUserId}</span>
+                  </div>
+                  {it.summary && <p className="text-sm">{it.summary}</p>}
+                  {it.rawText && it.rawText !== it.summary && (
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{it.rawText}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

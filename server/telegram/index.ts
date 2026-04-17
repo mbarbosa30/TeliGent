@@ -20,6 +20,7 @@ import { maybeSnapshotWisdom } from "./wisdom";
 import { scrapeUrl } from "../scraper";
 import { registerBotInstance, unregisterBotInstance } from "./instance-registry";
 import { parseReferrerFromStartArg, recordReferralIfNew } from "./referrals";
+import { captureFeedbackReply } from "./feedback";
 
 const activeBots = new Map<string, BotInstance>();
 const cooldowns = new Map<string, number>();
@@ -637,7 +638,19 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
         if (msg.reply_to_message?.from?.id === instance.botTelegramId && msg.reply_to_message?.message_id) {
           try {
             const matched = await storage.findProactivePromptByPostedMessage(botConfigId, msg.reply_to_message.message_id);
-            if (matched) proactiveReplyMeta = { proactiveReply: true, proactivePromptId: matched.id };
+            if (matched) {
+              proactiveReplyMeta = { proactiveReply: true, proactivePromptId: matched.id, proactiveKind: matched.kind };
+              if (matched.kind === "feedback") {
+                captureFeedbackReply({
+                  botConfigId,
+                  prompt: matched,
+                  groupId: groupRecord?.id || null,
+                  telegramUserId: tgUserId,
+                  userName,
+                  text: messageText,
+                }).catch(err => log(`Feedback capture error: ${err.message}`, "telegram"));
+              }
+            }
           } catch (err: any) {
             log(`Proactive reply lookup error: ${err.message}`, "telegram");
           }

@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot, MemberWallet, ContributionScore, InsertContributionScore, RewardDistribution, InsertRewardDistribution, RewardPayout, InsertRewardPayout, ProactivePrompt, InsertProactivePrompt, Referral, InsertReferral } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals, feedbackItems } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot, MemberWallet, ContributionScore, InsertContributionScore, RewardDistribution, InsertRewardDistribution, RewardPayout, InsertRewardPayout, ProactivePrompt, InsertProactivePrompt, Referral, InsertReferral, FeedbackItem, InsertFeedbackItem } from "@shared/schema";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 
 export interface WisdomComponentsPayload {
@@ -115,6 +115,12 @@ export interface IStorage {
   listPendingReferrals(botConfigId: number): Promise<Referral[]>;
   markReferralCredited(id: number): Promise<void>;
   countCreditedReferrals(botConfigId: number, telegramUserId: string, since: Date): Promise<number>;
+
+  createFeedbackItem(data: InsertFeedbackItem): Promise<FeedbackItem>;
+  listFeedbackItems(botConfigId: number, opts?: { theme?: string; sentiment?: string; sinceDays?: number; limit?: number }): Promise<FeedbackItem[]>;
+  countFeedbackByTheme(botConfigId: number, sinceDays?: number): Promise<Array<{ theme: string | null; count: number }>>;
+  countFeedbackBySentiment(botConfigId: number, sinceDays?: number): Promise<Array<{ sentiment: string | null; count: number }>>;
+  countFeedbackRepliesByUser(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Map<string, number>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -923,6 +929,54 @@ export class DatabaseStorage implements IStorage {
       LIMIT 1
     `);
     return (rows.rows?.length || 0) > 0;
+  }
+
+  async createFeedbackItem(data: InsertFeedbackItem): Promise<FeedbackItem> {
+    const [created] = await db.insert(feedbackItems).values(data).returning();
+    return created;
+  }
+
+  async listFeedbackItems(botConfigId: number, opts: { theme?: string; sentiment?: string; sinceDays?: number; limit?: number } = {}): Promise<FeedbackItem[]> {
+    const conditions: any[] = [eq(feedbackItems.botConfigId, botConfigId)];
+    if (opts.theme) conditions.push(eq(feedbackItems.theme, opts.theme));
+    if (opts.sentiment) conditions.push(eq(feedbackItems.sentiment, opts.sentiment));
+    if (opts.sinceDays && opts.sinceDays > 0) {
+      const cutoff = new Date(Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000);
+      conditions.push(sql`${feedbackItems.createdAt} >= ${cutoff}`);
+    }
+    return db.select().from(feedbackItems).where(and(...conditions)).orderBy(desc(feedbackItems.createdAt)).limit(opts.limit ?? 100);
+  }
+
+  async countFeedbackByTheme(botConfigId: number, sinceDays = 30): Promise<Array<{ theme: string | null; count: number }>> {
+    const cutoff = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+    const rows = await db.execute(sql`
+      SELECT theme, COUNT(*)::int AS c FROM feedback_items
+      WHERE bot_config_id = ${botConfigId} AND created_at >= ${cutoff}
+      GROUP BY theme ORDER BY c DESC
+    `);
+    return (rows.rows as any[]).map(r => ({ theme: r.theme, count: Number(r.c) }));
+  }
+
+  async countFeedbackBySentiment(botConfigId: number, sinceDays = 30): Promise<Array<{ sentiment: string | null; count: number }>> {
+    const cutoff = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+    const rows = await db.execute(sql`
+      SELECT sentiment, COUNT(*)::int AS c FROM feedback_items
+      WHERE bot_config_id = ${botConfigId} AND created_at >= ${cutoff}
+      GROUP BY sentiment ORDER BY c DESC
+    `);
+    return (rows.rows as any[]).map(r => ({ sentiment: r.sentiment, count: Number(r.c) }));
+  }
+
+  async countFeedbackRepliesByUser(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Map<string, number>> {
+    const rows = await db.execute(sql`
+      SELECT telegram_user_id AS uid, COUNT(*)::int AS c FROM feedback_items
+      WHERE bot_config_id = ${botConfigId}
+        AND created_at >= ${periodStart} AND created_at < ${periodEnd}
+      GROUP BY telegram_user_id
+    `);
+    const map = new Map<string, number>();
+    for (const r of rows.rows as any[]) map.set(String(r.uid), Number(r.c));
+    return map;
   }
 
   async countCreditedReferrals(botConfigId: number, telegramUserId: string, since: Date): Promise<number> {

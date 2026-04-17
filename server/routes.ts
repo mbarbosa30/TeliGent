@@ -1015,6 +1015,46 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bots/:botId/feedback", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const theme = (req.query.theme as string) || undefined;
+      const sentiment = (req.query.sentiment as string) || undefined;
+      const sinceDays = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 30;
+      const limit = req.query.limit ? Math.min(500, parseInt(req.query.limit as string)) : 100;
+      const items = await storage.listFeedbackItems(botId, { theme, sentiment, sinceDays, limit });
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/feedback/stats", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const sinceDays = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 30;
+      const [byTheme, bySentiment] = await Promise.all([
+        storage.countFeedbackByTheme(botId, sinceDays),
+        storage.countFeedbackBySentiment(botId, sinceDays),
+      ]);
+      res.json({ byTheme, bySentiment, sinceDays });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bots/:botId/feedback/digest", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const sinceDays = req.body?.sinceDays ? parseInt(String(req.body.sinceDays)) : 14;
+      const { generateFeedbackDigest } = await import("./telegram/feedback");
+      const digest = await generateFeedbackDigest(botId, sinceDays);
+      res.json({ digest, sinceDays });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   await startBotEngine(app);
 
   return httpServer;

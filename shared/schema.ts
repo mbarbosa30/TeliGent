@@ -48,6 +48,9 @@ export const botConfigs = pgTable("bot_configs", {
   rewardMaxPerUserPerPeriod: integer("reward_max_per_user_per_period").notNull().default(1),
   rewardMaxPerUserPerPeriodVerified: integer("reward_max_per_user_per_period_verified").notNull().default(2),
   rewardRequireSelfVerified: boolean("reward_require_self_verified").notNull().default(false),
+  feedbackEnabled: boolean("feedback_enabled").notNull().default(false),
+  feedbackThemes: text("feedback_themes").array().notNull().default(sql`ARRAY['improvements','feature_requests','pain_points']`),
+  feedbackMixRatio: integer("feedback_mix_ratio").notNull().default(40),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
@@ -407,6 +410,8 @@ export const proactivePrompts = pgTable("proactive_prompts", {
   botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
   groupId: integer("group_id").references(() => groups.id, { onDelete: "set null" }),
   patternId: integer("pattern_id").references(() => collectivePatterns.id, { onDelete: "set null" }),
+  kind: text("kind").notNull().default("pattern"),
+  theme: text("theme"),
   question: text("question").notNull(),
   rationale: text("rationale"),
   status: text("status").notNull().default("queued"),
@@ -415,6 +420,24 @@ export const proactivePrompts = pgTable("proactive_prompts", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
   index("idx_proactive_prompts_bot_status").on(table.botConfigId, table.status),
+]);
+
+export const feedbackItems = pgTable("feedback_items", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  groupId: integer("group_id").references(() => groups.id, { onDelete: "set null" }),
+  promptId: integer("prompt_id").references(() => proactivePrompts.id, { onDelete: "set null" }),
+  telegramUserId: text("telegram_user_id").notNull(),
+  userName: text("user_name"),
+  theme: text("theme"),
+  rawText: text("raw_text").notNull(),
+  category: text("category"),
+  sentiment: text("sentiment"),
+  summary: text("summary"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_feedback_items_bot_created").on(table.botConfigId, table.createdAt),
+  index("idx_feedback_items_bot_theme").on(table.botConfigId, table.theme),
 ]);
 
 export const referrals = pgTable("referrals", {
@@ -452,6 +475,10 @@ export type InsertRewardPayout = z.infer<typeof insertRewardPayoutSchema>;
 
 export type ProactivePrompt = typeof proactivePrompts.$inferSelect;
 export const insertProactivePromptSchema = createInsertSchema(proactivePrompts).omit({ id: true, createdAt: true });
+
+export type FeedbackItem = typeof feedbackItems.$inferSelect;
+export const insertFeedbackItemSchema = createInsertSchema(feedbackItems).omit({ id: true, createdAt: true });
+export type InsertFeedbackItem = z.infer<typeof insertFeedbackItemSchema>;
 export type InsertProactivePrompt = z.infer<typeof insertProactivePromptSchema>;
 
 export type Referral = typeof referrals.$inferSelect;

@@ -65,6 +65,9 @@ const settingsSchema = z.object({
   proactiveEnabled: z.boolean(),
   proactiveMode: z.string(),
   proactiveCadenceHours: z.number().min(1).max(720),
+  feedbackEnabled: z.boolean(),
+  feedbackThemes: z.array(z.string()),
+  feedbackMixRatio: z.number().min(0).max(100),
   referralEnabled: z.boolean(),
   referralActivationDays: z.number().min(0).max(60),
   referralRewardAmount: z.string(),
@@ -116,6 +119,9 @@ export default function SettingsPage() {
       proactiveEnabled: false,
       proactiveMode: "queue",
       proactiveCadenceHours: 24,
+      feedbackEnabled: false,
+      feedbackThemes: ["improvements", "feature_requests", "pain_points"],
+      feedbackMixRatio: 40,
       referralEnabled: false,
       referralActivationDays: 3,
       referralRewardAmount: "0",
@@ -162,6 +168,9 @@ export default function SettingsPage() {
         proactiveEnabled: config.proactiveEnabled ?? false,
         proactiveMode: config.proactiveMode ?? "queue",
         proactiveCadenceHours: config.proactiveCadenceHours ?? 24,
+        feedbackEnabled: (config as any).feedbackEnabled ?? false,
+        feedbackThemes: (config as any).feedbackThemes ?? ["improvements", "feature_requests", "pain_points"],
+        feedbackMixRatio: (config as any).feedbackMixRatio ?? 40,
         referralEnabled: config.referralEnabled ?? false,
         referralActivationDays: config.referralActivationDays ?? 3,
         referralRewardAmount: config.referralRewardAmount ?? "0",
@@ -688,6 +697,65 @@ export default function SettingsPage() {
                       <FormItem>
                         <FormLabel>Cadence (hours)</FormLabel>
                         <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-proactive-cadence" /></FormControl>
+                      </FormItem>
+                    )} />
+                  </div>
+                )}
+
+                <Separator />
+
+                <FormField control={form.control} name="feedbackEnabled" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <div>
+                      <FormLabel>Enable Community Feedback Loop</FormLabel>
+                      <FormDescription>Bot periodically posts open feedback questions and captures replies as structured insights</FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-feedback-enabled" />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                {form.watch("feedbackEnabled") && (
+                  <div className="space-y-3 pl-2 border-l">
+                    <FormField control={form.control} name="feedbackThemes" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Feedback Themes</FormLabel>
+                        <FormDescription>Pick which areas the bot rotates through when asking for feedback</FormDescription>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {[
+                            { v: "improvements", l: "Improvements" },
+                            { v: "feature_requests", l: "Feature requests" },
+                            { v: "pain_points", l: "Pain points" },
+                            { v: "missing_info", l: "Missing info" },
+                            { v: "success_stories", l: "Success stories" },
+                            { v: "general", l: "General check-in" },
+                          ].map(opt => {
+                            const checked = (field.value || []).includes(opt.v);
+                            return (
+                              <button
+                                type="button"
+                                key={opt.v}
+                                onClick={() => {
+                                  const current = field.value || [];
+                                  field.onChange(checked ? current.filter((t: string) => t !== opt.v) : [...current, opt.v]);
+                                }}
+                                className={`px-3 py-1 text-xs border ${checked ? "bg-foreground text-background" : "bg-background"}`}
+                                data-testid={`button-theme-${opt.v}`}
+                              >
+                                {opt.l}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="feedbackMixRatio" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Feedback vs Pattern Mix ({field.value}% feedback)</FormLabel>
+                        <FormControl>
+                          <Input type="range" min={0} max={100} step={5} value={field.value} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-feedback-mix" />
+                        </FormControl>
+                        <FormDescription>0 means always ask about recurring patterns, 100 means always ask for feedback</FormDescription>
                       </FormItem>
                     )} />
                   </div>

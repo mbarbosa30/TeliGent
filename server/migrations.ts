@@ -21,6 +21,7 @@ export async function runMigrations() {
     await ensureBankrColumns(client);
     await ensureRewardsColumns(client);
     await ensureRewardsTables(client);
+    await ensureFeedbackColumnsAndTable(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -490,6 +491,47 @@ async function ensureRewardsTables(client: any) {
     await client.query(`ALTER TABLE bot_configs ADD COLUMN reward_require_self_verified BOOLEAN NOT NULL DEFAULT false`);
     log("Added reward verified cap columns to bot_configs");
   }
+}
+
+async function ensureFeedbackColumnsAndTable(client: any) {
+  if (!(await columnExists(client, "bot_configs", "feedback_enabled"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN feedback_enabled BOOLEAN NOT NULL DEFAULT false`);
+    log("Added feedback_enabled to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "feedback_themes"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN feedback_themes TEXT[] NOT NULL DEFAULT ARRAY['improvements','feature_requests','pain_points']`);
+    log("Added feedback_themes to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "feedback_mix_ratio"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN feedback_mix_ratio INTEGER NOT NULL DEFAULT 40`);
+    log("Added feedback_mix_ratio to bot_configs");
+  }
+  if (!(await columnExists(client, "proactive_prompts", "kind"))) {
+    await client.query(`ALTER TABLE proactive_prompts ADD COLUMN kind TEXT NOT NULL DEFAULT 'pattern'`);
+    log("Added kind to proactive_prompts");
+  }
+  if (!(await columnExists(client, "proactive_prompts", "theme"))) {
+    await client.query(`ALTER TABLE proactive_prompts ADD COLUMN theme TEXT`);
+    log("Added theme to proactive_prompts");
+  }
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS feedback_items (
+      id SERIAL PRIMARY KEY,
+      bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+      group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+      prompt_id INTEGER REFERENCES proactive_prompts(id) ON DELETE SET NULL,
+      telegram_user_id TEXT NOT NULL,
+      user_name TEXT,
+      theme TEXT,
+      raw_text TEXT NOT NULL,
+      category TEXT,
+      sentiment TEXT,
+      summary TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_items_bot_created ON feedback_items (bot_config_id, created_at)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_items_bot_theme ON feedback_items (bot_config_id, theme)`);
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {

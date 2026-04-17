@@ -76,6 +76,7 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
       ? "\n/myscore — Your contribution score and rank this period\n/leaderboard — Top contributors this period\n/wallet 0xYourAddress — Set the wallet for receiving rewards"
       : "";
     const inviteCmd = config.referralEnabled ? "\n/invite — Your personal invite link to earn referral rewards" : "";
+    const feedbackNote = (config as any).feedbackEnabled ? "\n• I sometimes ask the group open feedback questions. Just reply to those messages and your input goes into the team's insights digest." : "";
     const helpText = `*Available Commands:*
 
 /start — Introduction and project overview
@@ -85,7 +86,7 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
 *Other ways to interact:*
 • Mention me with @${botUsername} to ask a question
 • Reply to my messages to continue a conversation
-• In smart mode, I only respond when mentioned or replied to`;
+• In smart mode, I only respond when mentioned or replied to${feedbackNote}`;
     await sendBotMessage(bot, chatId, helpText, msg.message_id);
     await storage.createActivityLog(botConfigId, userId, {
       groupId: groupRecord?.id || null,

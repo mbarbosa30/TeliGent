@@ -6,6 +6,55 @@ import { getActiveBotInstance } from "./instance-registry";
 
 const POSTED_QUESTION_LIMIT = 600;
 
+export const FEEDBACK_THEMES = [
+  "improvements",
+  "feature_requests",
+  "pain_points",
+  "missing_info",
+  "success_stories",
+  "general",
+] as const;
+
+const THEME_LABELS: Record<string, string> = {
+  improvements: "what could be better",
+  feature_requests: "what new features people want",
+  pain_points: "frustrations and friction",
+  missing_info: "knowledge gaps or unclear topics",
+  success_stories: "wins and what's working",
+  general: "an open check-in on how things are going",
+};
+
+function pickFeedbackTheme(config: BotConfig, recentThemes: string[]): string | null {
+  const enabledThemes = (config.feedbackThemes && config.feedbackThemes.length > 0)
+    ? config.feedbackThemes.filter(t => FEEDBACK_THEMES.includes(t as any))
+    : ["improvements", "feature_requests", "pain_points"];
+  if (enabledThemes.length === 0) return null;
+  const recentSet = new Set(recentThemes);
+  const fresh = enabledThemes.filter(t => !recentSet.has(t));
+  const pool = fresh.length > 0 ? fresh : enabledThemes;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+async function generateFeedbackQuestion(config: BotConfig, theme: string): Promise<{ question: string; rationale: string }> {
+  const themeLabel = THEME_LABELS[theme] || theme;
+  const prompt = `You are ${config.botName}, hosting a Telegram community. Ask the group ONE short, friendly open question (under 200 chars) inviting honest feedback about: ${themeLabel}.
+
+Avoid em dashes. Be casual and specific. No emoji-only. Encourage replies (mention they can just reply to this message).
+
+Output JSON only: {"question": "...", "rationale": "why we ask"}`;
+  const resp = await openai.chat.completions.create({
+    model: "gpt-5-mini",
+    messages: [{ role: "user", content: prompt }],
+    max_completion_tokens: 200,
+  });
+  const content = resp.choices[0]?.message?.content || "";
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { question: `How's it going with ${themeLabel}? Reply here with anything on your mind.`, rationale: "" };
+  const question = String(parsed.question || "").slice(0, POSTED_QUESTION_LIMIT) || `How's it going with ${themeLabel}? Reply here with anything on your mind.`;
+  const rationale = String(parsed.rationale || `Gather ${theme} feedback`).slice(0, 500);
+  return { question, rationale };
+}
+
 export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ generated: boolean; posted: boolean; reason?: string; perGroup?: Array<{ groupId: number; outcome: string }> }> {
   if (!config.proactiveEnabled) return { generated: false, posted: false, reason: "disabled" };
 
@@ -19,7 +68,10 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
     .sort((a, b) => (b.mentionCount * 2 + b.uniqueUsers * 3) - (a.mentionCount * 2 + a.uniqueUsers * 3))
     .slice(0, 10);
 
-  if (open.length === 0) return { generated: false, posted: false, reason: "no patterns" };
+  const feedbackEnabled = !!config.feedbackEnabled;
+  const mixRatio = Math.max(0, Math.min(100, config.feedbackMixRatio ?? 40));
+
+  if (open.length === 0 && !feedbackEnabled) return { generated: false, posted: false, reason: "no patterns" };
 
   const recentAll = await storage.listProactivePrompts(config.id, undefined, 200);
   const perGroup: Array<{ groupId: number; outcome: string }> = [];
@@ -37,41 +89,87 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
       }
     }
 
-    const recentPatternIds = new Set(groupPrompts.slice(0, 20).map(p => p.patternId));
-    const candidate = open.find(p => !recentPatternIds.has(p.id));
-    if (!candidate) {
-      perGroup.push({ groupId: group.id, outcome: "no fresh pattern" });
-      continue;
-    }
+    const useFeedback = feedbackEnabled && (open.length === 0 || Math.random() * 100 < mixRatio);
 
     let question = "";
     let rationale = "";
-    try {
-      const prompt = `You are ${config.botName}, hosting a Telegram community. Recent recurring topic: "${candidate.title}". Summary: "${candidate.summary.slice(0, 300)}".
+    let kind: "pattern" | "feedback" = "pattern";
+    let theme: string | null = null;
+    let patternId: number | null = null;
+
+    if (useFeedback) {
+      const recentThemes = groupPrompts.slice(0, 8).map(p => p.theme).filter((t): t is string => !!t);
+      const picked = pickFeedbackTheme(config, recentThemes);
+      if (!picked) {
+        perGroup.push({ groupId: group.id, outcome: "no themes" });
+        continue;
+      }
+      try {
+        const out = await generateFeedbackQuestion(config, picked);
+        question = out.question;
+        rationale = out.rationale;
+        kind = "feedback";
+        theme = picked;
+      } catch (err: any) {
+        log(`Proactive feedback generation error: ${err.message}`, "proactive");
+        perGroup.push({ groupId: group.id, outcome: "ai error" });
+        continue;
+      }
+    } else {
+      const recentPatternIds = new Set(groupPrompts.slice(0, 20).map(p => p.patternId));
+      const candidate = open.find(p => !recentPatternIds.has(p.id));
+      if (!candidate) {
+        if (feedbackEnabled) {
+          const recentThemes = groupPrompts.slice(0, 8).map(p => p.theme).filter((t): t is string => !!t);
+          const picked = pickFeedbackTheme(config, recentThemes);
+          if (!picked) { perGroup.push({ groupId: group.id, outcome: "no fresh pattern" }); continue; }
+          try {
+            const out = await generateFeedbackQuestion(config, picked);
+            question = out.question;
+            rationale = out.rationale;
+            kind = "feedback";
+            theme = picked;
+          } catch (err: any) {
+            log(`Proactive feedback fallback generation error: ${err.message}`, "proactive");
+            perGroup.push({ groupId: group.id, outcome: "ai error" });
+            continue;
+          }
+        } else {
+          perGroup.push({ groupId: group.id, outcome: "no fresh pattern" });
+          continue;
+        }
+      } else {
+        try {
+          const prompt = `You are ${config.botName}, hosting a Telegram community. Recent recurring topic: "${candidate.title}". Summary: "${candidate.summary.slice(0, 300)}".
 
 Write ONE short, friendly question (under 200 chars) you can post to the group to gather members' real opinions or experience on this topic. Avoid em dashes. Be casual. Avoid generic filler. No emoji-only.
 
 Output JSON only: {"question": "...", "rationale": "why we ask"}`;
-      const resp = await openai.chat.completions.create({
-        model: "gpt-5-mini",
-        messages: [{ role: "user", content: prompt }],
-        max_completion_tokens: 200,
-      });
-      const content = resp.choices[0]?.message?.content || "";
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { question: candidate.summary, rationale: "" };
-      question = String(parsed.question || candidate.summary).slice(0, POSTED_QUESTION_LIMIT);
-      rationale = String(parsed.rationale || "").slice(0, 500);
-    } catch (err: any) {
-      log(`Proactive question generation error: ${err.message}`, "proactive");
-      perGroup.push({ groupId: group.id, outcome: "ai error" });
-      continue;
+          const resp = await openai.chat.completions.create({
+            model: "gpt-5-mini",
+            messages: [{ role: "user", content: prompt }],
+            max_completion_tokens: 200,
+          });
+          const content = resp.choices[0]?.message?.content || "";
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { question: candidate.summary, rationale: "" };
+          question = String(parsed.question || candidate.summary).slice(0, POSTED_QUESTION_LIMIT);
+          rationale = String(parsed.rationale || "").slice(0, 500);
+          patternId = candidate.id;
+        } catch (err: any) {
+          log(`Proactive question generation error: ${err.message}`, "proactive");
+          perGroup.push({ groupId: group.id, outcome: "ai error" });
+          continue;
+        }
+      }
     }
 
     const created = await storage.createProactivePrompt({
       botConfigId: config.id,
       groupId: group.id,
-      patternId: candidate.id,
+      patternId,
+      kind,
+      theme,
       question,
       rationale,
       status: "queued",
@@ -85,14 +183,14 @@ Output JSON only: {"question": "...", "rationale": "why we ask"}`;
           const sent = await sendBotMessage(instance.bot, parseInt(group.telegramChatId, 10), question);
           await storage.updateProactivePrompt(config.id, created.id, { status: "posted", postedAt: new Date(), postedMessageId: sent?.message_id ?? null });
           anyPosted = true;
-          perGroup.push({ groupId: group.id, outcome: "posted" });
+          perGroup.push({ groupId: group.id, outcome: `posted:${kind}` });
           continue;
         } catch (err: any) {
           log(`Proactive auto-post failed: ${err.message}`, "proactive");
         }
       }
     }
-    perGroup.push({ groupId: group.id, outcome: "queued" });
+    perGroup.push({ groupId: group.id, outcome: `queued:${kind}` });
   }
 
   if (anyGenerated) {
