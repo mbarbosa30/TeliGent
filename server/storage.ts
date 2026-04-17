@@ -117,7 +117,7 @@ export interface IStorage {
   countCreditedReferrals(botConfigId: number, telegramUserId: string, since: Date): Promise<number>;
 
   createFeedbackItem(data: InsertFeedbackItem): Promise<FeedbackItem>;
-  listFeedbackItems(botConfigId: number, opts?: { theme?: string; sentiment?: string; sinceDays?: number; limit?: number }): Promise<FeedbackItem[]>;
+  listFeedbackItems(botConfigId: number, opts?: { theme?: string; sentiment?: string; groupId?: number; sinceDays?: number; limit?: number }): Promise<FeedbackItem[]>;
   countFeedbackByTheme(botConfigId: number, sinceDays?: number): Promise<Array<{ theme: string | null; count: number }>>;
   countFeedbackBySentiment(botConfigId: number, sinceDays?: number): Promise<Array<{ sentiment: string | null; count: number }>>;
   countFeedbackRepliesByUser(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Map<string, number>>;
@@ -936,10 +936,11 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async listFeedbackItems(botConfigId: number, opts: { theme?: string; sentiment?: string; sinceDays?: number; limit?: number } = {}): Promise<FeedbackItem[]> {
+  async listFeedbackItems(botConfigId: number, opts: { theme?: string; sentiment?: string; groupId?: number; sinceDays?: number; limit?: number } = {}): Promise<FeedbackItem[]> {
     const conditions: any[] = [eq(feedbackItems.botConfigId, botConfigId)];
     if (opts.theme) conditions.push(eq(feedbackItems.theme, opts.theme));
     if (opts.sentiment) conditions.push(eq(feedbackItems.sentiment, opts.sentiment));
+    if (opts.groupId !== undefined) conditions.push(eq(feedbackItems.groupId, opts.groupId));
     if (opts.sinceDays && opts.sinceDays > 0) {
       const cutoff = new Date(Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000);
       conditions.push(sql`${feedbackItems.createdAt} >= ${cutoff}`);

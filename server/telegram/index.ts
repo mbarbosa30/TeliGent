@@ -9,7 +9,7 @@ import crypto from "crypto";
 import { eq } from "drizzle-orm";
 
 import type { BotInstance, GroupContext } from "./types";
-import { sendBotMessage } from "./utils";
+import { sendBotMessage, sendReaction } from "./utils";
 import { detectAndHandleScam } from "./scam-detection";
 import { handleCommand, handleDeleteRequest, checkIfReport, shouldBotRespond, generateAIResponse } from "./commands";
 import { addMessage, getRecentMessages, cleanupOldHistories } from "./conversation-history";
@@ -583,6 +583,26 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       });
     }
 
+    let proactiveReplyMatch: Awaited<ReturnType<typeof storage.findProactivePromptByPostedMessage>> | null = null;
+    if (msg.reply_to_message?.from?.id === instance.botTelegramId && msg.reply_to_message?.message_id) {
+      try {
+        proactiveReplyMatch = await storage.findProactivePromptByPostedMessage(botConfigId, msg.reply_to_message.message_id);
+        if (proactiveReplyMatch && proactiveReplyMatch.kind === "feedback") {
+          captureFeedbackReply({
+            botConfigId,
+            prompt: proactiveReplyMatch,
+            groupId: groupRecord?.id || null,
+            telegramUserId: tgUserId,
+            userName,
+            text: messageText,
+          }).catch(err => log(`Feedback capture error: ${err.message}`, "telegram"));
+          sendReaction(bot, msg.chat.id, msg.message_id, "🙏").catch(() => {});
+        }
+      } catch (err: any) {
+        log(`Proactive reply lookup error: ${err.message}`, "telegram");
+      }
+    }
+
     const conversationHistory = getRecentMessages(botConfigId, chatId, 20);
 
     const shouldRespond = await shouldBotRespond(msg, config, instance, conversationHistory);
@@ -634,27 +654,9 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
           timestamp: Date.now(),
         });
 
-        let proactiveReplyMeta: Record<string, unknown> | null = null;
-        if (msg.reply_to_message?.from?.id === instance.botTelegramId && msg.reply_to_message?.message_id) {
-          try {
-            const matched = await storage.findProactivePromptByPostedMessage(botConfigId, msg.reply_to_message.message_id);
-            if (matched) {
-              proactiveReplyMeta = { proactiveReply: true, proactivePromptId: matched.id, proactiveKind: matched.kind };
-              if (matched.kind === "feedback") {
-                captureFeedbackReply({
-                  botConfigId,
-                  prompt: matched,
-                  groupId: groupRecord?.id || null,
-                  telegramUserId: tgUserId,
-                  userName,
-                  text: messageText,
-                }).catch(err => log(`Feedback capture error: ${err.message}`, "telegram"));
-              }
-            }
-          } catch (err: any) {
-            log(`Proactive reply lookup error: ${err.message}`, "telegram");
-          }
-        }
+        const proactiveReplyMeta: Record<string, unknown> | null = proactiveReplyMatch
+          ? { proactiveReply: true, proactivePromptId: proactiveReplyMatch.id, proactiveKind: proactiveReplyMatch.kind }
+          : null;
         const responseLog = await storage.createActivityLog(botConfigId, userId, {
           groupId: groupRecord?.id || null,
           telegramUserId: tgUserId,

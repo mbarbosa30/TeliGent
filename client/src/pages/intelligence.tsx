@@ -248,36 +248,58 @@ function RewardsPanels({ botId }: { botId: number | null }) {
   );
 }
 
+type FeedbackItemRow = {
+  id: number;
+  theme: string | null;
+  category: string | null;
+  sentiment: string | null;
+  summary: string | null;
+  rawText: string;
+  userName: string | null;
+  telegramUserId: string;
+};
+type FeedbackStats = {
+  byTheme: Array<{ theme: string | null; count: number }>;
+  bySentiment: Array<{ sentiment: string | null; count: number }>;
+  sinceDays: number;
+};
+type FeedbackDigestResp = { digest: string; sinceDays: number };
+
 function FeedbackPanel({ botId }: { botId: number }) {
   const { toast } = useToast();
   const [theme, setTheme] = useState<string>("all");
   const [sentiment, setSentiment] = useState<string>("all");
   const [digest, setDigest] = useState<string | null>(null);
 
-  const { data: items = [], isLoading } = useQuery<any[]>({
-    queryKey: ["/api/bots", botId, "feedback", { theme, sentiment }],
+  const [groupId, setGroupId] = useState<string>("all");
+  const { data: groups = [] } = useQuery<Array<{ id: number; name: string }>>({
+    queryKey: ["/api/bots", botId, "groups"],
+  });
+  const { data: items = [], isLoading } = useQuery<FeedbackItemRow[]>({
+    queryKey: ["/api/bots", botId, "feedback", { theme, sentiment, groupId }],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (theme !== "all") params.set("theme", theme);
       if (sentiment !== "all") params.set("sentiment", sentiment);
+      if (groupId !== "all") params.set("groupId", groupId);
       params.set("sinceDays", "30");
       const res = await fetch(`/api/bots/${botId}/feedback?${params.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load feedback");
       return res.json();
     },
   });
-  const { data: stats } = useQuery<any>({ queryKey: ["/api/bots", botId, "feedback", "stats"] });
+  const { data: stats } = useQuery<FeedbackStats>({ queryKey: ["/api/bots", botId, "feedback", "stats"] });
 
-  const runDigest = useMutation({
+  const runDigest = useMutation<FeedbackDigestResp, Error, void>({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/bots/${botId}/feedback/digest`, { sinceDays: 14 });
       return res.json();
     },
-    onSuccess: (res: any) => {
+    onSuccess: (res) => {
       setDigest(res.digest);
       toast({ title: "Digest generated", description: `Last ${res.sinceDays} days` });
     },
-    onError: (err: any) => toast({ title: "Digest failed", description: err.message, variant: "destructive" }),
+    onError: (err) => toast({ title: "Digest failed", description: err.message, variant: "destructive" }),
   });
 
   const themeOptions = ["all", "improvements", "feature_requests", "pain_points", "missing_info", "success_stories", "general"];
@@ -305,11 +327,18 @@ function FeedbackPanel({ botId }: { botId: number }) {
               {sentimentOptions.map(s => <SelectItem key={s} value={s}>{s === "all" ? "All sentiment" : s}</SelectItem>)}
             </SelectContent>
           </Select>
+          <Select value={groupId} onValueChange={setGroupId}>
+            <SelectTrigger className="w-[180px]" data-testid="select-feedback-group"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All groups</SelectItem>
+              {groups.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
 
         {stats?.byTheme && stats.byTheme.length > 0 && (
           <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 font-mono">
-            {stats.byTheme.slice(0, 6).map((s: any, i: number) => (
+            {stats.byTheme.slice(0, 6).map((s, i) => (
               <span key={i} data-testid={`stat-theme-${s.theme || "unknown"}`}>{s.theme || "unknown"}: {s.count}</span>
             ))}
           </div>
@@ -326,7 +355,7 @@ function FeedbackPanel({ botId }: { botId: number }) {
         ) : (
           <ScrollArea className="h-[260px] pr-2">
             <div className="space-y-2">
-              {items.map((it: any) => (
+              {items.map((it) => (
                 <div key={it.id} className="border-b last:border-b-0 pb-2" data-testid={`row-feedback-${it.id}`}>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <div className="flex gap-1">

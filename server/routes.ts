@@ -1020,9 +1020,13 @@ export async function registerRoutes(
       const botId = parseInt(req.params.botId);
       const theme = (req.query.theme as string) || undefined;
       const sentiment = (req.query.sentiment as string) || undefined;
-      const sinceDays = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 30;
-      const limit = req.query.limit ? Math.min(500, parseInt(req.query.limit as string)) : 100;
-      const items = await storage.listFeedbackItems(botId, { theme, sentiment, sinceDays, limit });
+      const groupIdRaw = req.query.groupId ? parseInt(req.query.groupId as string) : NaN;
+      const groupId = Number.isFinite(groupIdRaw) ? groupIdRaw : undefined;
+      const sinceDaysRaw = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 30;
+      const sinceDays = Number.isFinite(sinceDaysRaw) && sinceDaysRaw > 0 && sinceDaysRaw <= 365 ? sinceDaysRaw : 30;
+      const limitRaw = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(500, limitRaw) : 100;
+      const items = await storage.listFeedbackItems(botId, { theme, sentiment, groupId, sinceDays, limit });
       res.json(items);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

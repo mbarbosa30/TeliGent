@@ -8,8 +8,12 @@ export interface ContributorBreakdown {
   messages: number;
   referrals: number;
   proactiveReplies: number;
+  feedbackReplies: number;
   [key: string]: number;
 }
+
+const FEEDBACK_REPLY_WEIGHT = 4;
+const FEEDBACK_REPLY_CAP_PER_PERIOD = 5;
 
 export interface ContributorScore {
   telegramUserId: string;
@@ -39,6 +43,7 @@ export async function computeContributorScores(botConfigId: number, periodStart:
   const aggregates = await storage.computeContributionAggregates(botConfigId, periodStart, periodEnd);
   const referralCounts = await storage.countCreditedReferralsByReferrer(botConfigId, periodStart, periodEnd);
   const proactiveReplyCounts = await storage.countProactiveRepliesByUser(botConfigId, periodStart, periodEnd);
+  const feedbackReplyCounts = await storage.countFeedbackRepliesByUser(botConfigId, periodStart, periodEnd);
   return aggregates.map(a => {
     const calibration = Math.max(0, Math.round(a.calibrationSum));
     const patterns = a.patternsCount * 8;
@@ -46,13 +51,15 @@ export async function computeContributorScores(botConfigId: number, periodStart:
     const messages = Math.min(20, a.messagesCount);
     const referrals = (referralCounts.get(a.telegramUserId) || 0) * 15;
     const proactiveReplies = (proactiveReplyCounts.get(a.telegramUserId) || 0) * 3;
-    const score = calibration + patterns + reports + messages + referrals + proactiveReplies;
+    const cappedFeedback = Math.min(FEEDBACK_REPLY_CAP_PER_PERIOD, feedbackReplyCounts.get(a.telegramUserId) || 0);
+    const feedbackReplies = cappedFeedback * FEEDBACK_REPLY_WEIGHT;
+    const score = calibration + patterns + reports + messages + referrals + proactiveReplies + feedbackReplies;
     return {
       telegramUserId: a.telegramUserId,
       userName: a.userName,
       score,
       daysActive: a.daysActive,
-      breakdown: { calibration, patterns, reports, messages, referrals, proactiveReplies },
+      breakdown: { calibration, patterns, reports, messages, referrals, proactiveReplies, feedbackReplies },
     };
   }).sort((x, y) => y.score - x.score);
 }
@@ -81,6 +88,7 @@ export async function computeContributorScoresByGroup(botConfigId: number, perio
   const aggregates = await storage.computeContributionAggregatesByGroup(botConfigId, periodStart, periodEnd);
   const referralCounts = await storage.countCreditedReferralsByReferrer(botConfigId, periodStart, periodEnd);
   const proactiveReplyCounts = await storage.countProactiveRepliesByUser(botConfigId, periodStart, periodEnd);
+  const feedbackReplyCounts = await storage.countFeedbackRepliesByUser(botConfigId, periodStart, periodEnd);
   const byGroup = new Map<number, ContributorScore[]>();
   for (const a of aggregates) {
     const calibration = Math.max(0, Math.round(a.calibrationSum));
@@ -89,13 +97,15 @@ export async function computeContributorScoresByGroup(botConfigId: number, perio
     const messages = Math.min(20, a.messagesCount);
     const referrals = (referralCounts.get(a.telegramUserId) || 0) * 15;
     const proactiveReplies = (proactiveReplyCounts.get(a.telegramUserId) || 0) * 3;
-    const score = calibration + patterns + reports + messages + referrals + proactiveReplies;
+    const cappedFeedback = Math.min(FEEDBACK_REPLY_CAP_PER_PERIOD, feedbackReplyCounts.get(a.telegramUserId) || 0);
+    const feedbackReplies = cappedFeedback * FEEDBACK_REPLY_WEIGHT;
+    const score = calibration + patterns + reports + messages + referrals + proactiveReplies + feedbackReplies;
     const entry: ContributorScore = {
       telegramUserId: a.telegramUserId,
       userName: a.userName,
       score,
       daysActive: a.daysActive,
-      breakdown: { calibration, patterns, reports, messages, referrals, proactiveReplies },
+      breakdown: { calibration, patterns, reports, messages, referrals, proactiveReplies, feedbackReplies },
     };
     const list = byGroup.get(a.groupId) || [];
     list.push(entry);

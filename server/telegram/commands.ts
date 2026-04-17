@@ -76,7 +76,7 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
       ? "\n/myscore — Your contribution score and rank this period\n/leaderboard — Top contributors this period\n/wallet 0xYourAddress — Set the wallet for receiving rewards"
       : "";
     const inviteCmd = config.referralEnabled ? "\n/invite — Your personal invite link to earn referral rewards" : "";
-    const feedbackNote = (config as any).feedbackEnabled ? "\n• I sometimes ask the group open feedback questions. Just reply to those messages and your input goes into the team's insights digest." : "";
+    const feedbackNote = config.feedbackEnabled ? "\n• I sometimes ask the group open feedback questions. Just reply to those messages and your input goes into the team's insights digest." : "";
     const helpText = `*Available Commands:*
 
 /start — Introduction and project overview

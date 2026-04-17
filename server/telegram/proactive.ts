@@ -35,11 +35,16 @@ function pickFeedbackTheme(config: BotConfig, recentThemes: string[]): string | 
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-async function generateFeedbackQuestion(config: BotConfig, theme: string): Promise<{ question: string; rationale: string }> {
+async function generateFeedbackQuestion(config: BotConfig, theme: string, topKbTopic: string | null): Promise<{ question: string; rationale: string }> {
   const themeLabel = THEME_LABELS[theme] || theme;
-  const prompt = `You are ${config.botName}, hosting a Telegram community. Ask the group ONE short, friendly open question (under 200 chars) inviting honest feedback about: ${themeLabel}.
+  const personality = (config.personality && config.personality.trim()) ? `\nYour voice: ${config.personality.slice(0, 240)}` : "";
+  const ctx = (config.globalContext && config.globalContext.trim()) ? `\nProject context: ${config.globalContext.slice(0, 400)}` : "";
+  const topicHint = topKbTopic ? `\nA recurring topic in the knowledge base: "${topKbTopic.slice(0, 160)}". Reference it only if it fits naturally.` : "";
+  const prompt = `You are ${config.botName}, hosting a Telegram community.${personality}${ctx}${topicHint}
 
-Avoid em dashes. Be casual and specific. No emoji-only. Encourage replies (mention they can just reply to this message).
+Ask the group ONE short, friendly open question (under 200 chars) inviting honest feedback about: ${themeLabel}.
+
+Avoid em dashes. Be casual and specific to this community. No emoji-only. Encourage replies (mention they can just reply to this message).
 
 Output JSON only: {"question": "...", "rationale": "why we ask"}`;
   const resp = await openai.chat.completions.create({
@@ -90,6 +95,7 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
     }
 
     const useFeedback = feedbackEnabled && (open.length === 0 || Math.random() * 100 < mixRatio);
+    const topKbTopic = open.length > 0 ? open[0].title : null;
 
     let question = "";
     let rationale = "";
@@ -105,7 +111,7 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
         continue;
       }
       try {
-        const out = await generateFeedbackQuestion(config, picked);
+        const out = await generateFeedbackQuestion(config, picked, topKbTopic);
         question = out.question;
         rationale = out.rationale;
         kind = "feedback";
@@ -124,7 +130,7 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
           const picked = pickFeedbackTheme(config, recentThemes);
           if (!picked) { perGroup.push({ groupId: group.id, outcome: "no fresh pattern" }); continue; }
           try {
-            const out = await generateFeedbackQuestion(config, picked);
+            const out = await generateFeedbackQuestion(config, picked, topKbTopic);
             question = out.question;
             rationale = out.rationale;
             kind = "feedback";
