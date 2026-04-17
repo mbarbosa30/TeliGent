@@ -49,6 +49,21 @@ const settingsSchema = z.object({
   reportKeywords: z.array(z.string()),
   bankrEnabled: z.boolean(),
   bankrApiKey: z.string(),
+  rewardsEnabled: z.boolean(),
+  rewardTokenChain: z.string(),
+  rewardTokenAddress: z.string(),
+  rewardTokenSymbol: z.string(),
+  rewardTokenDecimals: z.number().min(0).max(36),
+  rewardAmountPerWinner: z.string(),
+  rewardTopN: z.number().min(1).max(50),
+  rewardPeriodDays: z.number().min(1).max(60),
+  rewardMinDaysActive: z.number().min(0).max(60),
+  proactiveEnabled: z.boolean(),
+  proactiveMode: z.string(),
+  proactiveCadenceHours: z.number().min(1).max(720),
+  referralEnabled: z.boolean(),
+  referralActivationDays: z.number().min(0).max(60),
+  referralRewardAmount: z.string(),
 });
 
 type SettingsForm = z.infer<typeof settingsSchema>;
@@ -81,6 +96,21 @@ export default function SettingsPage() {
       reportKeywords: ["report", "issue", "bug", "problem", "broken"],
       bankrEnabled: false,
       bankrApiKey: "",
+      rewardsEnabled: false,
+      rewardTokenChain: "base",
+      rewardTokenAddress: "",
+      rewardTokenSymbol: "TOKEN",
+      rewardTokenDecimals: 18,
+      rewardAmountPerWinner: "0",
+      rewardTopN: 5,
+      rewardPeriodDays: 7,
+      rewardMinDaysActive: 3,
+      proactiveEnabled: false,
+      proactiveMode: "queue",
+      proactiveCadenceHours: 24,
+      referralEnabled: false,
+      referralActivationDays: 3,
+      referralRewardAmount: "0",
     },
   });
 
@@ -108,6 +138,21 @@ export default function SettingsPage() {
         reportKeywords: config.reportKeywords || ["report", "issue", "bug", "problem", "broken"],
         bankrEnabled: config.bankrEnabled ?? false,
         bankrApiKey: config.bankrApiKey ?? "",
+        rewardsEnabled: (config as any).rewardsEnabled ?? false,
+        rewardTokenChain: (config as any).rewardTokenChain ?? "base",
+        rewardTokenAddress: (config as any).rewardTokenAddress ?? "",
+        rewardTokenSymbol: (config as any).rewardTokenSymbol ?? "TOKEN",
+        rewardTokenDecimals: (config as any).rewardTokenDecimals ?? 18,
+        rewardAmountPerWinner: (config as any).rewardAmountPerWinner ?? "0",
+        rewardTopN: (config as any).rewardTopN ?? 5,
+        rewardPeriodDays: (config as any).rewardPeriodDays ?? 7,
+        rewardMinDaysActive: (config as any).rewardMinDaysActive ?? 3,
+        proactiveEnabled: (config as any).proactiveEnabled ?? false,
+        proactiveMode: (config as any).proactiveMode ?? "queue",
+        proactiveCadenceHours: (config as any).proactiveCadenceHours ?? 24,
+        referralEnabled: (config as any).referralEnabled ?? false,
+        referralActivationDays: (config as any).referralActivationDays ?? 3,
+        referralRewardAmount: (config as any).referralRewardAmount ?? "0",
       };
 
       if (isBotSwitch) {
@@ -478,6 +523,163 @@ export default function SettingsPage() {
                     <FormDescription>Comma-separated words that trigger report detection</FormDescription>
                   </FormItem>
                 )} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-base">Rewards & Engagement</CardTitle>
+                </div>
+                <CardDescription>Score top contributors, send token rewards, and run referral campaigns</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <FormField control={form.control} name="rewardsEnabled" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <div>
+                      <FormLabel>Enable Token Rewards</FormLabel>
+                      <FormDescription>Periodically pay top contributors in an ERC-20 token</FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-rewards-enabled" />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                {form.watch("rewardsEnabled") && (
+                  <div className="space-y-4 pl-2 border-l">
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={form.control} name="rewardTokenChain" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Chain</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <SelectTrigger data-testid="select-reward-chain"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="base">Base</SelectItem>
+                              <SelectItem value="celo">Celo</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="rewardTokenSymbol" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Token Symbol</FormLabel>
+                          <FormControl><Input {...field} data-testid="input-reward-symbol" /></FormControl>
+                        </FormItem>
+                      )} />
+                    </div>
+                    <FormField control={form.control} name="rewardTokenAddress" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Token Contract Address</FormLabel>
+                        <FormControl><Input placeholder="0x..." {...field} data-testid="input-reward-token" /></FormControl>
+                        <FormDescription>ERC-20 contract on the selected chain</FormDescription>
+                      </FormItem>
+                    )} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField control={form.control} name="rewardTokenDecimals" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Decimals</FormLabel>
+                          <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-reward-decimals" /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="rewardAmountPerWinner" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Amount per Winner</FormLabel>
+                          <FormControl><Input {...field} placeholder="100" data-testid="input-reward-amount" /></FormControl>
+                          <FormDescription>In token units (e.g. 100 = 100 $TELI)</FormDescription>
+                        </FormItem>
+                      )} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <FormField control={form.control} name="rewardTopN" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Top N</FormLabel>
+                          <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-reward-topn" /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="rewardPeriodDays" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Period (days)</FormLabel>
+                          <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-reward-period" /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={form.control} name="rewardMinDaysActive" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Min Days Active</FormLabel>
+                          <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-reward-mindays" /></FormControl>
+                        </FormItem>
+                      )} />
+                    </div>
+                  </div>
+                )}
+
+                <Separator />
+
+                <FormField control={form.control} name="proactiveEnabled" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <div>
+                      <FormLabel>Enable Proactive Engagement</FormLabel>
+                      <FormDescription>Bot generates and posts open questions about trending topics</FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-proactive-enabled" />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                {form.watch("proactiveEnabled") && (
+                  <div className="grid grid-cols-2 gap-3 pl-2 border-l">
+                    <FormField control={form.control} name="proactiveMode" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Mode</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger data-testid="select-proactive-mode"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="queue">Queue for review</SelectItem>
+                            <SelectItem value="auto">Auto-post</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="proactiveCadenceHours" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cadence (hours)</FormLabel>
+                        <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-proactive-cadence" /></FormControl>
+                      </FormItem>
+                    )} />
+                  </div>
+                )}
+
+                <Separator />
+
+                <FormField control={form.control} name="referralEnabled" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <div>
+                      <FormLabel>Enable Referrals</FormLabel>
+                      <FormDescription>Members earn rewards by inviting active new users</FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-referral-enabled" />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                {form.watch("referralEnabled") && (
+                  <div className="grid grid-cols-2 gap-3 pl-2 border-l">
+                    <FormField control={form.control} name="referralActivationDays" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Activation Days</FormLabel>
+                        <FormControl><Input type="number" {...field} onChange={e => field.onChange(parseInt(e.target.value || "0"))} data-testid="input-referral-days" /></FormControl>
+                        <FormDescription>Referee must stay active for this many days</FormDescription>
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="referralRewardAmount" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Referral Reward</FormLabel>
+                        <FormControl><Input {...field} placeholder="50" data-testid="input-referral-amount" /></FormControl>
+                        <FormDescription>Token amount paid to referrer</FormDescription>
+                      </FormItem>
+                    )} />
+                  </div>
+                )}
               </CardContent>
             </Card>
 

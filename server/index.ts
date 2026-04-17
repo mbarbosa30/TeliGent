@@ -112,6 +112,54 @@ app.use((req, res, next) => {
   runLogCleanup();
   setInterval(runLogCleanup, LOG_CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000);
 
+  const SCHEDULER_INTERVAL_MIN = parseInt(process.env.REWARDS_SCHEDULER_MIN || "15", 10);
+  let schedulerRunning = false;
+  const rewardsLocks = new Set<number>();
+  const runRewardsScheduler = async () => {
+    if (schedulerRunning) {
+      log("Scheduler tick skipped: previous tick still running", "scheduler");
+      return;
+    }
+    schedulerRunning = true;
+    try {
+      const { maybeRunProactiveForBot } = await import("./telegram/proactive");
+      const { runRewardsForBot } = await import("./telegram/rewards");
+      const { processPendingReferrals } = await import("./telegram/referrals");
+      const { getCurrentPeriod } = await import("./telegram/reputation");
+
+      const configs = await storage.getAllActiveConfigs();
+      for (const config of configs) {
+        try {
+          if (config.proactiveEnabled) {
+            await maybeRunProactiveForBot(config);
+          }
+          if (config.referralEnabled) {
+            await processPendingReferrals(config);
+          }
+          if (config.rewardsEnabled) {
+            const periodMs = (config.rewardPeriodDays || 7) * 24 * 60 * 60 * 1000;
+            const last = config.rewardLastDistributionAt ? new Date(config.rewardLastDistributionAt as any).getTime() : 0;
+            if (Date.now() - last >= periodMs && !rewardsLocks.has(config.id)) {
+              rewardsLocks.add(config.id);
+              try {
+                const fresh = await storage.getBotConfig(config.id);
+                if (fresh) await runRewardsForBot(fresh);
+              } finally {
+                rewardsLocks.delete(config.id);
+              }
+            }
+          }
+        } catch (err: any) {
+          log(`Scheduler bot ${config.id} error: ${err.message}`, "scheduler");
+        }
+      }
+    } catch (err: any) {
+      log(`Scheduler tick error: ${err.message}`, "scheduler");
+    }
+  };
+
+  setInterval(runRewardsScheduler, SCHEDULER_INTERVAL_MIN * 60 * 1000);
+
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {

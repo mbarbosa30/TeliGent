@@ -866,6 +866,135 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bots/:botId/rewards/leaderboard", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const limit = Math.min(parseInt((req.query.limit as string) || "50"), 200);
+      const scores = await storage.getLatestContributionScores(botId, limit);
+      res.json(scores);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/rewards/distributions", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const distributions = await storage.listRewardDistributions(botId, 30);
+      res.json(distributions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/rewards/payouts", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const payouts = await storage.listRewardPayouts(botId, 100);
+      res.json(payouts);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bots/:botId/rewards/run", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const config = await storage.getBotConfig(botId);
+      if (!config) return res.status(404).json({ error: "Bot not found" });
+      const { runRewardsForBot } = await import("./telegram/rewards");
+      const result = await runRewardsForBot(config, { dryRun: req.body?.dryRun === true, force: req.body?.force === true });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/rewards/wallet-status", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const config = await storage.getBotConfig(botId);
+      if (!config) return res.status(404).json({ error: "Bot not found" });
+      const { getRewardWalletAddress } = await import("./agent/erc20");
+      try {
+        const { address, source } = getRewardWalletAddress((config.rewardTokenChain || "base") as any);
+        res.json({ configured: true, address, keySource: source, chain: config.rewardTokenChain || "base" });
+      } catch (err: any) {
+        res.json({ configured: false, error: err.message, chain: config.rewardTokenChain || "base" });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/proactive/queue", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const status = (req.query.status as string) || undefined;
+      const prompts = await storage.listProactivePrompts(botId, status, 100);
+      res.json(prompts);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bots/:botId/proactive/run", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const config = await storage.getBotConfig(botId);
+      if (!config) return res.status(404).json({ error: "Bot not found" });
+      const { maybeRunProactiveForBot } = await import("./telegram/proactive");
+      const result = await maybeRunProactiveForBot({ ...config, proactiveEnabled: true } as any);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bots/:botId/proactive/:promptId/post", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const promptId = parseInt(req.params.promptId);
+      const { postProactivePrompt } = await import("./telegram/proactive");
+      const result = await postProactivePrompt(botId, promptId);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bots/:botId/proactive/:promptId/skip", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const promptId = parseInt(req.params.promptId);
+      const updated = await storage.updateProactivePrompt(botId, promptId, { status: "skipped" } as any);
+      res.json(updated || { ok: false });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/referrals", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const status = (req.query.status as string) || undefined;
+      const refs = await storage.listReferrals(botId, status, 100);
+      res.json(refs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/wallets", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId);
+      const wallets = await storage.listMemberWallets(botId);
+      res.json(wallets);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   await startBotEngine(app);
 
   return httpServer;

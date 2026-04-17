@@ -60,6 +60,181 @@ const kindIcon: Record<string, LucideIcon> = {
   sentiment: Brain,
 };
 
+function RewardsPanels({ botId }: { botId: number | null }) {
+  const { toast } = useToast();
+  const enabled = !!botId;
+  const { data: leaderboard = [] } = useQuery<any[]>({ queryKey: ["/api/bots", botId, "rewards", "leaderboard"], enabled });
+  const { data: distributions = [] } = useQuery<any[]>({ queryKey: ["/api/bots", botId, "rewards", "distributions"], enabled });
+  const { data: payouts = [] } = useQuery<any[]>({ queryKey: ["/api/bots", botId, "rewards", "payouts"], enabled });
+  const { data: walletStatus } = useQuery<any>({ queryKey: ["/api/bots", botId, "rewards", "wallet-status"], enabled });
+  const { data: prompts = [] } = useQuery<any[]>({ queryKey: ["/api/bots", botId, "proactive", "queue"], enabled });
+  const { data: referrals = [] } = useQuery<any[]>({ queryKey: ["/api/bots", botId, "referrals"], enabled });
+
+  const runRewards = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bots/${botId}/rewards/run`, { dryRun: false });
+      return res.json();
+    },
+    onSuccess: (res: any) => {
+      toast({ title: "Rewards run", description: res?.reason || `Recipients: ${res?.recipients ?? 0}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", botId, "rewards", "distributions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", botId, "rewards", "payouts"] });
+    },
+    onError: (err: any) => toast({ title: "Rewards run failed", description: err.message, variant: "destructive" }),
+  });
+
+  const runProactive = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bots/${botId}/proactive/run`, {});
+      return res.json();
+    },
+    onSuccess: (res: any) => {
+      toast({ title: "Proactive tick", description: res?.reason || (res?.posted ? "Posted" : "Queued") });
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", botId, "proactive", "queue"] });
+    },
+    onError: (err: any) => toast({ title: "Proactive failed", description: err.message, variant: "destructive" }),
+  });
+
+  const postPrompt = useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/bots/${botId}/proactive/${id}/post`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bots", botId, "proactive", "queue"] }),
+  });
+  const skipPrompt = useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/bots/${botId}/proactive/${id}/skip`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bots", botId, "proactive", "queue"] }),
+  });
+
+  if (!enabled) return null;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle className="text-base font-semibold flex items-center gap-2"><TrendingUp className="h-4 w-4" />Contributor Leaderboard</CardTitle>
+          <Button size="sm" variant="outline" onClick={() => runRewards.mutate()} disabled={runRewards.isPending} data-testid="button-run-rewards">
+            {runRewards.isPending ? "Running..." : "Run rewards now"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {walletStatus && (
+            <div className="text-xs text-muted-foreground mb-3 font-mono">
+              Wallet [{walletStatus.chain}]: {walletStatus.configured ? `${walletStatus.address} (${walletStatus.keySource})` : `Not configured: ${walletStatus.error || ""}`}
+            </div>
+          )}
+          {leaderboard.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No scores yet for the latest period.</p>
+          ) : (
+            <div className="space-y-1">
+              {leaderboard.slice(0, 10).map((s: any, i: number) => (
+                <div key={s.id} className="flex items-center justify-between border-b last:border-b-0 py-1.5" data-testid={`row-leaderboard-${s.id}`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-mono text-xs w-6 text-muted-foreground">#{i + 1}</span>
+                    <span className="text-sm truncate">{s.userName || s.telegramUserId}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs font-mono">
+                    <span>{s.daysActive}d</span>
+                    <span className="font-bold text-foreground">{s.score}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">Reward Distributions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {distributions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No distributions yet.</p>
+          ) : (
+            <div className="space-y-1">
+              {distributions.slice(0, 10).map((d: any) => (
+                <div key={d.id} className="flex items-center justify-between border-b last:border-b-0 py-1.5 text-xs font-mono" data-testid={`row-distribution-${d.id}`}>
+                  <span>{d.periodStart ? format(new Date(d.periodStart), "MMM d") : "?"} → {d.periodEnd ? format(new Date(d.periodEnd), "MMM d") : "?"}</span>
+                  <span>{d.tokenSymbol} × {d.totalRecipients}</span>
+                  <Badge variant={d.status === "sent" ? "default" : d.status === "failed" ? "destructive" : "secondary"}>{d.status}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+          {payouts.length > 0 && (
+            <div className="mt-4 space-y-1">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Recent payouts</div>
+              {payouts.slice(0, 8).map((p: any) => (
+                <div key={p.id} className="flex items-center justify-between text-xs font-mono border-b last:border-b-0 py-1" data-testid={`row-payout-${p.id}`}>
+                  <span className="truncate max-w-[180px]">{p.userName || p.telegramUserId}</span>
+                  <span className="truncate max-w-[150px]">{p.walletAddress?.slice(0, 8)}...{p.walletAddress?.slice(-6)}</span>
+                  <Badge variant={p.status === "sent" ? "default" : p.status === "failed" ? "destructive" : "secondary"}>{p.status}</Badge>
+                  {p.txHash && <span className="text-muted-foreground truncate max-w-[100px]">{p.txHash.slice(0, 10)}...</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle className="text-base font-semibold flex items-center gap-2"><MessageSquare className="h-4 w-4" />Proactive Prompt Queue</CardTitle>
+          <Button size="sm" variant="outline" onClick={() => runProactive.mutate()} disabled={runProactive.isPending} data-testid="button-run-proactive">
+            {runProactive.isPending ? "Generating..." : "Generate now"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {prompts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No prompts queued.</p>
+          ) : (
+            <div className="space-y-2">
+              {prompts.slice(0, 10).map((p: any) => (
+                <div key={p.id} className="border-b last:border-b-0 pb-2" data-testid={`row-prompt-${p.id}`}>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <Badge variant="secondary" className="text-xs">{p.status}</Badge>
+                    <div className="flex gap-1">
+                      {p.status === "queued" && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => postPrompt.mutate(p.id)} disabled={postPrompt.isPending} data-testid={`button-post-${p.id}`}>Post</Button>
+                          <Button size="sm" variant="ghost" onClick={() => skipPrompt.mutate(p.id)} disabled={skipPrompt.isPending} data-testid={`button-skip-${p.id}`}>Skip</Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm">{p.question}</p>
+                  {p.rationale && <p className="text-xs text-muted-foreground mt-0.5">{p.rationale}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2"><Users className="h-4 w-4" />Referrals</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {referrals.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No referrals yet.</p>
+          ) : (
+            <div className="space-y-1">
+              {referrals.slice(0, 12).map((r: any) => (
+                <div key={r.id} className="flex items-center justify-between text-xs font-mono border-b last:border-b-0 py-1" data-testid={`row-referral-${r.id}`}>
+                  <span className="truncate max-w-[140px]">{r.referrerTelegramUserId}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span className="truncate max-w-[140px]">{r.refereeUserName || r.refereeTelegramUserId}</span>
+                  <Badge variant={r.status === "credited" ? "default" : r.status === "rejected" ? "destructive" : "secondary"}>{r.status}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function ScoreGauge({ score }: { score: number }) {
   const pct = Math.max(0, Math.min(100, score));
   return (
@@ -433,6 +608,8 @@ export default function IntelligencePage() {
             )}
           </CardContent>
         </Card>
+
+        <RewardsPanels botId={selectedBotId} />
 
         {userMems.length > 0 && (
           <Card>

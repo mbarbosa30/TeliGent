@@ -27,6 +27,22 @@ export const botConfigs = pgTable("bot_configs", {
   widgetKey: varchar("widget_key", { length: 64 }),
   bankrEnabled: boolean("bankr_enabled").notNull().default(false),
   bankrApiKey: text("bankr_api_key"),
+  rewardsEnabled: boolean("rewards_enabled").notNull().default(false),
+  rewardTokenChain: text("reward_token_chain").notNull().default("base"),
+  rewardTokenAddress: text("reward_token_address").default(""),
+  rewardTokenSymbol: text("reward_token_symbol").default(""),
+  rewardTokenDecimals: integer("reward_token_decimals").notNull().default(18),
+  rewardPeriodDays: integer("reward_period_days").notNull().default(7),
+  rewardTopN: integer("reward_top_n").notNull().default(5),
+  rewardAmountPerWinner: text("reward_amount_per_winner").default("0"),
+  rewardMinDaysActive: integer("reward_min_days_active").notNull().default(3),
+  rewardLastDistributionAt: timestamp("reward_last_distribution_at"),
+  proactiveEnabled: boolean("proactive_enabled").notNull().default(false),
+  proactiveMode: text("proactive_mode").notNull().default("queue"),
+  proactiveCadenceHours: integer("proactive_cadence_hours").notNull().default(24),
+  proactiveLastAt: timestamp("proactive_last_at"),
+  referralEnabled: boolean("referral_enabled").notNull().default(false),
+  referralRewardAmount: text("referral_reward_amount").default("0"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
@@ -309,3 +325,122 @@ export type WisdomSnapshot = typeof wisdomSnapshots.$inferSelect;
 export type CalibrationLog = typeof calibrationLogs.$inferSelect;
 export const insertCalibrationLogSchema = createInsertSchema(calibrationLogs).omit({ id: true, createdAt: true });
 export type InsertCalibrationLog = z.infer<typeof insertCalibrationLogSchema>;
+
+export const memberWallets = pgTable("member_wallets", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  telegramUserId: text("telegram_user_id").notNull(),
+  userName: text("user_name"),
+  walletAddress: varchar("wallet_address", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("idx_member_wallets_unique").on(table.botConfigId, table.telegramUserId),
+]);
+
+export const contributionScores = pgTable("contribution_scores", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  telegramUserId: text("telegram_user_id").notNull(),
+  userName: text("user_name"),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  score: integer("score").notNull().default(0),
+  breakdown: jsonb("breakdown"),
+  daysActive: integer("days_active").notNull().default(0),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("idx_contribution_scores_unique").on(table.botConfigId, table.telegramUserId, table.periodStart),
+  index("idx_contribution_scores_bot_period").on(table.botConfigId, table.periodStart),
+]);
+
+export const rewardDistributions = pgTable("reward_distributions", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  status: text("status").notNull().default("pending"),
+  totalRecipients: integer("total_recipients").notNull().default(0),
+  tokenChain: text("token_chain").notNull(),
+  tokenAddress: text("token_address").notNull(),
+  tokenSymbol: text("token_symbol").notNull(),
+  amountPerWinner: text("amount_per_winner").notNull().default("0"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("idx_reward_distributions_bot_created").on(table.botConfigId, table.createdAt),
+]);
+
+export const rewardPayouts = pgTable("reward_payouts", {
+  id: serial("id").primaryKey(),
+  distributionId: integer("distribution_id").notNull().references(() => rewardDistributions.id, { onDelete: "cascade" }),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  telegramUserId: text("telegram_user_id").notNull(),
+  userName: text("user_name"),
+  walletAddress: text("wallet_address"),
+  amount: text("amount").notNull().default("0"),
+  status: text("status").notNull().default("pending"),
+  txHash: text("tx_hash"),
+  errorMessage: text("error_message"),
+  rank: integer("rank").notNull().default(0),
+  score: integer("score").notNull().default(0),
+  kind: text("kind").notNull().default("leaderboard"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_reward_payouts_distribution").on(table.distributionId),
+  index("idx_reward_payouts_bot_created").on(table.botConfigId, table.createdAt),
+]);
+
+export const proactivePrompts = pgTable("proactive_prompts", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  groupId: integer("group_id").references(() => groups.id, { onDelete: "set null" }),
+  patternId: integer("pattern_id").references(() => collectivePatterns.id, { onDelete: "set null" }),
+  question: text("question").notNull(),
+  rationale: text("rationale"),
+  status: text("status").notNull().default("queued"),
+  postedAt: timestamp("posted_at"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_proactive_prompts_bot_status").on(table.botConfigId, table.status),
+]);
+
+export const referrals = pgTable("referrals", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  referrerTelegramUserId: text("referrer_telegram_user_id").notNull(),
+  referrerUserName: text("referrer_user_name"),
+  refereeTelegramUserId: text("referee_telegram_user_id").notNull(),
+  refereeUserName: text("referee_user_name"),
+  telegramChatId: text("telegram_chat_id"),
+  status: text("status").notNull().default("pending"),
+  creditedAt: timestamp("credited_at"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("idx_referrals_unique_referee").on(table.botConfigId, table.refereeTelegramUserId),
+  index("idx_referrals_bot_status").on(table.botConfigId, table.status),
+]);
+
+export type MemberWallet = typeof memberWallets.$inferSelect;
+export const insertMemberWalletSchema = createInsertSchema(memberWallets).omit({ id: true, createdAt: true });
+export type InsertMemberWallet = z.infer<typeof insertMemberWalletSchema>;
+
+export type ContributionScore = typeof contributionScores.$inferSelect;
+export const insertContributionScoreSchema = createInsertSchema(contributionScores).omit({ id: true, createdAt: true });
+export type InsertContributionScore = z.infer<typeof insertContributionScoreSchema>;
+
+export type RewardDistribution = typeof rewardDistributions.$inferSelect;
+export const insertRewardDistributionSchema = createInsertSchema(rewardDistributions).omit({ id: true, createdAt: true });
+export type InsertRewardDistribution = z.infer<typeof insertRewardDistributionSchema>;
+
+export type RewardPayout = typeof rewardPayouts.$inferSelect;
+export const insertRewardPayoutSchema = createInsertSchema(rewardPayouts).omit({ id: true, createdAt: true });
+export type InsertRewardPayout = z.infer<typeof insertRewardPayoutSchema>;
+
+export type ProactivePrompt = typeof proactivePrompts.$inferSelect;
+export const insertProactivePromptSchema = createInsertSchema(proactivePrompts).omit({ id: true, createdAt: true });
+export type InsertProactivePrompt = z.infer<typeof insertProactivePromptSchema>;
+
+export type Referral = typeof referrals.$inferSelect;
+export const insertReferralSchema = createInsertSchema(referrals).omit({ id: true, createdAt: true });
+export type InsertReferral = z.infer<typeof insertReferralSchema>;

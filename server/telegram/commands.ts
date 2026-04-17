@@ -100,6 +100,66 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
     return true;
   }
 
+  if (command === "myscore") {
+    if (!config.rewardsEnabled) {
+      await sendBotMessage(bot, chatId, "Rewards are not enabled for this community.", msg.message_id);
+      return true;
+    }
+    const tgUserId = msg.from?.id?.toString() || "unknown";
+    const latest = await storage.getLatestContributionScores(botConfigId, 200);
+    const me = latest.find(s => s.telegramUserId === tgUserId);
+    const rank = me ? (latest.findIndex(s => s.telegramUserId === tgUserId) + 1) : 0;
+    const wallet = await storage.getMemberWallet(botConfigId, tgUserId);
+    const lines = [
+      me ? `Your score: *${me.score}* (rank #${rank})` : "No score this period yet — keep contributing!",
+      `Days active: ${me?.daysActive ?? 0}`,
+      wallet ? `Wallet: \`${wallet.walletAddress}\`` : "No wallet on file. Set one with `/wallet 0xYourAddress`.",
+    ];
+    await sendBotMessage(bot, chatId, lines.join("\n"), msg.message_id);
+    return true;
+  }
+
+  if (command === "leaderboard") {
+    if (!config.rewardsEnabled) {
+      await sendBotMessage(bot, chatId, "Rewards are not enabled for this community.", msg.message_id);
+      return true;
+    }
+    const top = await storage.getLatestContributionScores(botConfigId, 10);
+    if (top.length === 0) {
+      await sendBotMessage(bot, chatId, "No leaderboard data yet for this period.", msg.message_id);
+      return true;
+    }
+    const lines = ["*Top contributors this period:*"];
+    top.forEach((s, i) => {
+      const name = s.userName || s.telegramUserId;
+      lines.push(`${i + 1}. ${name} — ${s.score} pts`);
+    });
+    await sendBotMessage(bot, chatId, lines.join("\n"), msg.message_id);
+    return true;
+  }
+
+  if (command === "invite") {
+    if (!config.referralEnabled) {
+      await sendBotMessage(bot, chatId, "Referrals are not enabled for this community.", msg.message_id);
+      return true;
+    }
+    const tgUserId = msg.from?.id?.toString() || "unknown";
+    const link = `https://t.me/${botUsername}?start=ref_${tgUserId}`;
+    await sendBotMessage(bot, chatId, `Share your invite link:\n${link}\nWhen they join and get active, you earn rewards.`, msg.message_id);
+    return true;
+  }
+
+  if (command === "wallet") {
+    if (!args || !/^0x[0-9a-fA-F]{40}$/.test(args.trim())) {
+      await sendBotMessage(bot, chatId, "Usage: /wallet 0xYourEvmAddress", msg.message_id);
+      return true;
+    }
+    const tgUserId = msg.from?.id?.toString() || "unknown";
+    await storage.upsertMemberWallet(botConfigId, tgUserId, userName, args.trim());
+    await sendBotMessage(bot, chatId, `Wallet saved. Future rewards will be sent to \`${args.trim()}\`.`, msg.message_id);
+    return true;
+  }
+
   if (command === "price") {
     if (!config.bankrEnabled) {
       await sendBotMessage(bot, chatId, "Crypto intelligence is not enabled for this bot.", msg.message_id);

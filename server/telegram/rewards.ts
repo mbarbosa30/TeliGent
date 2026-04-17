@@ -1,0 +1,157 @@
+import { storage } from "../storage";
+import { log } from "../index";
+import { computeContributorScores, persistContributorScores, getPreviousPeriod, getCurrentPeriod } from "./reputation";
+import { transferErc20, type RewardChain } from "../agent/erc20";
+import type { BotConfig } from "@shared/schema";
+
+export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boolean; force?: boolean } = {}): Promise<{
+  ok: boolean;
+  reason?: string;
+  distributionId?: number;
+  recipients?: number;
+}> {
+  if (!config.rewardsEnabled && !opts.force) return { ok: false, reason: "rewards disabled" };
+
+  const periodDays = config.rewardPeriodDays || 7;
+  const period = getPreviousPeriod(periodDays);
+
+  const last = config.rewardLastDistributionAt ? new Date(config.rewardLastDistributionAt as any) : null;
+  if (last && last >= period.end && !opts.force) {
+    return { ok: false, reason: "already distributed for this period" };
+  }
+
+  const chain = (config.rewardTokenChain || "base") as RewardChain;
+  const tokenAddress = config.rewardTokenAddress || "";
+  const tokenSymbol = config.rewardTokenSymbol || "TOKEN";
+  const decimals = config.rewardTokenDecimals ?? 18;
+  const amountPerWinner = config.rewardAmountPerWinner || "0";
+  const topN = config.rewardTopN || 5;
+  const minDays = config.rewardMinDaysActive ?? 3;
+
+  if (!tokenAddress || amountPerWinner === "0") {
+    return { ok: false, reason: "token or amount not configured" };
+  }
+
+  const scores = await computeContributorScores(config.id, period.start, period.end);
+  await persistContributorScores(config.id, period.start, period.end, scores);
+
+  const eligible = scores.filter(s => s.daysActive >= minDays && s.score > 0).slice(0, topN);
+  if (eligible.length === 0) {
+    return { ok: false, reason: "no eligible contributors" };
+  }
+
+  if (opts.dryRun) {
+    return { ok: true, reason: "dry run", recipients: eligible.length };
+  }
+
+  const distribution = await storage.createRewardDistribution({
+    botConfigId: config.id,
+    periodStart: period.start,
+    periodEnd: period.end,
+    status: "pending",
+    totalRecipients: eligible.length,
+    tokenChain: chain,
+    tokenAddress,
+    tokenSymbol,
+    amountPerWinner,
+  });
+
+  let sent = 0, failed = 0, skipped = 0;
+  for (let i = 0; i < eligible.length; i++) {
+    const winner = eligible[i];
+    const wallet = await storage.getMemberWallet(config.id, winner.telegramUserId);
+    const baseRow = {
+      distributionId: distribution.id,
+      botConfigId: config.id,
+      telegramUserId: winner.telegramUserId,
+      userName: winner.userName,
+      walletAddress: wallet?.walletAddress ?? null,
+      amount: amountPerWinner,
+      rank: i + 1,
+      score: winner.score,
+      kind: "leaderboard",
+    };
+
+    if (!wallet?.walletAddress) {
+      await storage.createRewardPayout({ ...baseRow, status: "skipped", errorMessage: "no wallet on file" } as any);
+      skipped++;
+      continue;
+    }
+
+    try {
+      const { txHash } = await transferErc20({
+        chain,
+        tokenAddress,
+        recipient: wallet.walletAddress,
+        amount: amountPerWinner,
+        decimals,
+      });
+      await storage.createRewardPayout({ ...baseRow, status: "sent", txHash } as any);
+      sent++;
+    } catch (err: any) {
+      await storage.createRewardPayout({ ...baseRow, status: "failed", errorMessage: err.message?.slice(0, 500) } as any);
+      failed++;
+      log(`Reward transfer failed for bot ${config.id} → ${winner.telegramUserId}: ${err.message}`, "rewards");
+    }
+  }
+
+  const finalStatus = failed > 0 && sent === 0 ? "failed" : sent > 0 ? "sent" : "skipped";
+  await storage.updateRewardDistribution(distribution.id, { status: finalStatus, completedAt: new Date(), notes: `sent=${sent} failed=${failed} skipped=${skipped}` } as any);
+  await storage.updateBotConfig(config.id, { rewardLastDistributionAt: new Date() as any } as any);
+
+  log(`Rewards distribution ${distribution.id} for bot ${config.id}: sent=${sent} failed=${failed} skipped=${skipped}`, "rewards");
+  return { ok: true, distributionId: distribution.id, recipients: eligible.length };
+}
+
+export async function payReferralReward(config: BotConfig, telegramUserId: string, userName: string | null): Promise<void> {
+  if (!config.referralEnabled) return;
+  const amount = config.referralRewardAmount || "0";
+  if (amount === "0") return;
+  const tokenAddress = config.rewardTokenAddress || "";
+  if (!tokenAddress) return;
+
+  const wallet = await storage.getMemberWallet(config.id, telegramUserId);
+  const chain = (config.rewardTokenChain || "base") as RewardChain;
+  const decimals = config.rewardTokenDecimals ?? 18;
+
+  const distribution = await storage.createRewardDistribution({
+    botConfigId: config.id,
+    periodStart: new Date(),
+    periodEnd: new Date(),
+    status: "pending",
+    totalRecipients: 1,
+    tokenChain: chain,
+    tokenAddress,
+    tokenSymbol: config.rewardTokenSymbol || "TOKEN",
+    amountPerWinner: amount,
+    notes: "referral",
+  });
+
+  const baseRow = {
+    distributionId: distribution.id,
+    botConfigId: config.id,
+    telegramUserId,
+    userName,
+    walletAddress: wallet?.walletAddress ?? null,
+    amount,
+    rank: 0,
+    score: 0,
+    kind: "referral",
+  };
+
+  if (!wallet?.walletAddress) {
+    await storage.createRewardPayout({ ...baseRow, status: "skipped", errorMessage: "no wallet on file" } as any);
+    await storage.updateRewardDistribution(distribution.id, { status: "skipped", completedAt: new Date() } as any);
+    return;
+  }
+
+  try {
+    const { txHash } = await transferErc20({ chain, tokenAddress, recipient: wallet.walletAddress, amount, decimals });
+    await storage.createRewardPayout({ ...baseRow, status: "sent", txHash } as any);
+    await storage.updateRewardDistribution(distribution.id, { status: "sent", completedAt: new Date() } as any);
+  } catch (err: any) {
+    await storage.createRewardPayout({ ...baseRow, status: "failed", errorMessage: err.message?.slice(0, 500) } as any);
+    await storage.updateRewardDistribution(distribution.id, { status: "failed", completedAt: new Date() } as any);
+    log(`Referral reward failed for bot ${config.id} → ${telegramUserId}: ${err.message}`, "rewards");
+  }
+}

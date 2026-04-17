@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot, MemberWallet, ContributionScore, InsertContributionScore, RewardDistribution, InsertRewardDistribution, RewardPayout, InsertRewardPayout, ProactivePrompt, InsertProactivePrompt, Referral, InsertReferral } from "@shared/schema";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 
 export interface WisdomComponentsPayload {
@@ -84,6 +84,37 @@ export interface IStorage {
 
   getActivityCountsByDay(botConfigId: number, days: number): Promise<{ day: string; count: number }[]>;
   countDistinctUsers(botConfigId: number, sinceDays: number): Promise<number>;
+
+  getMemberWallet(botConfigId: number, telegramUserId: string): Promise<MemberWallet | undefined>;
+  upsertMemberWallet(botConfigId: number, telegramUserId: string, userName: string | null, walletAddress: string): Promise<MemberWallet>;
+  listMemberWallets(botConfigId: number): Promise<MemberWallet[]>;
+
+  upsertContributionScore(data: InsertContributionScore): Promise<ContributionScore>;
+  getContributionScores(botConfigId: number, periodStart: Date): Promise<ContributionScore[]>;
+  getLatestContributionScores(botConfigId: number, limit?: number): Promise<ContributionScore[]>;
+  computeContributionAggregates(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Array<{ telegramUserId: string; userName: string | null; calibrationSum: number; patternsCount: number; reportsCount: number; daysActive: number; messagesCount: number }>>;
+
+  createRewardDistribution(data: InsertRewardDistribution): Promise<RewardDistribution>;
+  updateRewardDistribution(id: number, data: Partial<InsertRewardDistribution> & { completedAt?: Date | null }): Promise<RewardDistribution | undefined>;
+  listRewardDistributions(botConfigId: number, limit?: number): Promise<RewardDistribution[]>;
+  getRewardDistribution(id: number): Promise<RewardDistribution | undefined>;
+
+  createRewardPayout(data: InsertRewardPayout): Promise<RewardPayout>;
+  updateRewardPayout(id: number, data: Partial<InsertRewardPayout>): Promise<RewardPayout | undefined>;
+  listRewardPayouts(botConfigId: number, limit?: number): Promise<RewardPayout[]>;
+  listRewardPayoutsByDistribution(distributionId: number): Promise<RewardPayout[]>;
+
+  createProactivePrompt(data: InsertProactivePrompt): Promise<ProactivePrompt>;
+  listProactivePrompts(botConfigId: number, status?: string, limit?: number): Promise<ProactivePrompt[]>;
+  updateProactivePrompt(botConfigId: number, id: number, data: Partial<InsertProactivePrompt> & { postedAt?: Date | null }): Promise<ProactivePrompt | undefined>;
+  countRecentProactivePrompts(botConfigId: number, sinceHours: number): Promise<number>;
+
+  createReferral(data: InsertReferral): Promise<Referral | undefined>;
+  getReferralByReferee(botConfigId: number, refereeTelegramUserId: string): Promise<Referral | undefined>;
+  listReferrals(botConfigId: number, status?: string, limit?: number): Promise<Referral[]>;
+  listPendingReferrals(botConfigId: number): Promise<Referral[]>;
+  markReferralCredited(id: number): Promise<void>;
+  countCreditedReferrals(botConfigId: number, telegramUserId: string, since: Date): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -537,6 +568,221 @@ export class DatabaseStorage implements IStorage {
       SELECT COUNT(DISTINCT telegram_user_id)::int AS c
       FROM activity_logs
       WHERE bot_config_id = ${botConfigId} AND created_at >= ${cutoff} AND telegram_user_id IS NOT NULL
+    `);
+    return Number((rows.rows[0] as any)?.c || 0);
+  }
+
+  async getMemberWallet(botConfigId: number, telegramUserId: string): Promise<MemberWallet | undefined> {
+    const [row] = await db.select().from(memberWallets)
+      .where(and(eq(memberWallets.botConfigId, botConfigId), eq(memberWallets.telegramUserId, telegramUserId)))
+      .limit(1);
+    return row;
+  }
+
+  async upsertMemberWallet(botConfigId: number, telegramUserId: string, userName: string | null, walletAddress: string): Promise<MemberWallet> {
+    const existing = await this.getMemberWallet(botConfigId, telegramUserId);
+    if (existing) {
+      const [updated] = await db.update(memberWallets)
+        .set({ walletAddress, userName: userName ?? existing.userName })
+        .where(eq(memberWallets.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(memberWallets).values({ botConfigId, telegramUserId, userName, walletAddress }).returning();
+    return created;
+  }
+
+  async listMemberWallets(botConfigId: number): Promise<MemberWallet[]> {
+    return db.select().from(memberWallets).where(eq(memberWallets.botConfigId, botConfigId));
+  }
+
+  async upsertContributionScore(data: InsertContributionScore): Promise<ContributionScore> {
+    const [row] = await db.execute(sql`
+      INSERT INTO contribution_scores (bot_config_id, telegram_user_id, user_name, period_start, period_end, score, breakdown, days_active)
+      VALUES (${data.botConfigId}, ${data.telegramUserId}, ${data.userName ?? null}, ${data.periodStart}, ${data.periodEnd}, ${data.score ?? 0}, ${JSON.stringify(data.breakdown ?? null)}::jsonb, ${data.daysActive ?? 0})
+      ON CONFLICT (bot_config_id, telegram_user_id, period_start)
+      DO UPDATE SET score = EXCLUDED.score, breakdown = EXCLUDED.breakdown, days_active = EXCLUDED.days_active, user_name = COALESCE(EXCLUDED.user_name, contribution_scores.user_name), period_end = EXCLUDED.period_end
+      RETURNING *
+    `).then(r => r.rows as any[]);
+    return {
+      id: row.id,
+      botConfigId: row.bot_config_id,
+      telegramUserId: row.telegram_user_id,
+      userName: row.user_name,
+      periodStart: row.period_start,
+      periodEnd: row.period_end,
+      score: row.score,
+      breakdown: row.breakdown,
+      daysActive: row.days_active,
+      createdAt: row.created_at,
+    } as ContributionScore;
+  }
+
+  async getContributionScores(botConfigId: number, periodStart: Date): Promise<ContributionScore[]> {
+    return db.select().from(contributionScores)
+      .where(and(eq(contributionScores.botConfigId, botConfigId), eq(contributionScores.periodStart, periodStart)))
+      .orderBy(desc(contributionScores.score));
+  }
+
+  async getLatestContributionScores(botConfigId: number, limit = 20): Promise<ContributionScore[]> {
+    const rows = await db.execute(sql`
+      WITH latest AS (
+        SELECT MAX(period_start) AS ps FROM contribution_scores WHERE bot_config_id = ${botConfigId}
+      )
+      SELECT * FROM contribution_scores
+      WHERE bot_config_id = ${botConfigId} AND period_start = (SELECT ps FROM latest)
+      ORDER BY score DESC LIMIT ${limit}
+    `);
+    return (rows.rows as any[]).map(r => ({
+      id: r.id, botConfigId: r.bot_config_id, telegramUserId: r.telegram_user_id, userName: r.user_name,
+      periodStart: r.period_start, periodEnd: r.period_end, score: r.score, breakdown: r.breakdown,
+      daysActive: r.days_active, createdAt: r.created_at,
+    } as ContributionScore));
+  }
+
+  async computeContributionAggregates(botConfigId: number, periodStart: Date, periodEnd: Date): Promise<Array<{ telegramUserId: string; userName: string | null; calibrationSum: number; patternsCount: number; reportsCount: number; daysActive: number; messagesCount: number }>> {
+    const rows = await db.execute(sql`
+      WITH msgs AS (
+        SELECT telegram_user_id, MAX(user_name) AS user_name,
+               COUNT(*) FILTER (WHERE type = 'message') AS messages_count,
+               COUNT(*) FILTER (WHERE is_report = true) AS reports_count,
+               COUNT(DISTINCT date_trunc('day', created_at)) AS days_active
+        FROM activity_logs
+        WHERE bot_config_id = ${botConfigId}
+          AND created_at >= ${periodStart} AND created_at < ${periodEnd}
+          AND telegram_user_id IS NOT NULL
+        GROUP BY telegram_user_id
+      ),
+      calib AS (
+        SELECT telegram_user_id, COALESCE(SUM(overall), 0) AS calibration_sum
+        FROM calibration_logs
+        WHERE bot_config_id = ${botConfigId}
+          AND created_at >= ${periodStart} AND created_at < ${periodEnd}
+        GROUP BY telegram_user_id
+      ),
+      pats AS (
+        SELECT telegram_user_id, COUNT(*) AS patterns_count
+        FROM data_correlations
+        WHERE bot_config_id = ${botConfigId}
+          AND last_seen_at >= ${periodStart} AND last_seen_at < ${periodEnd}
+        GROUP BY telegram_user_id
+      )
+      SELECT m.telegram_user_id, m.user_name,
+             COALESCE(c.calibration_sum, 0) AS calibration_sum,
+             COALESCE(p.patterns_count, 0) AS patterns_count,
+             m.reports_count, m.days_active, m.messages_count
+      FROM msgs m
+      LEFT JOIN calib c ON c.telegram_user_id = m.telegram_user_id
+      LEFT JOIN pats p ON p.telegram_user_id = m.telegram_user_id
+    `);
+    return (rows.rows as any[]).map(r => ({
+      telegramUserId: r.telegram_user_id,
+      userName: r.user_name,
+      calibrationSum: Number(r.calibration_sum) || 0,
+      patternsCount: Number(r.patterns_count) || 0,
+      reportsCount: Number(r.reports_count) || 0,
+      daysActive: Number(r.days_active) || 0,
+      messagesCount: Number(r.messages_count) || 0,
+    }));
+  }
+
+  async createRewardDistribution(data: InsertRewardDistribution): Promise<RewardDistribution> {
+    const [created] = await db.insert(rewardDistributions).values(data).returning();
+    return created;
+  }
+
+  async updateRewardDistribution(id: number, data: Partial<InsertRewardDistribution> & { completedAt?: Date | null }): Promise<RewardDistribution | undefined> {
+    const [updated] = await db.update(rewardDistributions).set(data as any).where(eq(rewardDistributions.id, id)).returning();
+    return updated;
+  }
+
+  async listRewardDistributions(botConfigId: number, limit = 30): Promise<RewardDistribution[]> {
+    return db.select().from(rewardDistributions).where(eq(rewardDistributions.botConfigId, botConfigId)).orderBy(desc(rewardDistributions.createdAt)).limit(limit);
+  }
+
+  async getRewardDistribution(id: number): Promise<RewardDistribution | undefined> {
+    const [row] = await db.select().from(rewardDistributions).where(eq(rewardDistributions.id, id)).limit(1);
+    return row;
+  }
+
+  async createRewardPayout(data: InsertRewardPayout): Promise<RewardPayout> {
+    const [created] = await db.insert(rewardPayouts).values(data).returning();
+    return created;
+  }
+
+  async updateRewardPayout(id: number, data: Partial<InsertRewardPayout>): Promise<RewardPayout | undefined> {
+    const [updated] = await db.update(rewardPayouts).set(data as any).where(eq(rewardPayouts.id, id)).returning();
+    return updated;
+  }
+
+  async listRewardPayouts(botConfigId: number, limit = 100): Promise<RewardPayout[]> {
+    return db.select().from(rewardPayouts).where(eq(rewardPayouts.botConfigId, botConfigId)).orderBy(desc(rewardPayouts.createdAt)).limit(limit);
+  }
+
+  async listRewardPayoutsByDistribution(distributionId: number): Promise<RewardPayout[]> {
+    return db.select().from(rewardPayouts).where(eq(rewardPayouts.distributionId, distributionId)).orderBy(desc(rewardPayouts.createdAt));
+  }
+
+  async createProactivePrompt(data: InsertProactivePrompt): Promise<ProactivePrompt> {
+    const [created] = await db.insert(proactivePrompts).values(data).returning();
+    return created;
+  }
+
+  async listProactivePrompts(botConfigId: number, status?: string, limit = 50): Promise<ProactivePrompt[]> {
+    const conditions = [eq(proactivePrompts.botConfigId, botConfigId)];
+    if (status) conditions.push(eq(proactivePrompts.status, status));
+    return db.select().from(proactivePrompts).where(and(...conditions)).orderBy(desc(proactivePrompts.createdAt)).limit(limit);
+  }
+
+  async updateProactivePrompt(botConfigId: number, id: number, data: Partial<InsertProactivePrompt> & { postedAt?: Date | null }): Promise<ProactivePrompt | undefined> {
+    const [updated] = await db.update(proactivePrompts).set(data as any).where(and(eq(proactivePrompts.id, id), eq(proactivePrompts.botConfigId, botConfigId))).returning();
+    return updated;
+  }
+
+  async countRecentProactivePrompts(botConfigId: number, sinceHours: number): Promise<number> {
+    const cutoff = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
+    const rows = await db.execute(sql`
+      SELECT COUNT(*)::int AS c FROM proactive_prompts
+      WHERE bot_config_id = ${botConfigId} AND created_at >= ${cutoff}
+    `);
+    return Number((rows.rows[0] as any)?.c || 0);
+  }
+
+  async createReferral(data: InsertReferral): Promise<Referral | undefined> {
+    try {
+      const [created] = await db.insert(referrals).values(data).returning();
+      return created;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async getReferralByReferee(botConfigId: number, refereeTelegramUserId: string): Promise<Referral | undefined> {
+    const [row] = await db.select().from(referrals)
+      .where(and(eq(referrals.botConfigId, botConfigId), eq(referrals.refereeTelegramUserId, refereeTelegramUserId)))
+      .limit(1);
+    return row;
+  }
+
+  async listReferrals(botConfigId: number, status?: string, limit = 100): Promise<Referral[]> {
+    const conditions = [eq(referrals.botConfigId, botConfigId)];
+    if (status) conditions.push(eq(referrals.status, status));
+    return db.select().from(referrals).where(and(...conditions)).orderBy(desc(referrals.createdAt)).limit(limit);
+  }
+
+  async listPendingReferrals(botConfigId: number): Promise<Referral[]> {
+    return db.select().from(referrals).where(and(eq(referrals.botConfigId, botConfigId), eq(referrals.status, "pending"))).orderBy(desc(referrals.createdAt));
+  }
+
+  async markReferralCredited(id: number): Promise<void> {
+    await db.update(referrals).set({ status: "credited", creditedAt: new Date() }).where(eq(referrals.id, id));
+  }
+
+  async countCreditedReferrals(botConfigId: number, telegramUserId: string, since: Date): Promise<number> {
+    const rows = await db.execute(sql`
+      SELECT COUNT(*)::int AS c FROM referrals
+      WHERE bot_config_id = ${botConfigId} AND referrer_telegram_user_id = ${telegramUserId}
+        AND status = 'credited' AND credited_at >= ${since}
     `);
     return Number((rows.rows[0] as any)?.c || 0);
   }

@@ -18,6 +18,8 @@ import { maybeExtractInsight } from "./conversation-insights";
 import { maybeCalibrate } from "./calibration";
 import { maybeSnapshotWisdom } from "./wisdom";
 import { scrapeUrl } from "../scraper";
+import { registerBotInstance, unregisterBotInstance } from "./instance-registry";
+import { parseReferrerFromStartArg, recordReferralIfNew } from "./referrals";
 
 const activeBots = new Map<string, BotInstance>();
 const cooldowns = new Map<string, number>();
@@ -186,6 +188,7 @@ export async function startBotEngine(app?: Express) {
           log(`Error stopping bot: ${e.message}`, "telegram");
         }
         activeBots.delete(token);
+        unregisterBotInstance(instance.botConfigId);
         const path = getWebhookPath(token);
         webhookPathToToken.delete(path);
       }
@@ -292,6 +295,7 @@ async function startSingleBot(config: BotConfig) {
 
     const instance: BotInstance = { bot, userId, botConfigId: config.id, token, webhookPath, botUsername, botTelegramId: me.id, groupContexts: new Map() };
     activeBots.set(token, instance);
+    registerBotInstance(config.id, instance);
 
     bot.on("message", (msg) => handleMessage(msg, instance));
     bot.on("new_chat_members", (msg) => handleNewMembers(msg, instance));
@@ -342,6 +346,29 @@ async function startSingleBot(config: BotConfig) {
   } catch (err: any) {
     log(`Failed to start bot for user ${userId}: ${err.message}\n${err.stack || ""}`, "telegram");
     throw err;
+  }
+}
+
+async function handlePrivateStart(msg: TelegramBot.Message, instance: BotInstance, config: BotConfig) {
+  const text = msg.text || "";
+  const arg = text.split(/\s+/)[1];
+  const refId = parseReferrerFromStartArg(arg);
+  const refereeId = msg.from?.id?.toString();
+  const refereeName = msg.from?.first_name || msg.from?.username || null;
+  const intro = `Hi! I'm ${config.botName}. Add me to your group or use /myscore in a group I'm in.`;
+  try { await instance.bot.sendMessage(msg.chat.id, intro); } catch {}
+  if (refId && refereeId && config.referralEnabled) {
+    try {
+      await recordReferralIfNew({
+        botConfigId: instance.botConfigId,
+        referrerTelegramUserId: refId,
+        refereeTelegramUserId: refereeId,
+        refereeUserName: refereeName,
+        telegramChatId: null,
+      });
+    } catch (err: any) {
+      log(`Referral record error: ${err.message}`, "telegram");
+    }
   }
 }
 
@@ -466,11 +493,16 @@ async function fetchGroupContext(instance: BotInstance, chatId: string, numericC
 async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
   try {
     const msgText = msg.text || msg.caption;
-    if (!msgText || !msg.chat || msg.chat.type === "private") {
-      log(`Message skipped: no text, no chat, or private chat`, "telegram");
+    if (!msgText || !msg.chat) return;
+    if (msg.from?.is_bot) return;
+
+    if (msg.chat.type === "private") {
+      if (msgText.startsWith("/start")) {
+        const cfg = await storage.getBotConfig(instance.botConfigId);
+        if (cfg) await handlePrivateStart(msg, instance, cfg);
+      }
       return;
     }
-    if (msg.from?.is_bot) return;
 
     const { bot, userId, botConfigId } = instance;
     log(`Message from ${msg.from?.first_name || "Unknown"}${msg.forward_date ? " [forwarded]" : ""} in "${msg.chat.title || "?"}" (user: ${userId}, bot: ${botConfigId}): "${msgText.substring(0, 80)}"`, "telegram");

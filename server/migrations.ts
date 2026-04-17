@@ -19,6 +19,8 @@ export async function runMigrations() {
     await ensureAgentServiceLogsTable(client);
     await ensureCeloColumns(client);
     await ensureBankrColumns(client);
+    await ensureRewardsColumns(client);
+    await ensureRewardsTables(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -321,6 +323,136 @@ async function ensureBankrColumns(client: any) {
     await client.query(`ALTER TABLE bot_configs ADD COLUMN bankr_api_key TEXT`);
     log("Added bankr_api_key to bot_configs");
   }
+}
+
+async function ensureRewardsColumns(client: any) {
+  const cols: Array<[string, string]> = [
+    ["rewards_enabled", "BOOLEAN NOT NULL DEFAULT false"],
+    ["reward_token_chain", "TEXT NOT NULL DEFAULT 'base'"],
+    ["reward_token_address", "TEXT DEFAULT ''"],
+    ["reward_token_symbol", "TEXT DEFAULT ''"],
+    ["reward_token_decimals", "INTEGER NOT NULL DEFAULT 18"],
+    ["reward_period_days", "INTEGER NOT NULL DEFAULT 7"],
+    ["reward_top_n", "INTEGER NOT NULL DEFAULT 5"],
+    ["reward_amount_per_winner", "TEXT DEFAULT '0'"],
+    ["reward_min_days_active", "INTEGER NOT NULL DEFAULT 3"],
+    ["reward_last_distribution_at", "TIMESTAMP"],
+    ["proactive_enabled", "BOOLEAN NOT NULL DEFAULT false"],
+    ["proactive_mode", "TEXT NOT NULL DEFAULT 'queue'"],
+    ["proactive_cadence_hours", "INTEGER NOT NULL DEFAULT 24"],
+    ["proactive_last_at", "TIMESTAMP"],
+    ["referral_enabled", "BOOLEAN NOT NULL DEFAULT false"],
+    ["referral_reward_amount", "TEXT DEFAULT '0'"],
+  ];
+  for (const [name, def] of cols) {
+    if (!(await columnExists(client, "bot_configs", name))) {
+      await client.query(`ALTER TABLE bot_configs ADD COLUMN ${name} ${def}`);
+      log(`Added ${name} to bot_configs`);
+    }
+  }
+}
+
+async function ensureRewardsTables(client: any) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS member_wallets (
+      id SERIAL PRIMARY KEY,
+      bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+      telegram_user_id TEXT NOT NULL,
+      user_name TEXT,
+      wallet_address VARCHAR(64) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_member_wallets_unique ON member_wallets (bot_config_id, telegram_user_id)`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS contribution_scores (
+      id SERIAL PRIMARY KEY,
+      bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+      telegram_user_id TEXT NOT NULL,
+      user_name TEXT,
+      period_start TIMESTAMP NOT NULL,
+      period_end TIMESTAMP NOT NULL,
+      score INTEGER NOT NULL DEFAULT 0,
+      breakdown JSONB,
+      days_active INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contribution_scores_unique ON contribution_scores (bot_config_id, telegram_user_id, period_start)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_contribution_scores_bot_period ON contribution_scores (bot_config_id, period_start)`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS reward_distributions (
+      id SERIAL PRIMARY KEY,
+      bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+      period_start TIMESTAMP NOT NULL,
+      period_end TIMESTAMP NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      total_recipients INTEGER NOT NULL DEFAULT 0,
+      token_chain TEXT NOT NULL,
+      token_address TEXT NOT NULL,
+      token_symbol TEXT NOT NULL,
+      amount_per_winner TEXT NOT NULL DEFAULT '0',
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      completed_at TIMESTAMP
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_reward_distributions_bot_created ON reward_distributions (bot_config_id, created_at)`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS reward_payouts (
+      id SERIAL PRIMARY KEY,
+      distribution_id INTEGER NOT NULL REFERENCES reward_distributions(id) ON DELETE CASCADE,
+      bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+      telegram_user_id TEXT NOT NULL,
+      user_name TEXT,
+      wallet_address TEXT,
+      amount TEXT NOT NULL DEFAULT '0',
+      status TEXT NOT NULL DEFAULT 'pending',
+      tx_hash TEXT,
+      error_message TEXT,
+      rank INTEGER NOT NULL DEFAULT 0,
+      score INTEGER NOT NULL DEFAULT 0,
+      kind TEXT NOT NULL DEFAULT 'leaderboard',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_reward_payouts_distribution ON reward_payouts (distribution_id)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_reward_payouts_bot_created ON reward_payouts (bot_config_id, created_at)`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS proactive_prompts (
+      id SERIAL PRIMARY KEY,
+      bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+      group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+      pattern_id INTEGER REFERENCES collective_patterns(id) ON DELETE SET NULL,
+      question TEXT NOT NULL,
+      rationale TEXT,
+      status TEXT NOT NULL DEFAULT 'queued',
+      posted_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_proactive_prompts_bot_status ON proactive_prompts (bot_config_id, status)`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS referrals (
+      id SERIAL PRIMARY KEY,
+      bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+      referrer_telegram_user_id TEXT NOT NULL,
+      referrer_user_name TEXT,
+      referee_telegram_user_id TEXT NOT NULL,
+      referee_user_name TEXT,
+      telegram_chat_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      credited_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_referrals_unique_referee ON referrals (bot_config_id, referee_telegram_user_id)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_referrals_bot_status ON referrals (bot_config_id, status)`);
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {
