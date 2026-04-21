@@ -128,7 +128,9 @@ app.use((req, res, next) => {
       const { getCurrentPeriod, computeContributorScoresByGroup, persistContributorScores } = await import("./telegram/reputation");
 
       const configs = await storage.getAllActiveConfigs();
-      for (const config of configs) {
+      const CHUNK = 4;
+      const PAUSE_MS = 1500;
+      const processOne = async (config: typeof configs[number]) => {
         try {
           const period = getCurrentPeriod(config.rewardPeriodDays || 7);
           const byGroup = await computeContributorScoresByGroup(config.id, period.start, period.end);
@@ -157,6 +159,13 @@ app.use((req, res, next) => {
           }
         } catch (err: any) {
           log(`Scheduler bot ${config.id} error: ${err.message}`, "scheduler");
+        }
+      };
+      for (let i = 0; i < configs.length; i += CHUNK) {
+        const chunk = configs.slice(i, i + CHUNK);
+        await Promise.all(chunk.map(processOne));
+        if (i + CHUNK < configs.length) {
+          await new Promise((r) => setTimeout(r, PAUSE_MS));
         }
       }
     } catch (err: any) {
