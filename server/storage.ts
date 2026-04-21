@@ -704,7 +704,7 @@ export class DatabaseStorage implements IStorage {
       calib AS (
         SELECT al.group_id, cl.telegram_user_id, COALESCE(SUM(cl.overall), 0) AS calibration_sum
         FROM calibration_logs cl
-        JOIN activity_logs al ON al.id = cl.activity_log_id
+        JOIN activity_logs al ON al.id = cl.source_activity_log_id
         WHERE cl.bot_config_id = ${botConfigId}
           AND cl.created_at >= ${periodStart} AND cl.created_at < ${periodEnd}
           AND al.group_id IS NOT NULL
