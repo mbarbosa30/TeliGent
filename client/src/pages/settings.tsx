@@ -150,7 +150,7 @@ export default function SettingsPage() {
         onlyRespondWhenMentioned: config.onlyRespondWhenMentioned,
         respondToReplies: config.respondToReplies,
         autoBanThreshold: config.autoBanThreshold ?? 0,
-        scamSensitivity: (config as any).scamSensitivity ?? "medium",
+        scamSensitivity: config.scamSensitivity ?? "medium",
         trackReports: config.trackReports,
         reportKeywords: config.reportKeywords || ["report", "issue", "bug", "problem", "broken"],
         bankrEnabled: config.bankrEnabled ?? false,

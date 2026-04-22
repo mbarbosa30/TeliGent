@@ -211,6 +211,7 @@ export class DatabaseStorage implements IStorage {
         eq(activityLogs.botConfigId, botConfigId),
         eq(activityLogs.isReport, true),
         sql`${activityLogs.metadata}->>'autoDetected' = 'true'`,
+        eq(activityLogs.botResponse, "(silently deleted)"),
       )
     ).orderBy(desc(activityLogs.createdAt)).limit(limit);
   }
