@@ -150,6 +150,9 @@ export async function registerRoutes(
     try {
       const botId = parseInt(req.params.botId as string);
       const partial = insertBotConfigSchema.partial().parse(req.body);
+      if (partial.scamSensitivity !== undefined && !["low", "medium", "high"].includes(partial.scamSensitivity)) {
+        return res.status(400).json({ error: "scamSensitivity must be one of low, medium, high" });
+      }
       const config = await storage.updateBotConfig(botId, partial);
 
       if (partial.botToken !== undefined || partial.isActive !== undefined) {
