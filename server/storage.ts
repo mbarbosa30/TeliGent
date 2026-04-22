@@ -205,6 +205,16 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(activityLogs).where(and(eq(activityLogs.botConfigId, botConfigId), eq(activityLogs.isReport, true))).orderBy(desc(activityLogs.createdAt)).limit(limit).offset(offset);
   }
 
+  async getRecentlyFlaggedScams(botConfigId: number, limit = 20): Promise<ActivityLog[]> {
+    return db.select().from(activityLogs).where(
+      and(
+        eq(activityLogs.botConfigId, botConfigId),
+        eq(activityLogs.isReport, true),
+        sql`${activityLogs.metadata}->>'autoDetected' = 'true'`,
+      )
+    ).orderBy(desc(activityLogs.createdAt)).limit(limit);
+  }
+
   async cleanOldActivityLogs(retentionDays = 90): Promise<number> {
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
     const result = await db.delete(activityLogs).where(sql`${activityLogs.createdAt} < ${cutoff}`);

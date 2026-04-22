@@ -22,6 +22,7 @@ export async function runMigrations() {
     await ensureRewardsColumns(client);
     await ensureRewardsTables(client);
     await ensureFeedbackColumnsAndTable(client);
+    await ensureScamSensitivityColumn(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -532,6 +533,13 @@ async function ensureFeedbackColumnsAndTable(client: any) {
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_items_bot_created ON feedback_items (bot_config_id, created_at)`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_items_bot_theme ON feedback_items (bot_config_id, theme)`);
+}
+
+async function ensureScamSensitivityColumn(client: any) {
+  if (!(await columnExists(client, "bot_configs", "scam_sensitivity"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN scam_sensitivity TEXT NOT NULL DEFAULT 'medium'`);
+    log("Added scam_sensitivity to bot_configs");
+  }
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {

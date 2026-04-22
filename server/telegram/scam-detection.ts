@@ -37,30 +37,50 @@ export async function getLearnedPatterns(botConfigId: number): Promise<string[]>
   return patterns;
 }
 
-export function checkLearnedPatterns(normalizedText: string, patterns: string[]): boolean {
+export function checkLearnedPatterns(normalizedText: string, patterns: string[], minMatches: number = 3): boolean {
   if (patterns.length === 0) return false;
   const lower = normalizedText.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
   let matchCount = 0;
   for (const pattern of patterns) {
     if (lower.includes(pattern)) {
       matchCount++;
-      if (matchCount >= 3) return true;
+      if (matchCount >= minMatches) return true;
     }
   }
   return false;
 }
 
-export async function aiScamCheck(text: string, senderRole: string): Promise<{ isScam: boolean; reason: string }> {
+export type ScamSensitivity = "low" | "medium" | "high";
+
+export function normalizeSensitivity(value: string | null | undefined): ScamSensitivity {
+  if (value === "low" || value === "high") return value;
+  return "medium";
+}
+
+export function learnedPatternThreshold(sensitivity: ScamSensitivity): number {
+  if (sensitivity === "low") return 4;
+  if (sensitivity === "high") return 2;
+  return 3;
+}
+
+export async function aiScamCheck(text: string, senderRole: string, sensitivity: ScamSensitivity = "medium"): Promise<{ isScam: boolean; reason: string }> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const sensitivityIntro =
+      sensitivity === "low"
+        ? `You are a careful scam detection system for a crypto/Web3 Telegram group. The sender is a REGULAR USER (not an admin). Your job is to protect the community while AVOIDING false positives. Only flag a message as scam when the scam intent is clear and unambiguous. When uncertain, return scam:false.`
+        : sensitivity === "high"
+        ? `You are an extremely aggressive scam detection system for a crypto/Web3 Telegram group. The sender is a REGULAR USER (not an admin). Your job is to PROTECT the community at all costs. When in any doubt, flag as scam — false positives are strongly preferred over letting scams through.`
+        : `You are an aggressive scam detection system for a crypto/Web3 Telegram group. The sender is a REGULAR USER (not an admin). Your job is to PROTECT the community. When in doubt, flag as scam — false positives are better than letting scams through.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-5.2",
       messages: [
         {
           role: "system",
-          content: `You are an aggressive scam detection system for a crypto/Web3 Telegram group. The sender is a REGULAR USER (not an admin). Your job is to PROTECT the community. When in doubt, flag as scam — false positives are better than letting scams through.
+          content: `${sensitivityIntro}
 
 A message IS a SCAM/SPAM if it does ANY of these:
 - Poses as project leadership or makes official-sounding announcements (migrations, relaunches, contract changes, new CAs, airdrops, etc.)
@@ -318,8 +338,9 @@ export async function detectAndHandleScam(
   const hypeSignals = detectFinancialHypeSignals(normalized, text, !!msg.forward_date);
   const hasFinancialShillHypeResult = isFinancialShillHype(hypeSignals);
 
+  const sensitivity = normalizeSensitivity((config as any).scamSensitivity);
   const learnedPatterns = await getLearnedPatterns(botConfigId);
-  const hasLearnedPatternMatch = checkLearnedPatterns(normalized, learnedPatterns);
+  const hasLearnedPatternMatch = checkLearnedPatterns(normalized, learnedPatterns, learnedPatternThreshold(sensitivity));
 
   const hasAnyScamSignal =
     hit("migrationAirdropScam") || hit("privateMessageSolicitation") || hit("txHashRequest") ||
@@ -449,9 +470,9 @@ export async function detectAndHandleScam(
   const aiContext = isImpersonator
     ? `[SUSPICIOUS: This user's display name "${userName}" closely matches the bot/group name. Non-admins impersonating official accounts is a common scam tactic. Be extra vigilant.]\n\n${normalized}`
     : normalized;
-  const { isScam, reason } = await aiScamCheck(aiContext, "regular_user");
+  const { isScam, reason } = await aiScamCheck(aiContext, "regular_user", sensitivity);
   if (!isScam) {
-    if ((reason === "unparseable" || reason === "error") && (hit("softCollaborationInvite") || hit("dmSolicitation") || hit("fakeExchangeListing") || hit("channelManagementPitch") || hasFinancialShillHypeResult || hit("investmentServicePitch"))) {
+    if (sensitivity !== "low" && (reason === "unparseable" || reason === "error") && (hit("softCollaborationInvite") || hit("dmSolicitation") || hit("fakeExchangeListing") || hit("channelManagementPitch") || hasFinancialShillHypeResult || hit("investmentServicePitch"))) {
       log(`AI failed but strong scam signals present — flagging as scam`, "telegram");
       return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "AI unavailable + strong scam signals detected");
     }

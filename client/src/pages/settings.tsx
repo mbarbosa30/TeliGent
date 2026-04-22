@@ -45,6 +45,7 @@ const settingsSchema = z.object({
   onlyRespondWhenMentioned: z.boolean(),
   respondToReplies: z.boolean(),
   autoBanThreshold: z.number().min(0).max(100),
+  scamSensitivity: z.string(),
   trackReports: z.boolean(),
   reportKeywords: z.array(z.string()),
   bankrEnabled: z.boolean(),
@@ -99,6 +100,7 @@ export default function SettingsPage() {
       onlyRespondWhenMentioned: false,
       respondToReplies: true,
       autoBanThreshold: 0,
+      scamSensitivity: "medium",
       trackReports: true,
       reportKeywords: ["report", "issue", "bug", "problem", "broken"],
       bankrEnabled: false,
@@ -148,6 +150,7 @@ export default function SettingsPage() {
         onlyRespondWhenMentioned: config.onlyRespondWhenMentioned,
         respondToReplies: config.respondToReplies,
         autoBanThreshold: config.autoBanThreshold ?? 0,
+        scamSensitivity: (config as any).scamSensitivity ?? "medium",
         trackReports: config.trackReports,
         reportKeywords: config.reportKeywords || ["report", "issue", "bug", "problem", "broken"],
         bankrEnabled: config.bankrEnabled ?? false,
@@ -508,6 +511,23 @@ export default function SettingsPage() {
                     <FormDescription>Ban user after this many auto-deleted scam messages (0 = disabled)</FormDescription>
                   </FormItem>
                 )} />
+                <FormField control={form.control} name="scamSensitivity" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Scam Detection Sensitivity</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-scam-sensitivity"><SelectValue /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="low">Low — only flag clear, unambiguous scams</SelectItem>
+                        <SelectItem value="medium">Medium — balanced (recommended)</SelectItem>
+                        <SelectItem value="high">High — flag aggressively, more false positives</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>Controls how strict the AI and learned-pattern checks are. Lower means fewer deletions and a softer AI verdict.</FormDescription>
+                  </FormItem>
+                )} />
+                <RecentlyFlaggedList botId={selectedBotId!} />
               </CardContent>
             </Card>
 
@@ -959,5 +979,38 @@ export default function SettingsPage() {
         </Form>
       </div>
     </ScrollArea>
+  );
+}
+
+function RecentlyFlaggedList({ botId }: { botId: number }) {
+  const { data, isLoading } = useQuery<Array<{ id: number; userName: string | null; userMessage: string | null; metadata: any; createdAt: string }>>({
+    queryKey: ["/api/bots", botId, "scam-flagged"],
+    enabled: !!botId,
+  });
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-medium">Recently Flagged (last 20)</Label>
+      <p className="text-xs text-muted-foreground">Auto-deleted scam messages. Use these to judge whether your sensitivity is too strict or too loose.</p>
+      {isLoading ? (
+        <Skeleton className="h-24 w-full" />
+      ) : !data || data.length === 0 ? (
+        <p className="text-xs text-muted-foreground" data-testid="text-no-flagged">No auto-deleted messages yet.</p>
+      ) : (
+        <div className="border divide-y" data-testid="list-flagged">
+          {data.map((item) => (
+            <div key={item.id} className="p-2 space-y-1" data-testid={`row-flagged-${item.id}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium truncate">{item.userName || "Unknown"}</span>
+                <span className="text-xs text-muted-foreground shrink-0">{new Date(item.createdAt).toLocaleString()}</span>
+              </div>
+              {item.metadata?.reason && (
+                <Badge variant="outline" className="text-[10px]">{String(item.metadata.reason).slice(0, 80)}</Badge>
+              )}
+              <p className="text-xs text-muted-foreground line-clamp-2">{item.userMessage || ""}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

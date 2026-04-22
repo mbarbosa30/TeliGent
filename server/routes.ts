@@ -318,6 +318,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bots/:botId/scam-flagged", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+      const items = await storage.getRecentlyFlaggedScams(botId, limit);
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/bots/:botId/intelligence/overview", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);
