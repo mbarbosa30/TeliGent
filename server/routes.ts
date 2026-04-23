@@ -12,7 +12,7 @@ import crypto from "crypto";
 
 const serverStartTime = Date.now();
 
-import { getLimitsForUser } from "./limits";
+import { getLimitsForUser, getDefaultLimits } from "./limits";
 
 function getUserId(req: any): string {
   return req.session?.userId;
@@ -45,9 +45,10 @@ function createApiRateLimiter(windowMs: number, maxRequests: number) {
   };
 }
 
-const apiRateLimit = createApiRateLimiter(60 * 1000, 60);
-const scrapeRateLimit = createApiRateLimiter(60 * 1000, 5);
-const publicRateLimit = createApiRateLimiter(60 * 1000, 30);
+const _defaultLimits = getDefaultLimits();
+const apiRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.apiRateLimitPerMin);
+const scrapeRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.scrapeRateLimitPerMin);
+const publicRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.publicApiRateLimitPerMin);
 
 async function requireBotOwnership(req: Request, res: Response, next: NextFunction) {
   const userId = getUserId(req);
@@ -522,7 +523,7 @@ export async function registerRoutes(
     }
   });
 
-  const widgetRateLimit = createApiRateLimiter(60 * 1000, 20);
+  const widgetRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.widgetApiRateLimitPerMin);
 
   app.post("/api/bots/:botId/widget/enable", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {

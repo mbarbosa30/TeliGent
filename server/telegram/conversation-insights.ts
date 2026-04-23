@@ -59,6 +59,9 @@ async function doExtractInsight(
     .map(m => `${m.role === "assistant" ? botName : m.name}: ${m.content.slice(0, 150)}`)
     .join("\n");
 
+  const { tryConsumeAiBudget } = await import("../ai-budget");
+  const allowedInsight = await tryConsumeAiBudget(botConfigId);
+  if (!allowedInsight) return;
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-5-mini",

@@ -80,6 +80,13 @@ Rules:
 - Exactly 3 to 5 bullets, each a short standalone insight, no bullet markers in the text.
 - Plain language. No emoji. No em dashes. No marketing fluff.
 - Each bullet must reference real data from above (a topic name, a count, a trend, an open question, etc).`;
+      const { tryConsumeAiBudget } = await import("../ai-budget");
+      const allowedDigest = await tryConsumeAiBudget(botConfigId);
+      if (!allowedDigest) {
+        summary = "Daily AI budget exhausted; digest will refresh after the daily reset.";
+        bullets = [];
+        throw new Error("ai_budget_exhausted");
+      }
       const resp = await openai.chat.completions.create({
         model: "gpt-5-mini",
         messages: [{ role: "user", content: prompt }],

@@ -2,6 +2,8 @@ import { pool } from "./db";
 import { getLimitsForBot } from "./limits";
 import { log } from "./index";
 
+const exhaustionLogged = new Set<string>();
+
 type Key = string;
 
 const counts = new Map<Key, number>();
@@ -33,6 +35,7 @@ async function loadTodayIntoMemory(date: string): Promise<void> {
       );
       counts.clear();
       dirty.clear();
+      exhaustionLogged.clear();
       for (const r of rows) {
         counts.set(key(Number(r.bot_config_id), date), Number(r.count) || 0);
       }
@@ -61,6 +64,31 @@ export async function tryConsumeAiBudget(botConfigId: number): Promise<boolean> 
     const limit = getLimitsForBot(botConfigId).dailyAiCallsPerBot;
     const current = counts.get(k) || 0;
     if (current >= limit) {
+      if (!exhaustionLogged.has(k)) {
+        exhaustionLogged.add(k);
+        // Best-effort activity log of the first exhaustion per bot per day.
+        // Lazy-imported to avoid circular module dependency with storage.
+        (async () => {
+          try {
+            const { storage } = await import("./storage");
+            const cfg = await storage.getBotConfig(botConfigId);
+            if (cfg?.userId) {
+              await storage.createActivityLog(botConfigId, cfg.userId, {
+                groupId: null,
+                telegramUserId: null,
+                type: "ai_budget_exhausted",
+                userName: null,
+                userMessage: null,
+                botResponse: null,
+                isReport: false,
+                metadata: { date, limit },
+              });
+            }
+          } catch (err: any) {
+            log(`AI budget exhaustion activity log failed: ${err.message}`, "ai-budget");
+          }
+        })();
+      }
       return false;
     }
     counts.set(k, current + 1);

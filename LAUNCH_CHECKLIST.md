@@ -2,24 +2,33 @@
 
 A checklist of operator-controlled settings to flip before going live. Many of these can stay on defaults for low-traffic launches; tighten them as load grows.
 
-## 1. Required environment variables
+## 1. Required environment variables (production boot fails or degrades unsafely without these)
 
-- `DATABASE_URL` — PostgreSQL connection string.
-- `SESSION_SECRET` — strong random value, at least 32 chars, must NOT equal the dev fallback. The server refuses to boot in production if this is missing or weak.
-- `ADMIN_PASSPHRASE` — strong passphrase guarding the in-app `/admin` console.
-- `OPENAI_API_KEY` (or Replit AI Integrations connection) — required for any AI feature.
+| Variable | Purpose | If missing in production |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string for app data + sessions. | App fails to boot. |
+| `SESSION_SECRET` | Cookie signing secret for express-session. Must be at least 32 chars and NOT equal to the dev fallback. | App refuses to boot (server/auth.ts). |
+| `ADMIN_PASSPHRASE` | Guards `/admin` console and admin API routes. | `/api/admin/login` returns "admin not configured" and the admin console is unusable. |
+| `OPENAI_API_KEY` (or Replit AI Integrations connection) | Powers all AI features. | Every AI call (scam check, AI replies, learning, digest, feedback) returns its safe fallback string; Telegram bots stay up but become non-AI. |
+| `APP_URL` (or Replit's `REPLIT_DOMAINS`) | Used to construct Telegram webhook URLs. | Webhook activation falls back to localhost and Telegram cannot reach the bot. |
 
-## 2. Optional environment variables (defaults shown)
+## 2. Optional environment variables (defaults shown, degradation behavior listed)
 
-- `MAX_BOTS_PER_USER=10` — hard cap on bots per account. Tier-aware via `getLimitsForUser`.
-- `MAX_KB_ENTRIES_PER_BOT=500` — knowledge base soft cap per bot.
-- `MAX_GROUPS_PER_BOT=100` — Telegram groups per bot.
-- `DAILY_AI_CALLS_PER_BOT=1000` — per-bot daily AI call budget. Enforced by `tryConsumeAiBudget` in scam detection, real-time learning, command triage, AI replies, proactive prompts, and feedback classification. Persisted via the `ai_usage_daily` table.
-- `MAX_BOT_RESPONSE_CHARS=4000` — response truncation cap.
-- `REWARDS_SCHEDULER_MIN=15` — scheduler tick interval. Also flushes AI usage to the database.
-- `CELO_WALLET_PRIVATE_KEY` — wallet for ERC-8004 registrations and ERC-20 reward payouts on Celo (also used as fallback on Base).
-- `BASE_WALLET_PRIVATE_KEY` — optional Base-specific wallet; if unset the Celo key is reused.
-- `BANKR_API_KEY`, `LOCUS_API_KEY`, `OPENSERV_API_KEY`, `SYNTHESIS_API_KEY`, `TELEGRAM_BOT_TOKEN` — service integrations as needed.
+| Variable | Default | If missing |
+|---|---|---|
+| `MAX_BOTS_PER_USER` | `10` | Default cap applies. Tier-aware via `getLimitsForUser`. |
+| `MAX_KB_ENTRIES_PER_BOT` | `500` | Default cap applies. |
+| `MAX_GROUPS_PER_BOT` | `100` | Default cap applies. |
+| `DAILY_AI_CALLS_PER_BOT` | `1000` | Default daily AI call budget per bot. When exhausted, AI paths return safe fallbacks and a `ai_budget_exhausted` activity log row is written once per bot per day. |
+| `MAX_BOT_RESPONSE_CHARS` | `4000` | Default response truncation. |
+| `REWARDS_SCHEDULER_MIN` | `15` | Scheduler tick interval (also flushes AI usage to Postgres). |
+| `CELO_WALLET_PRIVATE_KEY` | unset | ERC-8004 bot registration and ERC-20 reward payouts on Celo / Base are disabled (endpoints respond with a clear "wallet not configured" error). |
+| `BASE_WALLET_PRIVATE_KEY` | unset | Falls back to `CELO_WALLET_PRIVATE_KEY` for Base ERC-20 payouts. If both are missing, Base payouts are disabled. |
+| `BANKR_API_KEY` | unset | `/price` command and crypto enrichment in AI replies fall back to "Bankr not configured". |
+| `LOCUS_API_KEY` | unset | Agent-to-agent paid services skip Locus payment checks; Master Agent wallet panel reports "not configured". |
+| `OPENSERV_API_KEY` | unset | OpenServ marketplace endpoints respond with "not configured"; the rest of the app keeps working. |
+| `SYNTHESIS_API_KEY` | unset | Any Synthesis-backed feature degrades to its non-AI fallback. |
+| `TELEGRAM_BOT_TOKEN` | unset | The platform-wide demo bot is not started; per-bot tokens stored in `bot_configs` are unaffected. |
 
 ## 3. Per-bot owner setup
 
