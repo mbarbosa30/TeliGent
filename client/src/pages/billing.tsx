@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearch } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,11 +25,39 @@ const PLAN_FEATURES: Record<Plan, string[]> = {
 export default function BillingPage() {
   const { data: limits, isLoading } = useLimits();
   const { toast } = useToast();
+  const search = useSearch();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [targetPlan, setTargetPlan] = useState<Plan>("pro");
   const [period, setPeriod] = useState<Period>("monthly");
   const [rail, setRail] = useState<Rail>("stripe");
   const [activeIntentId, setActiveIntentId] = useState<number | null>(null);
+
+  const [deepLinkFeature, setDeepLinkFeature] = useState<string | null>(null);
+  const [deepLinkQuota, setDeepLinkQuota] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const planParam = params.get("plan");
+    const featureParam = params.get("feature");
+    const quotaParam = params.get("quota");
+    const FEATURE_PLAN: Record<string, Plan> = {
+      allowWidget: "pro", allowBankr: "pro", allowAgentApi: "pro",
+      allowErc8004: "pro", allowFeedbackDigest: "pro",
+    };
+    let resolvedPlan: Plan | null = null;
+    if (planParam === "pro" || planParam === "business") resolvedPlan = planParam;
+    else if (featureParam && FEATURE_PLAN[featureParam]) resolvedPlan = FEATURE_PLAN[featureParam];
+    else if (quotaParam) resolvedPlan = "pro";
+
+    if (resolvedPlan) {
+      setTargetPlan(resolvedPlan);
+      setPeriod("monthly");
+      setRail("stripe");
+      setUpgradeOpen(true);
+      setDeepLinkFeature(featureParam);
+      setDeepLinkQuota(quotaParam);
+    }
+  }, [search]);
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
@@ -150,7 +179,9 @@ export default function BillingPage() {
 
       <UpgradeDialog
         open={upgradeOpen}
-        onOpenChange={(o) => { setUpgradeOpen(o); if (!o) setActiveIntentId(null); }}
+        onOpenChange={(o) => { setUpgradeOpen(o); if (!o) { setActiveIntentId(null); setDeepLinkFeature(null); setDeepLinkQuota(null); } }}
+        deepLinkFeature={deepLinkFeature}
+        deepLinkQuota={deepLinkQuota}
         plan={targetPlan}
         setPlan={setTargetPlan}
         period={period}
@@ -211,6 +242,20 @@ function PlanCard({ plan, monthlyUsd, annualUsd, isCurrent, teliDiscountPct, onS
   );
 }
 
+const FEATURE_LABELS: Record<string, string> = {
+  allowWidget: "the embeddable widget",
+  allowBankr: "Bankr crypto data",
+  allowAgentApi: "the Master Agent API",
+  allowErc8004: "ERC-8004 registry",
+  allowFeedbackDigest: "the feedback digest",
+};
+
+const QUOTA_LABELS: Record<string, string> = {
+  maxBots: "more bots",
+  maxKbEntries: "more knowledge base entries",
+  maxGroupsPerBot: "more groups per bot",
+};
+
 function UpgradeDialog(props: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -226,8 +271,11 @@ function UpgradeDialog(props: {
   onCryptoStart: () => void;
   cryptoPending: boolean;
   intentId: number | null;
+  deepLinkFeature?: string | null;
+  deepLinkQuota?: string | null;
 }) {
-  const { open, onOpenChange, plan, setPlan, period, setPeriod, rail, setRail, limits, onCheckout, checkoutPending, onCryptoStart, cryptoPending, intentId } = props;
+  const { open, onOpenChange, plan, setPlan, period, setPeriod, rail, setRail, limits, onCheckout, checkoutPending, onCryptoStart, cryptoPending, intentId, deepLinkFeature, deepLinkQuota } = props;
+  const contextLabel = deepLinkFeature ? FEATURE_LABELS[deepLinkFeature] : deepLinkQuota ? QUOTA_LABELS[deepLinkQuota] : null;
   const usd = period === "annual" ? limits.pricing[plan].annualUsd : limits.pricing[plan].monthlyUsd;
   const teliUsd = Math.round(usd * (1 - limits.teliDiscountPct / 100));
 
@@ -235,8 +283,11 @@ function UpgradeDialog(props: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Upgrade to {plan}</DialogTitle>
-          <DialogDescription>Choose how you'd like to pay. Cards renew automatically. Crypto activates the plan for the period you paid for.</DialogDescription>
+          <DialogTitle data-testid="text-upgrade-dialog-title">Upgrade to {plan}</DialogTitle>
+          <DialogDescription>
+            {contextLabel ? <span data-testid="text-upgrade-context">Unlocks {contextLabel}. </span> : null}
+            Choose how you'd like to pay. Cards renew automatically. Crypto activates the plan for the period you paid for.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

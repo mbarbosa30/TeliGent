@@ -26,6 +26,7 @@ import WidgetPage from "@/pages/widget";
 import AgentPage from "@/pages/agent";
 import AdminPage from "@/pages/admin";
 import BillingPage from "@/pages/billing";
+import { PaywallDialog } from "@/components/paywall-dialog";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -141,6 +142,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <AppContent />
+          <PaywallDialog />
           <Toaster />
         </TooltipProvider>
       </QueryClientProvider>
