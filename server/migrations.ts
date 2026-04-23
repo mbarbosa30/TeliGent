@@ -26,6 +26,7 @@ export async function runMigrations() {
     await ensureScamAllowlistTable(client);
     await ensureWidgetAllowedOriginsColumn(client);
     await ensureAiUsageDailyTable(client);
+    await ensureBillingSchema(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -587,4 +588,80 @@ async function columnExists(client: any, table: string, column: string): Promise
     [table, column]
   );
   return rows.length > 0;
+}
+
+async function ensureBillingSchema(client: any) {
+  // users plan columns (Free/Pro/Business + crypto/Stripe rails + TELI flag)
+  const userCols: Array<[string, string]> = [
+    ["plan", "VARCHAR NOT NULL DEFAULT 'free'"],
+    ["plan_rail", "VARCHAR NOT NULL DEFAULT 'none'"],
+    ["plan_period_end", "TIMESTAMP"],
+    ["plan_cancel_at_period_end", "BOOLEAN NOT NULL DEFAULT false"],
+    ["teli_paid", "BOOLEAN NOT NULL DEFAULT false"],
+    ["stripe_customer_id", "VARCHAR"],
+  ];
+  for (const [name, def] of userCols) {
+    if (!(await columnExists(client, "users", name))) {
+      await client.query(`ALTER TABLE users ADD COLUMN ${name} ${def}`);
+      log(`Added ${name} to users`);
+    }
+  }
+  // Backfill safety: ensure no nulls in plan/plan_rail for legacy rows
+  await client.query(`UPDATE users SET plan = 'free' WHERE plan IS NULL`);
+  await client.query(`UPDATE users SET plan_rail = 'none' WHERE plan_rail IS NULL`);
+
+  // platform_settings (key/value config used by admin Plans tab, e.g. USD-per-TELI rate)
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS platform_settings (
+      id SERIAL PRIMARY KEY,
+      key VARCHAR(64) NOT NULL UNIQUE,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_settings_key ON platform_settings (key)`);
+
+  // plan_payment_intents (crypto rail micro-amount intent matching)
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS plan_payment_intents (
+      id SERIAL PRIMARY KEY,
+      user_id VARCHAR NOT NULL,
+      plan VARCHAR NOT NULL,
+      billing_period VARCHAR NOT NULL DEFAULT 'monthly',
+      rail VARCHAR NOT NULL,
+      receive_address VARCHAR NOT NULL,
+      expected_amount TEXT NOT NULL,
+      token_address VARCHAR NOT NULL,
+      token_symbol VARCHAR NOT NULL,
+      token_decimals INTEGER NOT NULL DEFAULT 18,
+      usd_amount TEXT NOT NULL,
+      status VARCHAR NOT NULL DEFAULT 'pending',
+      tx_hash VARCHAR,
+      matched_at TIMESTAMP,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_plan_payment_intents_user ON plan_payment_intents (user_id)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_plan_payment_intents_status ON plan_payment_intents (status)`);
+
+  // plan_periods (history of every active plan window)
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS plan_periods (
+      id SERIAL PRIMARY KEY,
+      user_id VARCHAR NOT NULL,
+      plan VARCHAR NOT NULL,
+      rail VARCHAR NOT NULL,
+      billing_period VARCHAR NOT NULL DEFAULT 'monthly',
+      teli_paid BOOLEAN NOT NULL DEFAULT false,
+      starts_at TIMESTAMP NOT NULL,
+      ends_at TIMESTAMP NOT NULL,
+      intent_id INTEGER REFERENCES plan_payment_intents(id) ON DELETE SET NULL,
+      stripe_subscription_id VARCHAR,
+      reason TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_plan_periods_user ON plan_periods (user_id)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_plan_periods_user_endsat ON plan_periods (user_id, ends_at)`);
 }
