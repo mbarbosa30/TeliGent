@@ -391,7 +391,7 @@ function PricingSection() {
             <tbody className="[&>tr]:border-b">
               <tr><td className="px-4 py-2.5">Bots</td><td className="text-center px-4 py-2.5">1</td><td className="text-center px-4 py-2.5">3</td><td className="text-center px-4 py-2.5">10</td></tr>
               <tr><td className="px-4 py-2.5">Knowledge base entries / bot</td><td className="text-center px-4 py-2.5">50</td><td className="text-center px-4 py-2.5">250</td><td className="text-center px-4 py-2.5">1,000</td></tr>
-              <tr><td className="px-4 py-2.5">AI calls / bot / day</td><td className="text-center px-4 py-2.5">200</td><td className="text-center px-4 py-2.5">2,000</td><td className="text-center px-4 py-2.5">10,000</td></tr>
+              <tr><td className="px-4 py-2.5">AI calls / bot / day</td><td className="text-center px-4 py-2.5">200</td><td className="text-center px-4 py-2.5">1,500</td><td className="text-center px-4 py-2.5">8,000</td></tr>
               <tr><td className="px-4 py-2.5">Telegram groups / bot</td><td className="text-center px-4 py-2.5">2</td><td className="text-center px-4 py-2.5">10</td><td className="text-center px-4 py-2.5">50</td></tr>
               <tr><td className="px-4 py-2.5">Embeddable chat widget</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
               <tr><td className="px-4 py-2.5">Bankr crypto intelligence</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>

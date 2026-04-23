@@ -1257,7 +1257,7 @@ export async function registerRoutes(
       planRail: user?.planRail || "none",
       planPeriodEnd: user?.planPeriodEnd || null,
       planCancelAtPeriodEnd: !!user?.planCancelAtPeriodEnd,
-      teliPaid: !!user?.teliPaid,
+      teliPaid: !!(user?.teliPaid && isPlanActive(user)),
       limits,
       pricing: TIER_PRICING,
       teliDiscountPct: TELI_DISCOUNT_PCT,

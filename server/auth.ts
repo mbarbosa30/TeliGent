@@ -201,6 +201,9 @@ export function registerAuthRoutes(app: Express) {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const { passwordHash: _, ...safeUser } = user;
+      const periodEnd = (safeUser as any).planPeriodEnd ? new Date((safeUser as any).planPeriodEnd as any).getTime() : 0;
+      const planActive = (safeUser as any).plan && (safeUser as any).plan !== "free" && periodEnd > Date.now();
+      (safeUser as any).teliPaid = !!((safeUser as any).teliPaid && planActive);
       res.json(safeUser);
     } catch (err: any) {
       res.status(500).json({ message: "Server error" });
