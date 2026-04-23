@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, Copy, Check, Cpu, Wallet, Activity, Shield, Zap, ExternalLink, Fingerprint, ShieldCheck, Globe, Link } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { TierLockedBanner } from "@/components/tier-gate";
 
 export default function AgentPage() {
   const { toast } = useToast();
@@ -57,6 +58,9 @@ export default function AgentPage() {
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Master Agent</h1>
         <p className="text-muted-foreground mt-1">Autonomous community protection agent on Base — with proof-of-human identity</p>
       </div>
+
+      <TierLockedBanner feature="allowAgentApi" message="The agent-to-agent API is a Pro feature. Upgrade to expose your bot's threat-check and community-health services to other agents." />
+      <TierLockedBanner feature="allowErc8004" message="ERC-8004 on-chain registration is a Pro feature. Upgrade to register this bot's verifiable identity on Celo." />
 
       <div className="grid gap-4 md:grid-cols-5">
         <Card>

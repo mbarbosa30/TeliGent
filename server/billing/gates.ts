@@ -27,11 +27,11 @@ const FEATURE_REQUIRED_PLAN: Record<FeatureKey, PlanTier> = {
   allowRewards: "free",
 };
 
-const QUOTA_NEXT_TIER: Record<QuotaKey, PlanTier> = {
-  maxBots: "pro",
-  maxKbEntries: "pro",
-  maxGroupsPerBot: "pro",
-};
+function nextQuotaTier(currentPlan: PlanTier, key: QuotaKey): PlanTier {
+  if (currentPlan === "free") return "pro";
+  if (currentPlan === "pro") return "business";
+  return "business";
+}
 
 export function requirePermission(user: User | null | undefined, feature: FeatureKey): void {
   const limits = getLimitsForUser(user);
@@ -50,7 +50,7 @@ export function requireQuota(user: User | null | undefined, key: QuotaKey, curre
   const limit = limits[key] as number;
   if (currentCount < limit) return;
   const currentPlan = getEffectivePlan(user);
-  const required = QUOTA_NEXT_TIER[key];
+  const required = nextQuotaTier(currentPlan, key);
   throw new PaywallError({
     quota: key,
     current: currentCount,

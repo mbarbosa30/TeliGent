@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Copy, Check, Code, MessageSquare, Clock, ExternalLink, ShieldCheck } from "lucide-react";
+import { TierLockedBanner, useFeatureAllowed } from "@/components/tier-gate";
 
 export default function WidgetPage() {
   const { selectedBotId, selectedBot } = useBot();
@@ -119,6 +120,7 @@ export default function WidgetPage() {
           </p>
         </div>
 
+        <TierLockedBanner feature="allowWidget" message="The embeddable Website Chat Widget is a Pro feature. Upgrade to embed your bot on any website." />
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -130,9 +132,9 @@ export default function WidgetPage() {
                 <Badge variant={widgetEnabled ? "default" : "secondary"} data-testid="badge-widget-status">
                   {widgetEnabled ? "Active" : "Inactive"}
                 </Badge>
-                <Switch
-                  checked={!!widgetEnabled}
-                  onCheckedChange={handleToggle}
+                <WidgetSwitchGated
+                  enabled={!!widgetEnabled}
+                  onChange={handleToggle}
                   disabled={enableMutation.isPending || disableMutation.isPending}
                   data-testid="switch-widget-toggle"
                 />
@@ -269,5 +271,18 @@ export default function WidgetPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function WidgetSwitchGated({ enabled, onChange, disabled, ...rest }: { enabled: boolean; onChange: (v: boolean) => void; disabled?: boolean; [key: string]: any }) {
+  const wf = useFeatureAllowed("allowWidget");
+  const isDisabled = disabled || !wf.allowed;
+  return (
+    <Switch
+      checked={enabled && wf.allowed}
+      onCheckedChange={wf.allowed ? onChange : undefined}
+      disabled={isDisabled}
+      {...rest}
+    />
   );
 }

@@ -27,6 +27,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { AuthUser } from "@/hooks/use-auth";
+import { useBotQuota } from "@/components/tier-gate";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -106,14 +107,7 @@ export function AppSidebar() {
               </DropdownMenuItem>
             ))}
             {bots.length > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuItem
-              onClick={() => createBotMutation.mutate()}
-              disabled={createBotMutation.isPending}
-              data-testid="button-create-bot"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              {createBotMutation.isPending ? "Creating..." : "Add new bot"}
-            </DropdownMenuItem>
+            <BotCreateMenuItem onCreate={() => createBotMutation.mutate()} pending={createBotMutation.isPending} />
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarHeader>
@@ -174,5 +168,27 @@ export function AppSidebar() {
         </div>
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+function BotCreateMenuItem({ onCreate, pending }: { onCreate: () => void; pending: boolean }) {
+  const quota = useBotQuota();
+  const disabled = pending || quota.atLimit;
+  return (
+    <>
+      <DropdownMenuItem
+        onClick={() => { if (!disabled) onCreate(); }}
+        disabled={disabled}
+        data-testid="button-create-bot"
+      >
+        <Plus className="h-4 w-4 mr-2" />
+        {pending ? "Creating..." : quota.atLimit ? `Bot limit reached (${quota.current}/${quota.limit})` : "Add new bot"}
+      </DropdownMenuItem>
+      {quota.atLimit && (
+        <DropdownMenuItem asChild data-testid="link-upgrade-bots">
+          <Link href="/billing"><span className="text-xs text-muted-foreground">Upgrade plan to add more bots</span></Link>
+        </DropdownMenuItem>
+      )}
+    </>
   );
 }

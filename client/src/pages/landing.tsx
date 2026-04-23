@@ -375,7 +375,33 @@ function PricingSection() {
           })}
         </div>
         <div className="border p-4 text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">Pay in $TELI on Base for more:</span> 25% discount on every plan, a TELI badge across the dashboard, +20% on rewards paid out by your bots, and 2x rate limit on the Master Agent API. The token is settled to your bot wallet — TeliGent never custodies funds.
+          <span className="font-semibold text-foreground">Pay in $TELI on Base for more:</span> 25% discount on every plan, a TELI badge across the dashboard, +20% on rewards paid out by your bots, and 2x rate limit on the Master Agent API. The token is settled to your bot wallet, TeliGent never custodies funds.
+        </div>
+
+        <div className="border overflow-x-auto" data-testid="table-pricing-comparison">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40">
+                <th className="text-left px-4 py-3 font-semibold">Feature</th>
+                <th className="text-center px-4 py-3 font-semibold">Free</th>
+                <th className="text-center px-4 py-3 font-semibold">Pro</th>
+                <th className="text-center px-4 py-3 font-semibold">Business</th>
+              </tr>
+            </thead>
+            <tbody className="[&>tr]:border-b">
+              <tr><td className="px-4 py-2.5">Bots</td><td className="text-center px-4 py-2.5">1</td><td className="text-center px-4 py-2.5">3</td><td className="text-center px-4 py-2.5">10</td></tr>
+              <tr><td className="px-4 py-2.5">Knowledge base entries / bot</td><td className="text-center px-4 py-2.5">50</td><td className="text-center px-4 py-2.5">250</td><td className="text-center px-4 py-2.5">1,000</td></tr>
+              <tr><td className="px-4 py-2.5">AI calls / bot / day</td><td className="text-center px-4 py-2.5">200</td><td className="text-center px-4 py-2.5">2,000</td><td className="text-center px-4 py-2.5">10,000</td></tr>
+              <tr><td className="px-4 py-2.5">Telegram groups / bot</td><td className="text-center px-4 py-2.5">2</td><td className="text-center px-4 py-2.5">10</td><td className="text-center px-4 py-2.5">50</td></tr>
+              <tr><td className="px-4 py-2.5">Embeddable chat widget</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
+              <tr><td className="px-4 py-2.5">Bankr crypto intelligence</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
+              <tr><td className="px-4 py-2.5">Agent-to-agent API</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
+              <tr><td className="px-4 py-2.5">ERC-8004 on-chain identity</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
+              <tr><td className="px-4 py-2.5">AI feedback digest</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
+              <tr><td className="px-4 py-2.5">Rewards + leaderboards</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
+              <tr><td className="px-4 py-2.5">$TELI perks (25% off, +20% rewards, 2x agent rate)</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -450,10 +476,13 @@ export default function LandingPage() {
           </p>
           <div className="flex items-center justify-center gap-3 pt-2">
             <Button size="lg" asChild data-testid="button-get-started">
-              <a href="#auth">Get Started Free</a>
+              <a href="#pricing">See Pricing</a>
+            </Button>
+            <Button size="lg" variant="outline" asChild data-testid="button-create-account">
+              <a href="#auth">Create Account</a>
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">Free tier forever. Pro from $19/mo. Pay in $TELI for 25% off and a +20% rewards multiplier.</p>
+          <p className="text-xs text-muted-foreground">Plans from $19/mo. Pay in $TELI for 25% off and a +20% rewards multiplier.</p>
         </div>
       </section>
 

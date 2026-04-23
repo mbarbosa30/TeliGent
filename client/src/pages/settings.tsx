@@ -13,6 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { TierLockedHint, TierLockedBanner, useFeatureAllowed } from "@/components/tier-gate";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { useBot } from "@/hooks/use-bot";
@@ -724,17 +725,21 @@ export default function SettingsPage() {
 
                 <Separator />
 
-                <FormField control={form.control} name="feedbackEnabled" render={({ field }) => (
-                  <FormItem className="flex items-center justify-between">
-                    <div>
-                      <FormLabel>Enable Community Feedback Loop</FormLabel>
-                      <FormDescription>Bot periodically posts open feedback questions and captures replies as structured insights</FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-feedback-enabled" />
-                    </FormControl>
-                  </FormItem>
-                )} />
+                <TierLockedBanner feature="allowFeedbackDigest" message="The AI Feedback Digest is a Pro feature. Upgrade to enable structured community feedback collection." />
+                <FormField control={form.control} name="feedbackEnabled" render={({ field }) => {
+                  const fb = useFeatureAllowed("allowFeedbackDigest");
+                  return (
+                    <FormItem className="flex items-center justify-between">
+                      <div>
+                        <FormLabel className="flex items-center gap-2">Enable Community Feedback Loop <TierLockedHint feature="allowFeedbackDigest" /></FormLabel>
+                        <FormDescription>Bot periodically posts open feedback questions and captures replies as structured insights</FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value && fb.allowed} disabled={!fb.allowed} onCheckedChange={fb.allowed ? field.onChange : undefined} data-testid="switch-feedback-enabled" />
+                      </FormControl>
+                    </FormItem>
+                  );
+                }} />
                 {form.watch("feedbackEnabled") && (
                   <div className="space-y-3 pl-2 border-l">
                     <FormField control={form.control} name="feedbackThemes" render={({ field }) => (
@@ -824,17 +829,21 @@ export default function SettingsPage() {
                 <CardDescription>Real-time token prices and crypto data powered by Bankr</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <FormField control={form.control} name="bankrEnabled" render={({ field }) => (
-                  <FormItem className="flex items-center justify-between">
-                    <div>
-                      <FormLabel>Enable Crypto Intelligence</FormLabel>
-                      <FormDescription>Answer token price queries and crypto questions with live data</FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-bankr-enabled" />
-                    </FormControl>
-                  </FormItem>
-                )} />
+                <TierLockedBanner feature="allowBankr" message="Crypto Intelligence (Bankr) is a Pro feature. Upgrade to enable live token data in your bot." />
+                <FormField control={form.control} name="bankrEnabled" render={({ field }) => {
+                  const bk = useFeatureAllowed("allowBankr");
+                  return (
+                    <FormItem className="flex items-center justify-between">
+                      <div>
+                        <FormLabel className="flex items-center gap-2">Enable Crypto Intelligence <TierLockedHint feature="allowBankr" /></FormLabel>
+                        <FormDescription>Answer token price queries and crypto questions with live data</FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value && bk.allowed} disabled={!bk.allowed} onCheckedChange={bk.allowed ? field.onChange : undefined} data-testid="switch-bankr-enabled" />
+                      </FormControl>
+                    </FormItem>
+                  );
+                }} />
                 {form.watch("bankrEnabled") && (
                   <FormField control={form.control} name="bankrApiKey" render={({ field }) => (
                     <FormItem>

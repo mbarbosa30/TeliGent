@@ -72,6 +72,7 @@ export interface IStorage {
   getPlatformSetting(key: string): Promise<string | null>;
   setPlatformSetting(key: string, value: string): Promise<void>;
   adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]>;
+  adminGetPlanPaymentSummaries(): Promise<Map<string, { paid: number; pending: number; lastPaymentAt: Date | null }>>;
   adminGetAllBots(): Promise<(BotConfig & { userEmail?: string })[]>;
   adminGetAllActivityLogs(limit?: number): Promise<(ActivityLog & { botName?: string })[]>;
   adminGetStats(): Promise<{ totalUsers: number; totalBots: number; totalGroups: number; totalLogs: number; totalScams: number }>;
@@ -477,6 +478,28 @@ export class DatabaseStorage implements IStorage {
       updatedAt: users.updatedAt,
     }).from(users).orderBy(desc(users.createdAt));
     return rows;
+  }
+
+  async adminGetPlanPaymentSummaries(): Promise<Map<string, { paid: number; pending: number; lastPaymentAt: Date | null }>> {
+    const rows = await db.select({
+      userId: planPaymentIntents.userId,
+      status: planPaymentIntents.status,
+      matchedAt: planPaymentIntents.matchedAt,
+    }).from(planPaymentIntents);
+    const map = new Map<string, { paid: number; pending: number; lastPaymentAt: Date | null }>();
+    for (const r of rows) {
+      const entry = map.get(r.userId) || { paid: 0, pending: 0, lastPaymentAt: null as Date | null };
+      if (r.status === "paid") {
+        entry.paid += 1;
+        if (r.matchedAt && (!entry.lastPaymentAt || r.matchedAt > entry.lastPaymentAt)) {
+          entry.lastPaymentAt = r.matchedAt;
+        }
+      } else if (r.status === "pending") {
+        entry.pending += 1;
+      }
+      map.set(r.userId, entry);
+    }
+    return map;
   }
 
   async adminGetAllBots(): Promise<(BotConfig & { userEmail?: string })[]> {

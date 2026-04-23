@@ -34,6 +34,10 @@ interface AdminUser {
   planPeriodEnd?: string | null;
   planCancelAtPeriodEnd?: boolean | null;
   teliPaid?: boolean | null;
+  stripeCustomerId?: string | null;
+  pendingIntents?: number | null;
+  paidIntents?: number | null;
+  lastPaymentAt?: string | null;
 }
 
 interface AdminBot {
@@ -444,12 +448,14 @@ function PlansTab({ users, loading }: { users: AdminUser[]; loading: boolean }) 
             <p className="text-sm text-muted-foreground text-center py-8">No users.</p>
           ) : (
             <div className="space-y-1">
-              <div className="grid grid-cols-[1.4fr_auto_auto_auto_auto_auto] gap-3 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
+              <div className="grid grid-cols-[1.4fr_auto_auto_auto_auto_auto_auto_auto] gap-3 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
                 <span>Email</span>
                 <span>Plan</span>
                 <span>Rail</span>
                 <span>Period end</span>
                 <span>TELI</span>
+                <span>Payments</span>
+                <span>Stripe</span>
                 <span>Override</span>
               </div>
               {users.map((u) => (
@@ -470,13 +476,35 @@ function PlanRow({ user, onOverride, pending }: { user: AdminUser; onOverride: (
   const [reason, setReason] = useState<string>("");
   const { toast } = useToast();
   return (
-    <div className="grid grid-cols-[1.4fr_auto_auto_auto_auto_auto] gap-3 px-3 py-3 border-b border-border/50 items-center" data-testid={`row-plan-${user.id}`}>
+    <div className="grid grid-cols-[1.4fr_auto_auto_auto_auto_auto_auto_auto] gap-3 px-3 py-3 border-b border-border/50 items-center" data-testid={`row-plan-${user.id}`}>
       <span className="text-sm font-mono truncate">{user.email}</span>
       <Badge variant="secondary" className="uppercase text-xs">{user.plan || "free"}</Badge>
       <span className="text-xs font-mono text-muted-foreground">{user.planRail || "—"}</span>
-      <span className="text-xs font-mono text-muted-foreground">{user.planPeriodEnd ? format(new Date(user.planPeriodEnd), "MMM d, yyyy") : "—"}</span>
+      <span className="text-xs font-mono text-muted-foreground" data-testid={`text-period-${user.id}`}>
+        {user.planPeriodEnd ? (
+          <>
+            {format(new Date(user.planPeriodEnd), "MMM d, yyyy")}
+            {user.planCancelAtPeriodEnd && <span className="ml-1 text-amber-600">(cancels)</span>}
+          </>
+        ) : "—"}
+      </span>
       <span>
         {user.teliPaid ? <Badge className="bg-foreground text-background text-xs">TELI</Badge> : <span className="text-xs text-muted-foreground">—</span>}
+      </span>
+      <span className="text-xs font-mono text-muted-foreground" data-testid={`text-payments-${user.id}`}>
+        {(user.paidIntents ?? 0)} paid
+        {(user.pendingIntents ?? 0) > 0 && <span className="text-amber-600"> · {user.pendingIntents} pending</span>}
+      </span>
+      <span className="text-xs font-mono">
+        {user.stripeCustomerId ? (
+          <a
+            href={`https://dashboard.stripe.com/customers/${user.stripeCustomerId}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-muted-foreground hover:text-foreground underline"
+            data-testid={`link-stripe-${user.id}`}
+          >Open</a>
+        ) : <span className="text-muted-foreground">—</span>}
       </span>
       <div className="flex items-center gap-1.5">
         <select

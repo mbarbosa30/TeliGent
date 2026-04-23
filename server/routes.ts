@@ -518,7 +518,12 @@ export async function registerRoutes(
   app.get("/api/admin/users", isAdminAuthenticated, apiRateLimit, async (req, res) => {
     try {
       const allUsers = await storage.adminGetAllUsers();
-      res.json(allUsers);
+      const summaries = await storage.adminGetPlanPaymentSummaries().catch(() => new Map());
+      const enriched = allUsers.map((u) => {
+        const s = summaries.get(u.id) || { paid: 0, pending: 0, lastPaymentAt: null };
+        return { ...u, paidIntents: s.paid, pendingIntents: s.pending, lastPaymentAt: s.lastPaymentAt };
+      });
+      res.json(enriched);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -725,7 +730,26 @@ export async function registerRoutes(
     const bot = await storage.getBotConfig(botId).catch(() => null);
     if (!bot) return;
     const owner = await storage.getUserById(bot.userId).catch(() => null);
-    if (owner?.teliPaid && isPlanActive(owner)) (req as any).ownerTeliPaid = true;
+    if (!owner) return;
+    // Tier check: agent API must be enabled for the targeted bot's owner.
+    requirePermission(owner, "allowAgentApi");
+    if (owner.teliPaid && isPlanActive(owner)) (req as any).ownerTeliPaid = true;
+  }
+
+  // Wrap so PaywallError thrown from resolveAgentRequestOwner is converted to 402.
+  async function agentEntitlementGate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { verifySelfRequestHeaders } = await import("./agent/self");
+      const selfResult = await verifySelfRequestHeaders(req);
+      (req as any).selfVerified = selfResult.verified;
+      (req as any).selfAgentAddress = selfResult.agentAddress;
+      await resolveAgentRequestOwner(req);
+      const limiter = selfResult.verified ? agentTrustRateLimit : agentRateLimit;
+      limiter(req, res, next);
+    } catch (err: any) {
+      if (err instanceof PaywallError) return res.status(402).json(err.toJson());
+      next(err);
+    }
   }
 
   const { registerOpenServRoutes } = await import("./agent/openserv");
@@ -769,15 +793,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/agent/services/threat-check", async (req, res, next) => {
-    const { verifySelfRequestHeaders } = await import("./agent/self");
-    const selfResult = await verifySelfRequestHeaders(req);
-    (req as any).selfVerified = selfResult.verified;
-    (req as any).selfAgentAddress = selfResult.agentAddress;
-    await resolveAgentRequestOwner(req);
-    const limiter = selfResult.verified ? agentTrustRateLimit : agentRateLimit;
-    limiter(req, res, next);
-  }, async (req, res) => {
+  app.post("/api/agent/services/threat-check", agentEntitlementGate, async (req, res) => {
     try {
       const { text, useAI, paymentId, callerIdentifier } = req.body;
       if (!text || typeof text !== "string") {
@@ -854,15 +870,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/agent/services/community-health", async (req, res, next) => {
-    const { verifySelfRequestHeaders } = await import("./agent/self");
-    const selfResult = await verifySelfRequestHeaders(req);
-    (req as any).selfVerified = selfResult.verified;
-    (req as any).selfAgentAddress = selfResult.agentAddress;
-    await resolveAgentRequestOwner(req);
-    const limiter = selfResult.verified ? agentTrustRateLimit : agentRateLimit;
-    limiter(req, res, next);
-  }, async (req, res) => {
+  app.post("/api/agent/services/community-health", agentEntitlementGate, async (req, res) => {
     try {
       const { paymentId, callerIdentifier } = req.body || {};
       const isSelfVerified = !!(req as any).selfVerified;
