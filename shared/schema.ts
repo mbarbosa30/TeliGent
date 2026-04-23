@@ -25,6 +25,7 @@ export const botConfigs = pgTable("bot_configs", {
   reportKeywords: text("report_keywords").array().notNull().default(sql`ARRAY['report', 'issue', 'bug', 'problem', 'broken']`),
   widgetEnabled: boolean("widget_enabled").notNull().default(false),
   widgetKey: varchar("widget_key", { length: 64 }),
+  widgetAllowedOrigins: text("widget_allowed_origins").array().notNull().default(sql`ARRAY[]::text[]`),
   bankrEnabled: boolean("bankr_enabled").notNull().default(false),
   bankrApiKey: text("bankr_api_key"),
   rewardsEnabled: boolean("rewards_enabled").notNull().default(false),
@@ -499,3 +500,16 @@ export type InsertProactivePrompt = z.infer<typeof insertProactivePromptSchema>;
 export type Referral = typeof referrals.$inferSelect;
 export const insertReferralSchema = createInsertSchema(referrals).omit({ id: true, createdAt: true });
 export type InsertReferral = z.infer<typeof insertReferralSchema>;
+
+export const aiUsageDaily = pgTable("ai_usage_daily", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  usageDate: text("usage_date").notNull(),
+  count: integer("count").notNull().default(0),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("idx_ai_usage_daily_unique").on(table.botConfigId, table.usageDate),
+  index("idx_ai_usage_daily_date").on(table.usageDate),
+]);
+
+export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;

@@ -12,7 +12,7 @@ import crypto from "crypto";
 
 const serverStartTime = Date.now();
 
-const MAX_BOTS_PER_USER = parseInt(process.env.MAX_BOTS_PER_USER || "10", 10);
+import { getLimitsForUser } from "./limits";
 
 function getUserId(req: any): string {
   return req.session?.userId;
@@ -100,8 +100,9 @@ export async function registerRoutes(
     try {
       const userId = getUserId(req);
       const existing = await storage.getBotConfigs(userId);
-      if (existing.length >= MAX_BOTS_PER_USER) {
-        return res.status(403).json({ error: `You have reached the maximum of ${MAX_BOTS_PER_USER} bots. Please delete an existing bot to create a new one.` });
+      const limits = getLimitsForUser((req as any).user);
+      if (existing.length >= limits.maxBots) {
+        return res.status(403).json({ error: `You have reached the maximum of ${limits.maxBots} bots. Please delete an existing bot to create a new one.` });
       }
       const { botName } = req.body;
       const config = await storage.createBotConfig(userId, { botName: botName || "My Bot" });
@@ -554,10 +555,27 @@ export async function registerRoutes(
     }
   });
 
-  function widgetCors(req: Request, res: Response, next: NextFunction) {
+  async function widgetCors(req: Request, res: Response, next: NextFunction) {
     const origin = req.headers.origin;
+    const widgetKey = (req.params as any)?.widgetKey;
+    if (widgetKey) {
+      try {
+        const cfg = await storage.getBotByWidgetKey(widgetKey);
+        const allowed = (cfg?.widgetAllowedOrigins || []).map(s => s.trim()).filter(Boolean);
+        if (allowed.length > 0) {
+          if (!origin || !allowed.includes(origin)) {
+            return res.status(403).json({ error: "Origin not allowed for this widget." });
+          }
+        }
+      } catch (err) {
+        // Fail-closed: if we cannot verify the configured allowlist, refuse the request
+        // rather than silently allowing every origin through.
+        return res.status(503).json({ error: "Widget access check temporarily unavailable." });
+      }
+    }
     if (origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
       res.setHeader("Access-Control-Max-Age", "86400");

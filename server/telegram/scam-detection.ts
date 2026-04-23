@@ -4,6 +4,7 @@ import { log } from "../index";
 import type { BotConfig } from "@shared/schema";
 import type { BotInstance } from "./types";
 import { openai, sendBotMessage } from "./utils";
+import { tryConsumeAiBudget } from "../ai-budget";
 import { normalizeUnicode, hasHomoglyphEvasion, checkNameImpersonation } from "./normalization";
 import { scamPatterns, runAllPatterns, getPatternReason, detectFinancialHypeSignals, isFinancialShillHype } from "./scam-patterns";
 
@@ -91,7 +92,14 @@ export function learnedPatternThreshold(sensitivity: ScamSensitivity): number {
   return 3;
 }
 
-export async function aiScamCheck(text: string, senderRole: string, sensitivity: ScamSensitivity = "medium"): Promise<{ isScam: boolean; reason: string }> {
+export async function aiScamCheck(text: string, senderRole: string, sensitivity: ScamSensitivity = "medium", botConfigId: number = 0): Promise<{ isScam: boolean; reason: string }> {
+  if (botConfigId > 0) {
+    const allowed = await tryConsumeAiBudget(botConfigId);
+    if (!allowed) {
+      log(`AI scam check skipped (daily budget exhausted) for bot ${botConfigId}`, "ai-budget");
+      return { isScam: false, reason: "ai_budget_exhausted" };
+    }
+  }
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -511,7 +519,7 @@ export async function detectAndHandleScam(
   const aiContext = isImpersonator
     ? `[SUSPICIOUS: This user's display name "${userName}" closely matches the bot/group name. Non-admins impersonating official accounts is a common scam tactic. Be extra vigilant.]\n\n${normalized}`
     : normalized;
-  const { isScam, reason } = await aiScamCheck(aiContext, "regular_user", sensitivity);
+  const { isScam, reason } = await aiScamCheck(aiContext, "regular_user", sensitivity, botConfigId);
   if (!isScam) {
     const hasSoftSignals = hit("softCollaborationInvite") || hit("dmSolicitation") || hit("fakeExchangeListing") || hit("channelManagementPitch") || hasFinancialShillHypeResult || hit("investmentServicePitch");
     if (sensitivity !== "low" && (reason === "unparseable" || reason === "error") && hasSoftSignals) {

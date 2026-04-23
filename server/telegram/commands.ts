@@ -9,6 +9,7 @@ import { runDeterministicScamCheck, extractKeyPhrases, clearLearnedPatternsCache
 import type { ChatMessage } from "./conversation-history";
 import { getTokenPrice, queryBankr, isCryptoQuery } from "./bankr";
 import { triageMessage } from "./calibration";
+import { tryConsumeAiBudget } from "../ai-budget";
 
 export { sendBotMessage };
 
@@ -211,7 +212,7 @@ async function handleReportCommand(bot: TelegramBot, msg: TelegramBot.Message, c
     if (deterministicCheck.isScam) {
       assessment = { shouldDelete: true, reason: deterministicCheck.reason, category: "SCAM_PROMOTION" };
     } else {
-      assessment = await evaluateReportedMessage(reportedText, reportedAuthor, config, groupRecord?.name || "Unknown", reportReason);
+      assessment = await evaluateReportedMessage(reportedText, reportedAuthor, config, groupRecord?.name || "Unknown", reportReason, botConfigId);
       if (assessment.category === "UNKNOWN") {
         assessment = { shouldDelete: true, reason: "Reported by group member — removed for review", category: "REPORTED" };
       }
@@ -286,7 +287,8 @@ async function evaluateReportedMessage(
   author: string,
   config: BotConfig,
   groupName: string,
-  reportReason: string
+  reportReason: string,
+  botConfigId: number,
 ): Promise<{ shouldDelete: boolean; reason: string; category: string }> {
   let contextInfo = "";
   if (config.globalContext?.trim()) {
@@ -314,6 +316,10 @@ Respond in this exact JSON format only:
 
 ALWAYS recommend deletion (shouldDelete: true) for SPAM, SCAM_PROMOTION, and INAPPROPRIATE messages.`;
 
+  const allowedReport = await tryConsumeAiBudget(botConfigId);
+  if (!allowedReport) {
+    return { shouldDelete: false, reason: "Could not evaluate (daily AI budget exhausted) - flagged for admin review.", category: "UNKNOWN" };
+  }
   const response = await openai.chat.completions.create({
     model: "gpt-5.2",
     messages: [{ role: "user", content: prompt }],
@@ -414,6 +420,10 @@ Reply with ONLY "RESPOND" or "SKIP".`;
       const timeout = setTimeout(() => controller.abort(), 5000);
 
       try {
+        const allowedTriage = await tryConsumeAiBudget(botConfigId);
+        if (!allowedTriage) {
+          return false;
+        }
         const response = await openai.chat.completions.create({
           model: "gpt-5-mini",
           messages: [{ role: "user", content: triagePrompt }],
@@ -643,6 +653,11 @@ ${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}${
 
   messages.push({ role: "user", content: `${userName} says: ${userMessage}` });
 
+  const allowedAi = await tryConsumeAiBudget(botConfigId);
+  if (!allowedAi) {
+    log(`AI response skipped (daily budget exhausted) for bot ${botConfigId}`, "ai-budget");
+    return "I'm taking a short break for the day to keep things sustainable. Please try again after the daily reset.";
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
 

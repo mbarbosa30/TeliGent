@@ -24,6 +24,8 @@ export async function runMigrations() {
     await ensureFeedbackColumnsAndTable(client);
     await ensureScamSensitivityColumn(client);
     await ensureScamAllowlistTable(client);
+    await ensureWidgetAllowedOriginsColumn(client);
+    await ensureAiUsageDailyTable(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -556,6 +558,27 @@ async function ensureScamAllowlistTable(client: any) {
     )
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_scam_allowlist_bot_config_id ON scam_allowlist (bot_config_id)`);
+}
+
+async function ensureWidgetAllowedOriginsColumn(client: any) {
+  if (!(await columnExists(client, "bot_configs", "widget_allowed_origins"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN widget_allowed_origins TEXT[] NOT NULL DEFAULT '{}'`);
+    log("Added widget_allowed_origins to bot_configs");
+  }
+}
+
+async function ensureAiUsageDailyTable(client: any) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ai_usage_daily (
+      id SERIAL PRIMARY KEY,
+      bot_config_id INTEGER NOT NULL REFERENCES bot_configs(id) ON DELETE CASCADE,
+      usage_date TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_usage_daily_unique ON ai_usage_daily (bot_config_id, usage_date)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_date ON ai_usage_daily (usage_date)`);
 }
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {

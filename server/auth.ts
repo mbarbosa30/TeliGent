@@ -62,8 +62,14 @@ export function setupAuth(app: Express) {
       }),
       secret: (() => {
         const secret = process.env.SESSION_SECRET;
-        if (!secret && process.env.NODE_ENV === "production") {
-          throw new Error("SESSION_SECRET environment variable must be set in production");
+        const isProd = process.env.NODE_ENV === "production";
+        if (isProd) {
+          if (!secret) {
+            throw new Error("SESSION_SECRET environment variable must be set in production");
+          }
+          if (secret === "telegent-dev-secret-key" || secret.length < 32) {
+            throw new Error("SESSION_SECRET must be a strong unique value (>=32 chars) in production — refusing to boot");
+          }
         }
         return secret || "telegent-dev-secret-key";
       })(),

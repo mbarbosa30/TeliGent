@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { log } from "../index";
 import { openai } from "./utils";
+import { tryConsumeAiBudget } from "../ai-budget";
 import type { ProactivePrompt } from "@shared/schema";
 import { FEEDBACK_THEMES } from "./proactive";
 
@@ -24,7 +25,12 @@ export async function captureFeedbackReply(params: {
   let sentiment = "neutral";
   let summary = text.slice(0, 240);
 
+  const allowed = await tryConsumeAiBudget(botConfigId);
+  if (!allowed) {
+    log(`Feedback classification skipped (daily AI budget exhausted) for bot ${botConfigId}`, "ai-budget");
+  }
   try {
+    if (!allowed) throw new Error("ai_budget_exhausted");
     const aiPrompt = `Classify this Telegram member reply to a community feedback question.
 
 Theme being asked about: ${themeHint}
@@ -89,6 +95,10 @@ export async function generateFeedbackDigest(botConfigId: number, sinceDays = 14
   const items = await storage.listFeedbackItems(botConfigId, { sinceDays, limit: 80 });
   if (items.length === 0) return "No feedback collected yet in this window.";
   const sample = items.slice(0, 40).map(i => `- [${i.theme || "?"}|${i.sentiment || "?"}|${i.category || "?"}] ${i.summary || i.rawText.slice(0, 160)}`).join("\n");
+  const allowed = await tryConsumeAiBudget(botConfigId);
+  if (!allowed) {
+    return "Daily AI budget exhausted. Try again after the daily reset.";
+  }
   try {
     const resp = await openai.chat.completions.create({
       model: "gpt-5-mini",

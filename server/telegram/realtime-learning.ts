@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { log } from "../index";
 import { openai } from "./utils";
+import { tryConsumeAiBudget } from "../ai-budget";
 
 const MIN_MESSAGE_LENGTH = 80;
 const LEARN_COOLDOWN_MS = 5 * 60 * 1000;
@@ -47,6 +48,12 @@ async function doLearn(
   if (learnedEntries.length >= MAX_LEARNED_PER_BOT) return;
 
   const existingTitles = existingEntries.map(e => e.title.toLowerCase());
+
+  const allowed = await tryConsumeAiBudget(botConfigId);
+  if (!allowed) {
+    log(`Real-time learning skipped (daily AI budget exhausted) for bot ${botConfigId}`, "ai-budget");
+    return;
+  }
 
   try {
     const response = await openai.chat.completions.create({

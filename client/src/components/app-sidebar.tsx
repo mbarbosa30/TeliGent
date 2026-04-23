@@ -160,9 +160,12 @@ export function AppSidebar() {
             </Button>
           </div>
         )}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary" className="text-xs font-mono">v2.0</Badge>
-          <span>TeliGent</span>
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs font-mono">v2.0</Badge>
+            <span>TeliGent</span>
+          </div>
+          <Link href="/admin" data-testid="link-nav-admin" className="hover:underline">Admin</Link>
         </div>
       </SidebarFooter>
     </Sidebar>

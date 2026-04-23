@@ -122,6 +122,10 @@ app.use((req, res, next) => {
     }
     schedulerRunning = true;
     try {
+      const { flushAiUsage, maybeRollover } = await import("./ai-budget");
+      // Flush BEFORE rollover so any prior-day usage is persisted before the in-memory cache resets.
+      await flushAiUsage();
+      maybeRollover();
       const { maybeRunProactiveForBot } = await import("./telegram/proactive");
       const { runRewardsForBot } = await import("./telegram/rewards");
       const { processPendingReferrals } = await import("./telegram/referrals");

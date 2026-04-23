@@ -38,6 +38,12 @@ function pickFeedbackTheme(config: BotConfig, recentThemes: string[]): string | 
 }
 
 async function generateFeedbackQuestion(config: BotConfig, theme: string, topKbTopic: string | null): Promise<{ question: string; rationale: string }> {
+  const { tryConsumeAiBudget } = await import("../ai-budget");
+  const allowed = await tryConsumeAiBudget(config.id);
+  if (!allowed) {
+    log(`Proactive feedback question skipped (daily AI budget exhausted) for bot ${config.id}`, "ai-budget");
+    return { question: `How's it going? Reply here with anything on your mind.`, rationale: "ai_budget_exhausted" };
+  }
   const themeLabel = THEME_LABELS[theme] || theme;
   const personality = (config.personality && config.personality.trim()) ? `\nYour voice: ${config.personality.slice(0, 240)}` : "";
   const ctx = (config.globalContext && config.globalContext.trim()) ? `\nProject context: ${config.globalContext.slice(0, 400)}` : "";
@@ -165,6 +171,13 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
 Write ONE short, friendly question (under 200 chars) you can post to the group to gather members' real opinions or experience on this topic. Avoid em dashes. Be casual. Avoid generic filler. No emoji-only.
 
 Output JSON only: {"question": "...", "rationale": "why we ask"}`;
+          const { tryConsumeAiBudget } = await import("../ai-budget");
+          const allowed = await tryConsumeAiBudget(config.id);
+          if (!allowed) {
+            log(`Proactive pattern question skipped (daily AI budget exhausted) for bot ${config.id}`, "ai-budget");
+            perGroup.push({ groupId: group.id, outcome: "ai_budget_exhausted" });
+            continue;
+          }
           const resp = await openai.chat.completions.create({
             model: "gpt-5-mini",
             messages: [{ role: "user", content: prompt }],

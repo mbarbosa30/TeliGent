@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useBot } from "@/hooks/use-bot";
@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Copy, Check, Code, MessageSquare, Clock, ExternalLink } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Loader2, Copy, Check, Code, MessageSquare, Clock, ExternalLink, ShieldCheck } from "lucide-react";
 
 export default function WidgetPage() {
   const { selectedBotId, selectedBot } = useBot();
@@ -53,6 +55,26 @@ export default function WidgetPage() {
 
   const widgetEnabled = config?.widgetEnabled;
   const widgetKey = config?.widgetKey;
+  const [originsText, setOriginsText] = useState("");
+  useEffect(() => {
+    if (config) {
+      setOriginsText(((config.widgetAllowedOrigins as string[]) || []).join("\n"));
+    }
+  }, [config?.id, config?.widgetAllowedOrigins?.length]);
+
+  const saveOriginsMutation = useMutation({
+    mutationFn: async () => {
+      const list = originsText.split("\n").map(s => s.trim()).filter(Boolean);
+      await apiRequest("PATCH", `/api/bots/${selectedBotId}/config`, { widgetAllowedOrigins: list });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "config"] });
+      toast({ title: "Allowed origins saved", description: "Widget access list updated." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save allowed origins.", variant: "destructive" });
+    },
+  });
   const domain = window.location.origin;
   const embedCode = `<script src="${domain}/widget.js" data-widget-key="${widgetKey || "YOUR_KEY"}"></script>`;
 
@@ -149,6 +171,39 @@ export default function WidgetPage() {
                 <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                   <ExternalLink className="h-3 w-3" />
                   <span>Widget Key: <code className="font-mono">{widgetKey.substring(0, 12)}...</code></span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4" />
+                  Allowed Origins
+                </CardTitle>
+                <CardDescription>
+                  Restrict where the widget can be embedded. One full origin per line (e.g. https://example.com). Leave empty to allow any origin.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Label htmlFor="origins" className="sr-only">Allowed origins</Label>
+                <Textarea
+                  id="origins"
+                  value={originsText}
+                  onChange={(e) => setOriginsText(e.target.value)}
+                  placeholder={"https://yoursite.com\nhttps://www.yoursite.com"}
+                  rows={4}
+                  className="font-mono text-sm"
+                  data-testid="textarea-allowed-origins"
+                />
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => saveOriginsMutation.mutate()}
+                    disabled={saveOriginsMutation.isPending}
+                    data-testid="button-save-origins"
+                  >
+                    {saveOriginsMutation.isPending ? "Saving..." : "Save allowed origins"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
