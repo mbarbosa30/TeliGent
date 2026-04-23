@@ -390,13 +390,17 @@ async function handleNewMembers(msg: TelegramBot.Message, instance: BotInstance)
     const isAlreadyTracked = existingGroups.some((g: any) => g.telegramChatId === chatId);
     if (!isAlreadyTracked) {
       const { getLimitsForUser } = await import("../limits");
-      const owner = await storage.getUser(userId).catch(() => null);
+      const owner = await storage.getUserById(userId).catch(() => null);
       const limits = getLimitsForUser(owner);
       if (existingGroups.length >= limits.maxGroupsPerBot) {
         await storage.createActivityLog(botConfigId, userId, {
+          groupId: null,
           type: "quota_exceeded",
-          message: `Group "${chatTitle}" not tracked: bot is at the ${limits.maxGroupsPerBot}-group limit for the current plan.`,
-          severity: "warning",
+          userName: "System",
+          userMessage: `Group "${chatTitle}" not tracked: bot is at the ${limits.maxGroupsPerBot}-group limit for the current plan.`,
+          botResponse: null,
+          isReport: false,
+          metadata: JSON.stringify({ chatId, chatTitle, cap: limits.maxGroupsPerBot }),
         }).catch(() => {});
         return; // Skip upsert + welcome message; owner sees the warning in activity feed.
       }

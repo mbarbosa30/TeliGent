@@ -10,7 +10,7 @@ type FeatureKey = keyof Pick<
 export function useFeatureAllowed(feature: FeatureKey): { allowed: boolean; tier: string; loaded: boolean } {
   const { data, isLoading } = useLimits();
   if (isLoading || !data) return { allowed: true, tier: "free", loaded: false };
-  return { allowed: !!data.limits[feature], tier: data.tier, loaded: true };
+  return { allowed: !!data.limits[feature], tier: (data as any).plan ?? "free", loaded: true };
 }
 
 export function TierLockedHint({ feature, requiredPlan = "Pro" }: { feature: FeatureKey; requiredPlan?: string }) {
