@@ -203,6 +203,10 @@ export function registerAuthRoutes(app: Express) {
       const { passwordHash: _, ...safeUser } = user;
       const periodEnd = (safeUser as any).planPeriodEnd ? new Date((safeUser as any).planPeriodEnd as any).getTime() : 0;
       const planActive = (safeUser as any).plan && (safeUser as any).plan !== "free" && periodEnd > Date.now();
+      // Normalize stale paid plans to Free at read-time so dashboard badges
+      // can't drift past the period end (especially for crypto rails which
+      // have no Stripe webhook to mark expiry).
+      if (!planActive) (safeUser as any).plan = "free";
       (safeUser as any).teliPaid = !!((safeUser as any).teliPaid && planActive);
       res.json(safeUser);
     } catch (err: any) {

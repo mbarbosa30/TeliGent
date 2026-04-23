@@ -705,7 +705,13 @@ export async function registerRoutes(
   // resilient to callers that don't authenticate as a TeliGent user.
   const agentLimitMaxFn = (req: Request): number => {
     const isVerified = !!(req as any).selfVerified;
-    let cap = isVerified ? _defaultLimits.agentApiTrustedRateLimitPerMin : _defaultLimits.agentApiRateLimitPerMin;
+    // Prefer the targeted bot owner's tier-derived caps so Pro/Business owners
+    // get their promised agent throughput. Fall back to Free defaults for
+    // unauthenticated/unknown requests.
+    const ownerLimits = (req as any).agentOwnerLimits as { agentApiRateLimitPerMin: number; agentApiTrustedRateLimitPerMin: number } | undefined;
+    const baseUntrusted = ownerLimits?.agentApiRateLimitPerMin ?? _defaultLimits.agentApiRateLimitPerMin;
+    const baseTrusted = ownerLimits?.agentApiTrustedRateLimitPerMin ?? _defaultLimits.agentApiTrustedRateLimitPerMin;
+    let cap = isVerified ? baseTrusted : baseUntrusted;
     const ownerTeli = !!(req as any).ownerTeliPaid;
     if (ownerTeli) cap *= 2;
     return cap;
@@ -733,6 +739,13 @@ export async function registerRoutes(
     if (!owner) return;
     // Tier check: agent API must be enabled for the targeted bot's owner.
     requirePermission(owner, "allowAgentApi");
+    // Expose owner's tier limits to the rate limiter so Pro/Business owners
+    // receive their promised throughput (Free baseline would otherwise apply).
+    const ownerLimits = getLimitsForUser(owner);
+    (req as any).agentOwnerLimits = {
+      agentApiRateLimitPerMin: ownerLimits.agentApiRateLimitPerMin,
+      agentApiTrustedRateLimitPerMin: ownerLimits.agentApiTrustedRateLimitPerMin,
+    };
     if (owner.teliPaid && isPlanActive(owner)) (req as any).ownerTeliPaid = true;
   }
 
