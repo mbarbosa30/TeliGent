@@ -42,7 +42,7 @@ async function issueAndSendVerificationEmail(user: User, origin: string): Promis
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
   await db.insert(emailVerificationTokens).values({ tokenHash, userId: user.id, expiresAt });
-  const link = `${origin}/verify-email?token=${encodeURIComponent(token)}`;
+  const link = `${origin}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
   await sendVerificationEmail(user.email, link).catch((err) => {
     console.error("[auth] verification email send failed:", err?.message || err);
   });
@@ -243,7 +243,13 @@ export function registerAuthRoutes(app: Express) {
           console.error("Session save error:", err);
           return res.status(500).json({ message: "Session error" });
         }
-        await issueAndSendVerificationEmail(user, getEmailOrigin(req));
+        try {
+          await issueAndSendVerificationEmail(user, getEmailOrigin(req));
+        } catch (mailErr: any) {
+          // Don't fail the registration if email delivery hiccups — the user
+          // can request a fresh verification link from the Account page.
+          console.error("[auth] verification email failed at register:", mailErr?.message || mailErr);
+        }
         const { passwordHash: _, ...safeUser } = user;
         res.status(201).json(safeUser);
       });
