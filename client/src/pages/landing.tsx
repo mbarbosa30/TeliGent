@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Bot, Shield, Brain, Zap, Users, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown, Cpu, Trophy, Code2, LineChart } from "lucide-react";
@@ -238,8 +239,8 @@ const FAQ_ITEMS = [
     answer: "TeliGent uses a multi-layered approach combining deterministic pattern matching (detecting phishing, DM solicitation, pump schemes, impersonation) with AI-powered analysis. It catches scam messages that bypass simple keyword filters by understanding context, homoglyph evasion, and message structure."
   },
   {
-    question: "Is TeliGent free to use?",
-    answer: "Yes, TeliGent is free to set up and use. You just need your own Telegram bot token from BotFather. No credit card is required to get started."
+    question: "How much does TeliGent cost?",
+    answer: "There's a Free tier (1 bot, 50 KB entries, 200 AI calls/day). Pro is $19/mo or $190/yr (3 bots, embed widget, Bankr, agent API, ERC-8004). Business is $79/mo or $790/yr (10 bots, expanded quotas). Cards via Stripe (Apple Pay supported), or pay in USDC or $TELI on Base. Paying in $TELI gives you 25% off, a TELI badge, +20% rewards multiplier, and 2x agent API rate limits."
   },
   {
     question: "What types of communities can use TeliGent?",
@@ -274,6 +275,112 @@ const FAQ_ITEMS = [
     answer: "Yes. TeliGent exposes its scam detection and community-health signals as an agent-to-agent API. It is discoverable on the OpenServ marketplace, has a verifiable on-chain identity via ERC-8004, and accepts USDC payments on Base via Locus. Self Protocol verified callers get pricing discounts and higher rate limits."
   },
 ];
+
+const PRICING_PLANS = [
+  {
+    name: "Free",
+    monthly: 0,
+    annual: 0,
+    teliMonthly: 0,
+    description: "Try TeliGent on your community.",
+    features: ["1 bot", "50 KB entries", "200 AI calls / day", "2 groups per bot", "Rewards loop", "Scam detection"],
+    cta: "Start free",
+    highlight: false,
+  },
+  {
+    name: "Pro",
+    monthly: 19,
+    annual: 190,
+    teliMonthly: 14,
+    description: "For active communities and crypto teams.",
+    features: ["3 bots", "250 KB entries", "1,500 AI calls / day", "10 groups per bot", "Embed widget", "Bankr crypto data", "Master Agent API", "ERC-8004 registry"],
+    cta: "Go Pro",
+    highlight: true,
+  },
+  {
+    name: "Business",
+    monthly: 79,
+    annual: 790,
+    teliMonthly: 59,
+    description: "For studios running many communities.",
+    features: ["10 bots", "1,000 KB entries", "8,000 AI calls / day", "50 groups per bot", "Everything in Pro", "Priority limits"],
+    cta: "Go Business",
+    highlight: false,
+  },
+];
+
+function PricingSection() {
+  const [period, setPeriod] = useState<"monthly" | "annual">("monthly");
+  return (
+    <section id="pricing" className="py-16 px-6 border-t">
+      <div className="max-w-5xl mx-auto space-y-8">
+        <div className="text-center space-y-2">
+          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Pricing</p>
+          <h2 className="text-2xl font-bold tracking-tight">Simple plans, two ways to pay</h2>
+          <p className="text-muted-foreground">Cards via Stripe (Apple Pay supported) or stablecoin/$TELI on Base. Pay in $TELI for 25% off and extra perks.</p>
+        </div>
+        <div className="flex items-center justify-center">
+          <div className="inline-flex border" role="tablist">
+            <button
+              type="button"
+              onClick={() => setPeriod("monthly")}
+              className={`px-4 py-2 text-xs uppercase tracking-wider ${period === "monthly" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              data-testid="button-pricing-monthly"
+            >Monthly</button>
+            <button
+              type="button"
+              onClick={() => setPeriod("annual")}
+              className={`px-4 py-2 text-xs uppercase tracking-wider ${period === "annual" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              data-testid="button-pricing-annual"
+            >Annual · 2 months free</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {PRICING_PLANS.map((p) => {
+            const usd = period === "annual" ? p.annual : p.monthly;
+            const teliUsd = period === "annual" ? Math.round(p.teliMonthly * 10) : p.teliMonthly;
+            return (
+              <Card key={p.name} className={p.highlight ? "border-foreground" : ""} data-testid={`card-pricing-${p.name.toLowerCase()}`}>
+                <CardContent className="pt-6 space-y-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-bold">{p.name}</h3>
+                      {p.highlight && <Badge variant="secondary" className="text-xs uppercase">Popular</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{p.description}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="font-mono text-3xl font-bold">
+                      ${usd}
+                      <span className="text-base text-muted-foreground font-normal">/{period === "annual" ? "yr" : "mo"}</span>
+                    </div>
+                    {p.monthly > 0 && (
+                      <p className="text-xs text-muted-foreground">or ${teliUsd} in $TELI · 25% off</p>
+                    )}
+                  </div>
+                  <ul className="space-y-1.5 text-sm">
+                    {p.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2">
+                        <Check className="h-3.5 w-3.5 mt-1 shrink-0 text-muted-foreground" />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Button asChild className="w-full" variant={p.highlight ? "default" : "outline"} data-testid={`button-pricing-${p.name.toLowerCase()}`}>
+                    <a href="#auth">{p.cta}</a>
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+        <div className="border p-4 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">Pay in $TELI on Base for more:</span> 25% discount on every plan, a TELI badge across the dashboard, +20% on rewards paid out by your bots, and 2x rate limit on the Master Agent API. The token is settled to your bot wallet — TeliGent never custodies funds.
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function FAQSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -323,6 +430,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-4">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-features">Features</a>
+            <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-pricing">Pricing</a>
             <a href="#faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-faq">FAQ</a>
             <a href="#auth" className="text-sm text-muted-foreground hover:text-foreground transition-colors" data-testid="link-sign-in">Sign In</a>
           </div>
@@ -345,7 +453,7 @@ export default function LandingPage() {
               <a href="#auth">Get Started Free</a>
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">No credit card required. Bring your own Telegram bot token.</p>
+          <p className="text-xs text-muted-foreground">Free tier forever. Pro from $19/mo. Pay in $TELI for 25% off and a +20% rewards multiplier.</p>
         </div>
       </section>
 
@@ -447,6 +555,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <PricingSection />
 
       <FAQSection />
 

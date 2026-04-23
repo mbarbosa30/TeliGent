@@ -29,6 +29,13 @@ A checklist of operator-controlled settings to flip before going live. Many of t
 | `OPENSERV_API_KEY` | unset | OpenServ marketplace endpoints respond with "not configured"; the rest of the app keeps working. |
 | `SYNTHESIS_API_KEY` | unset | Any Synthesis-backed feature degrades to its non-AI fallback. |
 | `TELEGRAM_BOT_TOKEN` | unset | The platform-wide demo bot is not started; per-bot tokens stored in `bot_configs` are unaffected. |
+| `STRIPE_SECRET_KEY` | unset | Card checkout disabled; `/api/billing/checkout` returns 503 and the Pay-with-card button is hidden. Crypto rail keeps working. |
+| `STRIPE_PUBLISHABLE_KEY` | unset | Surfaced via `/api/me/limits`; not strictly required server-side but useful for future client-side embeds. |
+| `STRIPE_WEBHOOK_SECRET` | unset | `/api/billing/webhook` rejects any incoming event (signature check fails). Plan activation will not happen via Stripe until set. |
+| `STRIPE_PRO_PRICE_ID_MONTHLY` / `..._ANNUAL` / `STRIPE_BUSINESS_PRICE_ID_MONTHLY` / `..._ANNUAL` | unset | Checkout returns 400 ("Missing price for plan"). Required to map a Stripe price back to our plan tiers. |
+| `BASE_RPC_URL` | `https://mainnet.base.org` | Used by the crypto poller. Override if you have a private RPC for higher throughput. |
+| `PLATFORM_RECEIVE_ADDRESS` | derived from `BASE_WALLET_PRIVATE_KEY` (or `CELO_WALLET_PRIVATE_KEY`) | If neither a private key nor an explicit address is set, `/api/billing/crypto/intent` returns 503 and crypto rail is disabled. |
+| `USD_PER_TELI` | `0.10` | Fallback price used to convert plan USD into $TELI when `platform_settings.usd_per_teli` is unset. Operators can override at runtime via Admin > Plans. |
 
 ## 3. Per-bot owner setup
 
@@ -41,6 +48,22 @@ Done from Settings inside the app:
 - Rewards & Engagement: only flip on after configuring chain, token contract, top N, and amount per winner.
 - Community Feedback Loop: enable themes you actually want to act on.
 - ERC-8004 Bot Registration on Celo: optional; needs `CELO_WALLET_PRIVATE_KEY` and on-chain gas.
+
+## 3b. Stripe setup (cards / Apple Pay)
+
+Required only if you want to accept card payments. The crypto rail (USDC + $TELI on Base) works independently.
+
+1. In the Stripe dashboard, create two recurring products: **TeliGent Pro** and **TeliGent Business**, each with a monthly and an annual price. Note the four `price_...` IDs.
+2. Set the four `STRIPE_*_PRICE_ID_*` secrets to those price IDs, plus `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY`.
+3. In Stripe → Developers → Webhooks, add an endpoint pointing to `https://<your-domain>/api/billing/webhook`. Subscribe to: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`. Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
+4. Enable Apple Pay in Stripe → Payment methods (no extra code change needed — Stripe Checkout shows it automatically when the buyer's device supports it).
+5. Test the end-to-end flow with a Stripe test card from a logged-in account on `/billing`. After webhook delivery, the user's plan should show as Pro/Business in the sidebar and `/api/me/limits`.
+
+## 3c. Crypto rail setup (USDC + $TELI on Base)
+
+1. Set `PLATFORM_RECEIVE_ADDRESS` (or `BASE_WALLET_PRIVATE_KEY` to derive it). All plan payments are settled to this single address.
+2. Optional: set `BASE_RPC_URL` to a private Base RPC for higher rate limits.
+3. From Admin > Plans, set the current USD-per-$TELI price. The poller runs once per scheduler tick (default 15 min) and matches incoming Transfer events by exact amount (per-intent unique-suffix wei).
 
 ## 4. Deployment configuration (Replit Deployments)
 

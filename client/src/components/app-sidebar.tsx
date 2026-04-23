@@ -11,7 +11,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, BookOpen, Settings, Activity, Bot, Shield, LogOut, Sparkles, Plus, ChevronDown, UserCircle, Brain, Code, Cpu, TrendingUp } from "lucide-react";
+import { LayoutDashboard, BookOpen, Settings, Activity, Bot, Shield, LogOut, Sparkles, Plus, ChevronDown, UserCircle, Brain, Code, Cpu, TrendingUp, CreditCard } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +39,7 @@ const navItems = [
   { title: "Widget", url: "/widget", icon: Code },
   { title: "Master Agent", url: "/agent", icon: Cpu },
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Billing", url: "/billing", icon: CreditCard },
 ];
 
 export function AppSidebar() {
@@ -162,8 +163,12 @@ export function AppSidebar() {
         )}
         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs font-mono">v2.0</Badge>
-            <span>TeliGent</span>
+            <Link href="/billing" data-testid="link-plan-badge" className="hover:underline">
+              <Badge variant="secondary" className="text-xs uppercase" data-testid="badge-plan">{user?.plan || "free"}</Badge>
+            </Link>
+            {user?.teliPaid && (
+              <Badge className="text-xs bg-foreground text-background" data-testid="badge-teli">TELI</Badge>
+            )}
           </div>
           <Link href="/admin" data-testid="link-nav-admin" className="hover:underline">Admin</Link>
         </div>

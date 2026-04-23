@@ -12,10 +12,19 @@ import crypto from "crypto";
 
 const serverStartTime = Date.now();
 
-import { getLimitsForUser, getLimitsForBot, getDefaultLimits } from "./limits";
+import { getLimitsForUser, getLimitsForBot, getDefaultLimits, TIER_LIMITS, TIER_PRICING, TELI_DISCOUNT_PCT, TELI_REWARDS_BOOST_PCT, getEffectivePlan, type PlanTier } from "./limits";
+import { PaywallError, requirePermission, requireQuota, paywallErrorMiddleware } from "./billing/gates";
+import * as Stripe from "./billing/stripe";
+import * as CryptoBilling from "./billing/crypto";
 
 function getUserId(req: any): string {
   return req.session?.userId;
+}
+
+async function loadUser(req: Request) {
+  const userId = getUserId(req);
+  if (!userId) return null;
+  return storage.getUserById(userId);
 }
 
 function createApiRateLimiter(windowMs: number, maxRequests: number) {
@@ -97,18 +106,17 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bots", isAuthenticated, apiRateLimit, async (req, res) => {
+  app.post("/api/bots", isAuthenticated, apiRateLimit, async (req, res, next) => {
     try {
       const userId = getUserId(req);
+      const user = await loadUser(req);
       const existing = await storage.getBotConfigs(userId);
-      const limits = getLimitsForUser((req as any).user);
-      if (existing.length >= limits.maxBots) {
-        return res.status(403).json({ error: `You have reached the maximum of ${limits.maxBots} bots. Please delete an existing bot to create a new one.` });
-      }
+      requireQuota(user, "maxBots", existing.length);
       const { botName } = req.body;
       const config = await storage.createBotConfig(userId, { botName: botName || "My Bot" });
       res.status(201).json(config);
     } catch (err: any) {
+      if (err instanceof PaywallError) return next(err);
       res.status(400).json({ error: err.message });
     }
   });
@@ -148,13 +156,16 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/bots/:botId/config", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+  app.patch("/api/bots/:botId/config", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res, next) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const partial = insertBotConfigSchema.partial().parse(req.body);
       if (partial.scamSensitivity !== undefined && !["low", "medium", "high"].includes(partial.scamSensitivity)) {
         return res.status(400).json({ error: "scamSensitivity must be one of low, medium, high" });
       }
+      const user = await loadUser(req);
+      if (partial.widgetEnabled === true) requirePermission(user, "allowWidget");
+      if (partial.bankrEnabled === true) requirePermission(user, "allowBankr");
       const config = await storage.updateBotConfig(botId, partial);
 
       if (partial.botToken !== undefined || partial.isActive !== undefined) {
@@ -185,11 +196,9 @@ export async function registerRoutes(
       const userId = getUserId(req);
       const parsed = insertKnowledgeBaseSchema.omit({ userId: true, botConfigId: true }).parse(req.body);
 
-      const kbLimit = getLimitsForBot(botId).maxKbEntries;
+      const owner = await loadUser(req);
       const existingKb = await storage.getKnowledgeEntries(botId);
-      if (existingKb.length >= kbLimit) {
-        return res.status(403).json({ error: `Knowledge base is full (${kbLimit} entries). Delete an entry before adding a new one.` });
-      }
+      requireQuota(owner, "maxKbEntries", existingKb.length);
 
       if (parsed.sourceUrl && parsed.sourceUrl.trim()) {
         try {
@@ -531,13 +540,16 @@ export async function registerRoutes(
 
   const widgetRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.widgetApiRateLimitPerMin);
 
-  app.post("/api/bots/:botId/widget/enable", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+  app.post("/api/bots/:botId/widget/enable", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res, next) => {
     try {
+      const owner = await loadUser(req);
+      requirePermission(owner, "allowWidget");
       const botId = parseInt(req.params.botId as string);
       const widgetKey = crypto.randomBytes(24).toString("hex");
       await storage.updateBotConfig(botId, { widgetEnabled: true, widgetKey });
       res.json({ widgetKey });
     } catch (err: any) {
+      if (err instanceof PaywallError) return next(err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -880,8 +892,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bots/:botId/erc8004/register", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+  app.post("/api/bots/:botId/erc8004/register", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res, next) => {
     try {
+      const owner = await loadUser(req);
+      requirePermission(owner, "allowErc8004");
       const botId = parseInt(req.params.botId as string);
       const { getCeloRegistrationStatus, registerBotOnCelo } = await import("./agent/celo");
       const existing = await getCeloRegistrationStatus(botId);
@@ -897,6 +911,7 @@ export async function registerRoutes(
         explorerUrl: `https://celoscan.io/tx/${result.txHash}`,
       });
     } catch (err: any) {
+      if (err instanceof PaywallError) return next(err);
       console.error(`[erc8004] Registration failed for bot ${req.params.botId}:`, err.message);
       const msg = err.message || "Registration failed";
       if (msg.includes("already registered")) {
@@ -1153,17 +1168,218 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bots/:botId/feedback/digest", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+  app.post("/api/bots/:botId/feedback/digest", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res, next) => {
     try {
+      const owner = await loadUser(req);
+      requirePermission(owner, "allowFeedbackDigest");
       const botId = parseInt(req.params.botId);
       const sinceDays = req.body?.sinceDays ? parseInt(String(req.body.sinceDays)) : 14;
       const { generateFeedbackDigest } = await import("./telegram/feedback");
       const digest = await generateFeedbackDigest(botId, sinceDays);
       res.json({ digest, sinceDays });
     } catch (err: any) {
+      if (err instanceof PaywallError) return next(err);
       res.status(500).json({ error: err.message });
     }
   });
+
+  // ---------------- Billing & subscription routes ----------------
+
+  app.get("/api/me/limits", isAuthenticated, apiRateLimit, async (req, res) => {
+    const user = await loadUser(req);
+    const plan = getEffectivePlan(user);
+    const limits = getLimitsForUser(user);
+    const bots = user ? await storage.getBotConfigs(user.id) : [];
+    res.json({
+      plan,
+      planRail: user?.planRail || "none",
+      planPeriodEnd: user?.planPeriodEnd || null,
+      planCancelAtPeriodEnd: !!user?.planCancelAtPeriodEnd,
+      teliPaid: !!user?.teliPaid,
+      limits,
+      pricing: TIER_PRICING,
+      teliDiscountPct: TELI_DISCOUNT_PCT,
+      teliRewardsBoostPct: TELI_REWARDS_BOOST_PCT,
+      stripeEnabled: Stripe.isStripeEnabled(),
+      cryptoEnabled: CryptoBilling.isCryptoEnabled(),
+      receiveAddress: CryptoBilling.getReceiveAddressPublic(),
+      stripePublishableKey: Stripe.getPublishableKey(),
+      usage: {
+        bots: bots.length,
+        botsLimit: limits.maxBots,
+      },
+    });
+  });
+
+  app.get("/api/billing/history", isAuthenticated, apiRateLimit, async (req, res) => {
+    const user = await loadUser(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const periods = await storage.listPlanPeriodsForUser(user.id, 25);
+    res.json(periods);
+  });
+
+  app.post("/api/billing/checkout", isAuthenticated, apiRateLimit, async (req, res) => {
+    try {
+      const user = await loadUser(req);
+      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      if (!Stripe.isStripeEnabled()) return res.status(503).json({ error: "Card payments are not configured. Use the crypto checkout for now." });
+      const plan = (req.body?.plan as PlanTier) || "pro";
+      const billingPeriod = (req.body?.billingPeriod === "annual" ? "annual" : "monthly") as "monthly" | "annual";
+      if (plan !== "pro" && plan !== "business") return res.status(400).json({ error: "Invalid plan" });
+      const origin = `${req.protocol}://${req.get("host")}`;
+      const result = await Stripe.createCheckoutSession({
+        userId: user.id,
+        email: user.email,
+        customerId: user.stripeCustomerId || null,
+        plan,
+        billingPeriod,
+        origin,
+      });
+      if (!user.stripeCustomerId || user.stripeCustomerId !== result.customerId) {
+        await storage.updateUserPlan(user.id, { stripeCustomerId: result.customerId });
+      }
+      res.json({ url: result.url });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/billing/portal", isAuthenticated, apiRateLimit, async (req, res) => {
+    try {
+      const user = await loadUser(req);
+      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      if (!user.stripeCustomerId) return res.status(400).json({ error: "No card subscription on file." });
+      const origin = `${req.protocol}://${req.get("host")}`;
+      const result = await Stripe.createPortalSession({ customerId: user.stripeCustomerId, origin });
+      res.json({ url: result.url });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Stripe webhook (raw body verified via crypto). No auth.
+  app.post("/api/billing/webhook", async (req, res) => {
+    try {
+      const sig = req.header("stripe-signature");
+      const raw = (req as any).rawBody as Buffer | undefined;
+      if (!raw || !Stripe.verifyWebhookSignature(raw, sig)) {
+        return res.status(400).json({ error: "Invalid signature" });
+      }
+      const event = JSON.parse(raw.toString("utf8"));
+      const obj = event.data?.object;
+      if (event.type === "checkout.session.completed" && obj?.subscription && obj?.customer) {
+        // Force a fetch to get the price id
+        const sub = await Stripe.getSubscription(obj.subscription as string);
+        await applyStripeSubscription(sub);
+      } else if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
+        await applyStripeSubscription(obj);
+      } else if (event.type === "customer.subscription.deleted") {
+        const userId = obj?.metadata?.userId;
+        if (userId) {
+          await storage.updateUserPlan(userId, { plan: "free", planRail: "none", stripeSubscriptionId: null, planCancelAtPeriodEnd: false });
+        }
+      }
+      res.json({ received: true });
+    } catch (err: any) {
+      console.error("[stripe webhook]", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  async function applyStripeSubscription(sub: any) {
+    if (!sub) return;
+    const userId = sub.metadata?.userId;
+    if (!userId) return;
+    const item = sub.items?.data?.[0];
+    const priceId = item?.price?.id;
+    const mapping = Stripe.planFromPriceId(priceId);
+    if (!mapping) return;
+    const status = sub.status as string;
+    const isActive = status === "active" || status === "trialing";
+    const periodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000) : null;
+    await storage.updateUserPlan(userId, {
+      plan: isActive ? mapping.plan : "free",
+      planRail: isActive ? "stripe" : "none",
+      planPeriodEnd: periodEnd,
+      planCancelAtPeriodEnd: !!sub.cancel_at_period_end,
+      stripeSubscriptionId: sub.id,
+      teliPaid: false,
+    });
+    if (isActive && periodEnd) {
+      await storage.createPlanPeriod({
+        userId,
+        plan: mapping.plan,
+        rail: "stripe",
+        billingPeriod: mapping.billingPeriod,
+        teliPaid: false,
+        startsAt: new Date(),
+        endsAt: periodEnd,
+        stripeSubscriptionId: sub.id,
+        reason: `stripe_${status}`,
+      });
+    }
+  }
+
+  app.post("/api/billing/crypto/intent", isAuthenticated, apiRateLimit, async (req, res) => {
+    try {
+      const user = await loadUser(req);
+      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      if (!CryptoBilling.isCryptoEnabled()) return res.status(503).json({ error: "Crypto checkout is not configured." });
+      const plan = (req.body?.plan as PlanTier) || "pro";
+      const billingPeriod = (req.body?.billingPeriod === "annual" ? "annual" : "monthly") as "monthly" | "annual";
+      const rail = (req.body?.rail === "teli" ? "teli" : "usdc") as "usdc" | "teli";
+      if (plan !== "pro" && plan !== "business") return res.status(400).json({ error: "Invalid plan" });
+      const result = await CryptoBilling.createCryptoIntent({ userId: user.id, plan, billingPeriod, rail });
+      res.json({
+        intent: CryptoBilling.formatIntentForDisplay(result.intent),
+        displayAmount: result.displayAmount,
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/billing/crypto/intent/:id", isAuthenticated, apiRateLimit, async (req, res) => {
+    const user = await loadUser(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const id = parseInt(req.params.id);
+    const intent = await storage.getPlanPaymentIntent(id);
+    if (!intent || intent.userId !== user.id) return res.status(404).json({ error: "Not found" });
+    res.json(CryptoBilling.formatIntentForDisplay(intent));
+  });
+
+  app.post("/api/admin/usd-per-teli", isAdminAuthenticated, async (req, res) => {
+    const v = parseFloat(String(req.body?.value || ""));
+    if (!Number.isFinite(v) || v <= 0) return res.status(400).json({ error: "value must be > 0" });
+    await storage.setPlatformSetting("usd_per_teli", v.toString());
+    res.json({ success: true, value: v });
+  });
+
+  app.get("/api/admin/usd-per-teli", isAdminAuthenticated, async (_req, res) => {
+    const v = await CryptoBilling.getUsdPerTeli();
+    res.json({ value: v });
+  });
+
+  app.post("/api/admin/users/:userId/plan", isAdminAuthenticated, async (req, res) => {
+    const userId = req.params.userId;
+    const plan = req.body?.plan as PlanTier;
+    const days = parseInt(String(req.body?.days || "30"));
+    if (!["free", "pro", "business"].includes(plan)) return res.status(400).json({ error: "Invalid plan" });
+    const planPeriodEnd = plan === "free" ? null : new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+    const planRail = plan === "free" ? "none" : "manual";
+    await storage.updateUserPlan(userId, { plan, planRail, planPeriodEnd, teliPaid: !!req.body?.teliPaid, planCancelAtPeriodEnd: false });
+    if (plan !== "free" && planPeriodEnd) {
+      await storage.createPlanPeriod({
+        userId, plan, rail: "manual" as any, billingPeriod: "monthly",
+        teliPaid: !!req.body?.teliPaid,
+        startsAt: new Date(), endsAt: planPeriodEnd,
+        reason: "admin_override",
+      });
+    }
+    res.json({ success: true });
+  });
+
+  app.use(paywallErrorMiddleware);
 
   await startBotEngine(app);
 

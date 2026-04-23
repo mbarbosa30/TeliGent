@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, scamAllowlist, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals, feedbackItems } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, ScamAllowlistEntry, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot, MemberWallet, ContributionScore, InsertContributionScore, RewardDistribution, InsertRewardDistribution, RewardPayout, InsertRewardPayout, ProactivePrompt, InsertProactivePrompt, Referral, InsertReferral, FeedbackItem, InsertFeedbackItem } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, scamAllowlist, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals, feedbackItems, planPaymentIntents, planPeriods, platformSettings } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, ScamAllowlistEntry, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot, MemberWallet, ContributionScore, InsertContributionScore, RewardDistribution, InsertRewardDistribution, RewardPayout, InsertRewardPayout, ProactivePrompt, InsertProactivePrompt, Referral, InsertReferral, FeedbackItem, InsertFeedbackItem, PlanPaymentIntent, InsertPlanPaymentIntent, PlanPeriod, InsertPlanPeriod, PlatformSetting } from "@shared/schema";
 import { eq, desc, and, sql, count, inArray } from "drizzle-orm";
 
 export interface WisdomComponentsPayload {
@@ -60,6 +60,16 @@ export interface IStorage {
   getWidgetConversations(botConfigId: number, limit?: number): Promise<(WidgetConversation & { messageCount: number; lastMessage?: string })[]>;
 
   getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }>;
+  getUserById(userId: string): Promise<User | undefined>;
+  updateUserPlan(userId: string, data: Partial<Pick<User, "plan" | "planRail" | "planPeriodEnd" | "planCancelAtPeriodEnd" | "teliPaid" | "stripeCustomerId" | "stripeSubscriptionId">>): Promise<User | undefined>;
+  createPlanPaymentIntent(data: InsertPlanPaymentIntent): Promise<PlanPaymentIntent>;
+  getPlanPaymentIntent(id: number): Promise<PlanPaymentIntent | undefined>;
+  listPendingPlanPaymentIntents(): Promise<PlanPaymentIntent[]>;
+  markPlanPaymentIntent(id: number, status: "matched" | "expired" | "pending", txHash?: string | null): Promise<PlanPaymentIntent | undefined>;
+  createPlanPeriod(data: InsertPlanPeriod): Promise<PlanPeriod>;
+  listPlanPeriodsForUser(userId: string, limit?: number): Promise<PlanPeriod[]>;
+  getPlatformSetting(key: string): Promise<string | null>;
+  setPlatformSetting(key: string, value: string): Promise<void>;
   adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]>;
   adminGetAllBots(): Promise<(BotConfig & { userEmail?: string })[]>;
   adminGetAllActivityLogs(limit?: number): Promise<(ActivityLog & { botName?: string })[]>;
@@ -380,6 +390,66 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  async getUserById(userId: string): Promise<User | undefined> {
+    const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    return u;
+  }
+
+  async updateUserPlan(userId: string, data: Partial<Pick<User, "plan" | "planRail" | "planPeriodEnd" | "planCancelAtPeriodEnd" | "teliPaid" | "stripeCustomerId" | "stripeSubscriptionId">>): Promise<User | undefined> {
+    const [u] = await db.update(users).set({ ...data, updatedAt: new Date() }).where(eq(users.id, userId)).returning();
+    return u;
+  }
+
+  async createPlanPaymentIntent(data: InsertPlanPaymentIntent): Promise<PlanPaymentIntent> {
+    const [row] = await db.insert(planPaymentIntents).values(data).returning();
+    return row;
+  }
+
+  async getPlanPaymentIntent(id: number): Promise<PlanPaymentIntent | undefined> {
+    const [row] = await db.select().from(planPaymentIntents).where(eq(planPaymentIntents.id, id)).limit(1);
+    return row;
+  }
+
+  async listPendingPlanPaymentIntents(): Promise<PlanPaymentIntent[]> {
+    return db.select().from(planPaymentIntents).where(eq(planPaymentIntents.status, "pending"));
+  }
+
+  async markPlanPaymentIntent(id: number, status: "matched" | "expired" | "pending", txHash?: string | null): Promise<PlanPaymentIntent | undefined> {
+    const update: any = { status };
+    if (status === "matched") {
+      update.matchedAt = new Date();
+      if (txHash) update.txHash = txHash;
+    }
+    // Atomic claim: only transition out of "pending" once. This prevents the crypto
+    // poller from double-crediting the same intent when overlapping ticks both see
+    // a matching transfer.
+    const [row] = await db
+      .update(planPaymentIntents)
+      .set(update)
+      .where(and(eq(planPaymentIntents.id, id), eq(planPaymentIntents.status, "pending")))
+      .returning();
+    return row;
+  }
+
+  async createPlanPeriod(data: InsertPlanPeriod): Promise<PlanPeriod> {
+    const [row] = await db.insert(planPeriods).values(data).returning();
+    return row;
+  }
+
+  async listPlanPeriodsForUser(userId: string, limit = 20): Promise<PlanPeriod[]> {
+    return db.select().from(planPeriods).where(eq(planPeriods.userId, userId)).orderBy(desc(planPeriods.startsAt)).limit(limit);
+  }
+
+  async getPlatformSetting(key: string): Promise<string | null> {
+    const [row] = await db.select().from(platformSettings).where(eq(platformSettings.key, key)).limit(1);
+    return row?.value ?? null;
+  }
+
+  async setPlatformSetting(key: string, value: string): Promise<void> {
+    await db.insert(platformSettings).values({ key, value })
+      .onConflictDoUpdate({ target: platformSettings.key, set: { value, updatedAt: new Date() } });
+  }
+
   async adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]> {
     const rows = await db.select({
       id: users.id,
@@ -387,6 +457,13 @@ export class DatabaseStorage implements IStorage {
       firstName: users.firstName,
       lastName: users.lastName,
       profileImageUrl: users.profileImageUrl,
+      plan: users.plan,
+      planRail: users.planRail,
+      planPeriodEnd: users.planPeriodEnd,
+      planCancelAtPeriodEnd: users.planCancelAtPeriodEnd,
+      teliPaid: users.teliPaid,
+      stripeCustomerId: users.stripeCustomerId,
+      stripeSubscriptionId: users.stripeSubscriptionId,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     }).from(users).orderBy(desc(users.createdAt));

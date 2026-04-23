@@ -2,6 +2,7 @@ import { storage } from "../storage";
 import { log } from "../index";
 import { computeContributorScoresByGroup, persistContributorScores, getPreviousPeriod } from "./reputation";
 import { transferErc20, type RewardChain } from "../agent/erc20";
+import { getRewardsBoostMultiplier } from "../limits";
 import type { BotConfig, InsertRewardPayout } from "@shared/schema";
 
 export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boolean; force?: boolean } = {}): Promise<{
@@ -76,6 +77,19 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
       } catch {
         log(`Invalid rewardPoolPerPeriod for bot ${config.id}: ${poolPerPeriod}`, "rewards");
       }
+    }
+
+    // Apply TELI-paid owner bonus (per-bot effective multiplier).
+    try {
+      const owner = await storage.getUserById(config.userId);
+      const multiplier = getRewardsBoostMultiplier(owner);
+      if (multiplier > 1) {
+        const numerator = BigInt(Math.round(multiplier * 10000));
+        const boosted = (BigInt(perWinnerAmount) * numerator) / 10000n;
+        if (boosted > 0n) perWinnerAmount = boosted.toString();
+      }
+    } catch (err: any) {
+      log(`Rewards boost lookup failed for bot ${config.id}: ${err.message}`, "rewards");
     }
 
     if (opts.dryRun) {

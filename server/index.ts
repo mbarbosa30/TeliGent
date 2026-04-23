@@ -126,6 +126,19 @@ app.use((req, res, next) => {
       // Flush BEFORE rollover so any prior-day usage is persisted before the in-memory cache resets.
       await flushAiUsage();
       maybeRollover();
+
+      // Poll Base for crypto plan payments. No-op if no platform receive address is configured.
+      try {
+        const { pollCryptoIntents, isCryptoEnabled } = await import("./billing/crypto");
+        if (isCryptoEnabled()) {
+          const result = await pollCryptoIntents();
+          if (result.matched > 0 || result.expired > 0) {
+            log(`Crypto poller: matched=${result.matched} expired=${result.expired}`, "billing");
+          }
+        }
+      } catch (err: any) {
+        log(`Crypto poller error: ${err.message}`, "billing");
+      }
       const { maybeRunProactiveForBot } = await import("./telegram/proactive");
       const { runRewardsForBot } = await import("./telegram/rewards");
       const { processPendingReferrals } = await import("./telegram/referrals");

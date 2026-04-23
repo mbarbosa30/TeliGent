@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 
 export const sessions = pgTable(
   "sessions",
@@ -18,6 +18,13 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  plan: varchar("plan").notNull().default("free"),
+  planRail: varchar("plan_rail").notNull().default("none"),
+  planPeriodEnd: timestamp("plan_period_end"),
+  planCancelAtPeriodEnd: boolean("plan_cancel_at_period_end").notNull().default(false),
+  teliPaid: boolean("teli_paid").notNull().default(false),
+  stripeCustomerId: varchar("stripe_customer_id"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

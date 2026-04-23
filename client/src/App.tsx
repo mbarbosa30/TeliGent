@@ -25,6 +25,7 @@ import IntelligencePage from "@/pages/intelligence";
 import WidgetPage from "@/pages/widget";
 import AgentPage from "@/pages/agent";
 import AdminPage from "@/pages/admin";
+import BillingPage from "@/pages/billing";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -79,6 +80,7 @@ function Router() {
       <Route path="/widget" component={WidgetPage} />
       <Route path="/agent" component={AgentPage} />
       <Route path="/account" component={AccountPage} />
+      <Route path="/billing" component={BillingPage} />
       <Route component={NotFound} />
     </Switch>
   );

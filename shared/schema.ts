@@ -513,3 +513,59 @@ export const aiUsageDaily = pgTable("ai_usage_daily", {
 ]);
 
 export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;
+
+export const platformSettings = pgTable("platform_settings", {
+  id: serial("id").primaryKey(),
+  key: varchar("key", { length: 64 }).notNull().unique(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("idx_platform_settings_key").on(table.key),
+]);
+export type PlatformSetting = typeof platformSettings.$inferSelect;
+
+export const planPaymentIntents = pgTable("plan_payment_intents", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  plan: varchar("plan").notNull(),
+  billingPeriod: varchar("billing_period").notNull().default("monthly"),
+  rail: varchar("rail").notNull(),
+  receiveAddress: varchar("receive_address").notNull(),
+  expectedAmount: text("expected_amount").notNull(),
+  tokenAddress: varchar("token_address").notNull(),
+  tokenSymbol: varchar("token_symbol").notNull(),
+  tokenDecimals: integer("token_decimals").notNull().default(18),
+  usdAmount: text("usd_amount").notNull(),
+  status: varchar("status").notNull().default("pending"),
+  txHash: varchar("tx_hash"),
+  matchedAt: timestamp("matched_at"),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_plan_payment_intents_user").on(table.userId),
+  index("idx_plan_payment_intents_status").on(table.status),
+]);
+export type PlanPaymentIntent = typeof planPaymentIntents.$inferSelect;
+export const insertPlanPaymentIntentSchema = createInsertSchema(planPaymentIntents).omit({ id: true, createdAt: true, matchedAt: true, txHash: true });
+export type InsertPlanPaymentIntent = z.infer<typeof insertPlanPaymentIntentSchema>;
+
+export const planPeriods = pgTable("plan_periods", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  plan: varchar("plan").notNull(),
+  rail: varchar("rail").notNull(),
+  billingPeriod: varchar("billing_period").notNull().default("monthly"),
+  teliPaid: boolean("teli_paid").notNull().default(false),
+  startsAt: timestamp("starts_at").notNull(),
+  endsAt: timestamp("ends_at").notNull(),
+  intentId: integer("intent_id").references(() => planPaymentIntents.id, { onDelete: "set null" }),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_plan_periods_user").on(table.userId),
+  index("idx_plan_periods_user_endsat").on(table.userId, table.endsAt),
+]);
+export type PlanPeriod = typeof planPeriods.$inferSelect;
+export const insertPlanPeriodSchema = createInsertSchema(planPeriods).omit({ id: true, createdAt: true });
+export type InsertPlanPeriod = z.infer<typeof insertPlanPeriodSchema>;

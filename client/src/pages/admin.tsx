@@ -10,8 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Users, Bot, Activity, Shield, MessageSquare, Search,
-  Globe, Clock, AlertTriangle, Lock, LogOut,
+  Globe, Clock, AlertTriangle, Lock, LogOut, CreditCard, Save,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
 interface AdminStats {
@@ -28,6 +29,11 @@ interface AdminUser {
   firstName: string | null;
   lastName: string | null;
   createdAt: string | null;
+  plan?: "free" | "pro" | "business" | null;
+  planRail?: string | null;
+  planPeriodEnd?: string | null;
+  planCancelAtPeriodEnd?: boolean | null;
+  teliPaid?: boolean | null;
 }
 
 interface AdminBot {
@@ -240,6 +246,7 @@ function AdminDashboard() {
             <TabsTrigger value="bots" data-testid="tab-bots">Bots ({allBots.length})</TabsTrigger>
             <TabsTrigger value="activity" data-testid="tab-activity">Activity ({allActivity.length})</TabsTrigger>
             <TabsTrigger value="scams" data-testid="tab-scams">Scams ({scamLogs.length})</TabsTrigger>
+            <TabsTrigger value="plans" data-testid="tab-plans">Plans</TabsTrigger>
           </TabsList>
 
           <TabsContent value="users" className="mt-4">
@@ -321,6 +328,10 @@ function AdminDashboard() {
               (a.userMessage || "").toLowerCase().includes(search.toLowerCase())
             )} loading={activityLoading} />
           </TabsContent>
+
+          <TabsContent value="plans" className="mt-4 space-y-4">
+            <PlansTab users={filteredUsers} loading={usersLoading} />
+          </TabsContent>
         </Tabs>
       </div>
     </ScrollArea>
@@ -353,6 +364,160 @@ export default function AdminPage() {
   }
 
   return <AdminDashboard />;
+}
+
+function PlansTab({ users, loading }: { users: AdminUser[]; loading: boolean }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: usdPerTeli } = useQuery<{ value: number }>({ queryKey: ["/api/admin/usd-per-teli"] });
+  const [usdInput, setUsdInput] = useState("");
+
+  const setUsdMutation = useMutation({
+    mutationFn: async (value: number) => {
+      const res = await apiRequest("POST", "/api/admin/usd-per-teli", { value });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/usd-per-teli"] });
+      toast({ title: "Saved", description: "USD per $TELI updated." });
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  const overrideMutation = useMutation({
+    mutationFn: async (vars: { userId: string; plan: string; days: number; teliPaid: boolean }) => {
+      const res = await apiRequest("POST", `/api/admin/users/${vars.userId}/plan`, vars);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Plan updated", description: "User plan was overridden." });
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2"><CreditCard className="h-4 w-4" /> Crypto pricing</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">Sets how many USD one $TELI is worth when generating crypto invoices. Used as the fallback when no live price feed is wired up.</p>
+          <div className="flex items-center gap-2 max-w-sm">
+            <Input
+              type="number"
+              step="0.000001"
+              min="0"
+              placeholder={usdPerTeli ? String(usdPerTeli.value) : "0.10"}
+              value={usdInput}
+              onChange={(e) => setUsdInput(e.target.value)}
+              data-testid="input-usd-per-teli"
+            />
+            <Button
+              size="sm"
+              onClick={() => {
+                const v = parseFloat(usdInput);
+                if (!Number.isFinite(v) || v <= 0) return toast({ title: "Invalid", description: "Enter a positive number.", variant: "destructive" });
+                setUsdMutation.mutate(v);
+              }}
+              disabled={setUsdMutation.isPending}
+              data-testid="button-save-usd-per-teli"
+            >
+              <Save className="h-3.5 w-3.5 mr-1" /> Save
+            </Button>
+          </div>
+          <p className="text-xs font-mono text-muted-foreground">Current: ${usdPerTeli?.value ?? "—"} per $TELI</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">User plans</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-2">
+              {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
+            </div>
+          ) : users.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No users.</p>
+          ) : (
+            <div className="space-y-1">
+              <div className="grid grid-cols-[1.4fr_auto_auto_auto_auto_auto] gap-3 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
+                <span>Email</span>
+                <span>Plan</span>
+                <span>Rail</span>
+                <span>Period end</span>
+                <span>TELI</span>
+                <span>Override</span>
+              </div>
+              {users.map((u) => (
+                <PlanRow key={u.id} user={u} onOverride={overrideMutation.mutate} pending={overrideMutation.isPending} />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function PlanRow({ user, onOverride, pending }: { user: AdminUser; onOverride: (v: any) => void; pending: boolean }) {
+  const [plan, setPlan] = useState<string>(user.plan || "free");
+  const [days, setDays] = useState<string>("30");
+  const [teli, setTeli] = useState<boolean>(!!user.teliPaid);
+  return (
+    <div className="grid grid-cols-[1.4fr_auto_auto_auto_auto_auto] gap-3 px-3 py-3 border-b border-border/50 items-center" data-testid={`row-plan-${user.id}`}>
+      <span className="text-sm font-mono truncate">{user.email}</span>
+      <Badge variant="secondary" className="uppercase text-xs">{user.plan || "free"}</Badge>
+      <span className="text-xs font-mono text-muted-foreground">{user.planRail || "—"}</span>
+      <span className="text-xs font-mono text-muted-foreground">{user.planPeriodEnd ? format(new Date(user.planPeriodEnd), "MMM d, yyyy") : "—"}</span>
+      <span>
+        {user.teliPaid ? <Badge className="bg-foreground text-background text-xs">TELI</Badge> : <span className="text-xs text-muted-foreground">—</span>}
+      </span>
+      <div className="flex items-center gap-1.5">
+        <select
+          value={plan}
+          onChange={(e) => setPlan(e.target.value)}
+          className="h-8 border bg-background px-2 text-xs"
+          data-testid={`select-plan-${user.id}`}
+        >
+          <option value="free">free</option>
+          <option value="pro">pro</option>
+          <option value="business">business</option>
+        </select>
+        <input
+          type="number"
+          min="1"
+          value={days}
+          onChange={(e) => setDays(e.target.value)}
+          className="h-8 w-14 border bg-background px-1 text-xs font-mono"
+          data-testid={`input-days-${user.id}`}
+          aria-label="Days"
+        />
+        <label className="flex items-center gap-1 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={teli}
+            onChange={(e) => setTeli(e.target.checked)}
+            data-testid={`checkbox-teli-${user.id}`}
+          />
+          TELI
+        </label>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8"
+          disabled={pending}
+          onClick={() => onOverride({ userId: user.id, plan, days: parseInt(days) || 30, teliPaid: teli })}
+          data-testid={`button-override-${user.id}`}
+        >
+          Apply
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function ActivityList({ logs, loading }: { logs: AdminActivityLog[]; loading: boolean }) {

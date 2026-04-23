@@ -7,6 +7,13 @@ export interface AuthUser {
   firstName: string | null;
   lastName: string | null;
   profileImageUrl: string | null;
+  plan?: "free" | "pro" | "business" | null;
+  planRail?: string | null;
+  planPeriodEnd?: string | null;
+  planCancelAtPeriodEnd?: boolean | null;
+  teliPaid?: boolean | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
