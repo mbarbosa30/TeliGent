@@ -64,8 +64,8 @@ export interface IStorage {
   // sharing, in the last 24 hours, ordered newest first. Only the redaction-
   // safe columns are selected (no userMessage/botResponse text). The route
   // layer is responsible for the final hashing/labelling.
-  getRecentSharedActivity(limit: number): Promise<Array<{ id: number; botConfigId: number; type: string; telegramUserId: string | null; userName: string | null; createdAt: Date }>>;
-  getRecentSharedRewards(limit: number): Promise<Array<{ id: number; botConfigId: number; recipientTelegramId: string | null; recipientHandle: string | null; createdAt: Date }>>;
+  getRecentSharedActivity(limit: number): Promise<Array<{ id: number; botConfigId: number; type: string; telegramUserId: string | null; userName: string | null; createdAt: Date; publicAlias: string }>>;
+  getRecentSharedRewards(limit: number): Promise<Array<{ id: number; botConfigId: number; recipientTelegramId: string | null; recipientHandle: string | null; createdAt: Date; publicAlias: string }>>;
   getUserById(userId: string): Promise<User | undefined>;
   updateUserPlan(userId: string, data: Partial<Pick<User, "plan" | "planRail" | "planPeriodEnd" | "planCancelAtPeriodEnd" | "teliPaid" | "stripeCustomerId" | "stripeSubscriptionId">>): Promise<User | undefined>;
   createPlanPaymentIntent(data: InsertPlanPaymentIntent): Promise<PlanPaymentIntent>;
@@ -1014,6 +1014,7 @@ export class DatabaseStorage implements IStorage {
         telegramUserId: activityLogs.telegramUserId,
         userName: activityLogs.userName,
         createdAt: activityLogs.createdAt,
+        publicAlias: botConfigs.publicAlias,
       })
       .from(activityLogs)
       .innerJoin(botConfigs, eq(botConfigs.id, activityLogs.botConfigId))
@@ -1038,6 +1039,7 @@ export class DatabaseStorage implements IStorage {
         recipientTelegramId: rewardPayouts.telegramUserId,
         recipientHandle: rewardPayouts.userName,
         createdAt: rewardPayouts.createdAt,
+        publicAlias: botConfigs.publicAlias,
       })
       .from(rewardPayouts)
       .innerJoin(botConfigs, eq(botConfigs.id, rewardPayouts.botConfigId))

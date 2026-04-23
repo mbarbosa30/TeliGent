@@ -315,6 +315,7 @@ type HeroScenario =
 
 type PublicEventKind = "scam_removed" | "ai_answer" | "reward" | "new_member";
 type PublicEvent = { kind: PublicEventKind; at: string; label: string };
+type PublicEventsResponse = { events: PublicEvent[]; available: boolean };
 
 const HERO_SCENARIOS: HeroScenario[] = [
   {
@@ -428,20 +429,13 @@ function eventsToRows(events: PublicEvent[]): ChatRow[] {
   });
 }
 
-function HeroChatCard({ scenario, scriptedFallback }: { scenario: HeroScenario; scriptedFallback: HeroScenario }) {
+function HeroChatCard({ scenario, scriptedFallback, liveEvents }: { scenario: HeroScenario; scriptedFallback: HeroScenario; liveEvents: PublicEvent[] }) {
   const isLive = scenario.kind === "live";
-  const liveQuery = useQuery<{ events: PublicEvent[] }>({
-    queryKey: ["/api/public/recent-events"],
-    enabled: isLive,
-    staleTime: 60 * 1000,
-    refetchInterval: 60 * 1000,
-  });
-
-  // Resolve which scenario actually renders: when the live feed is selected
-  // but the request fails or returns nothing, fall back to a scripted scenario
-  // so visitors never see an empty card.
-  const liveEvents = liveQuery.data?.events ?? [];
-  const useFallback = isLive && (liveQuery.isError || (liveQuery.isFetched && liveEvents.length === 0));
+  // If the live scenario somehow renders with no events (race during initial
+  // fetch), fall back to a scripted scenario so visitors never see an empty
+  // card. The pool is also filtered up-front in LandingPage so this is a
+  // belt-and-suspenders guard.
+  const useFallback = isLive && liveEvents.length === 0;
   const effective = useFallback ? scriptedFallback : scenario;
   const headerLabel = effective.kind === "live" ? "Live · network · last 24h" : effective.headerLabel;
   const statusText = effective.kind === "live" ? "Live feed" : "Operational";
@@ -775,15 +769,38 @@ function FAQSection() {
 }
 
 export default function LandingPage() {
-  const [heroScenario] = useState<HeroScenario>(
-    () => HERO_SCENARIOS[Math.floor(Math.random() * HERO_SCENARIOS.length)],
-  );
-  // Stable scripted fallback for the live-feed scenario when the public feed
-  // is empty or fails. Picked once per page load so the card never flickers.
+  // Eagerly probe the public events feed so we can decide whether to include
+  // the live-feed scenario in the random pool. If no bots have opted in (or
+  // the request fails), we drop live-feed entirely rather than show a card
+  // that briefly renders empty.
+  const liveQuery = useQuery<PublicEventsResponse>({
+    queryKey: ["/api/public/recent-events"],
+    staleTime: 60 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+  const liveEvents = liveQuery.data?.events ?? [];
+  const liveAvailable = liveQuery.data?.available === true && liveEvents.length > 0;
+
+  // Pick the scripted fallback once so the card never flickers between two
+  // different scripted scenarios.
   const [scriptedFallback] = useState<HeroScenario>(() => {
     const scripted = HERO_SCENARIOS.filter((s) => s.kind !== "live");
     return scripted[Math.floor(Math.random() * scripted.length)];
   });
+  // Pick a scripted scenario initially. Once we know the live feed is
+  // available we may swap to it; keeping a single useState ensures the choice
+  // is stable for the life of the page.
+  const [heroScenario, setHeroScenario] = useState<HeroScenario>(scriptedFallback);
+  const pickedRef = useRef(false);
+  useEffect(() => {
+    if (pickedRef.current) return;
+    if (liveQuery.isLoading) return;
+    pickedRef.current = true;
+    const pool = liveAvailable
+      ? HERO_SCENARIOS
+      : HERO_SCENARIOS.filter((s) => s.kind !== "live");
+    setHeroScenario(pool[Math.floor(Math.random() * pool.length)]);
+  }, [liveQuery.isLoading, liveAvailable]);
   return (
     <div className="min-h-screen bg-background">
       <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
@@ -842,7 +859,7 @@ export default function LandingPage() {
           </div>
 
           <div className="md:col-span-5">
-            <HeroChatCard scenario={heroScenario} scriptedFallback={scriptedFallback} />
+            <HeroChatCard scenario={heroScenario} scriptedFallback={scriptedFallback} liveEvents={liveEvents} />
           </div>
         </div>
       </section>

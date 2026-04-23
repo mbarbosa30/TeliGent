@@ -54,6 +54,7 @@ export const botConfigs = pgTable("bot_configs", {
   feedbackMixRatio: integer("feedback_mix_ratio").notNull().default(40),
   scamSensitivity: text("scam_sensitivity").notNull().default("medium"),
   shareAnonymizedEvents: boolean("share_anonymized_events").notNull().default(false),
+  publicAlias: text("public_alias").notNull().default(""),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [

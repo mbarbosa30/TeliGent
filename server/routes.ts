@@ -181,6 +181,9 @@ export async function registerRoutes(
       if (partial.scamSensitivity !== undefined && !["low", "medium", "high"].includes(partial.scamSensitivity)) {
         return res.status(400).json({ error: "scamSensitivity must be one of low, medium, high" });
       }
+      if (typeof partial.publicAlias === "string") {
+        partial.publicAlias = partial.publicAlias.trim().slice(0, 40);
+      }
       const user = await loadUser(req);
       if (partial.widgetEnabled === true) requirePermission(user, "allowWidget");
       if (partial.bankrEnabled === true) requirePermission(user, "allowBankr");
@@ -743,20 +746,38 @@ export async function registerRoutes(
     if (type === "join") return "new_member";
     return null;
   }
-  function labelFor(kind: PublicEventKind, handle: string): string {
+  function communityLabel(alias: string): string {
+    const a = (alias || "").trim();
+    return a.length > 0 ? a : "a community";
+  }
+  function labelFor(kind: PublicEventKind, handle: string, community: string): string {
     switch (kind) {
-      case "scam_removed": return `removed scam DM from ${handle} in a community`;
-      case "ai_answer":    return `answered a question from ${handle} in a community`;
-      case "new_member":   return `welcomed ${handle} to a community`;
-      case "reward":       return `sent contribution rewards to ${handle} in a community`;
+      case "scam_removed": return `removed scam DM from ${handle} in ${community}`;
+      case "ai_answer":    return `answered a question from ${handle} in ${community}`;
+      case "new_member":   return `welcomed ${handle} to ${community}`;
+      case "reward":       return `sent contribution rewards to ${handle} in ${community}`;
     }
   }
 
-  app.get("/api/public/recent-events", publicRateLimit, async (_req, res) => {
+  // The public events endpoint is intentionally cross-origin friendly so the
+  // landing page (and any embedded version of the hero card) can read it
+  // without a per-bot widget allowlist. Permissive CORS is safe here because
+  // the response is fully redacted and rate-limited.
+  function publicEventsCors(_req: Request, res: Response, next: NextFunction) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Max-Age", "86400");
+    next();
+  }
+  app.options("/api/public/recent-events", publicEventsCors, (_req, res) => res.sendStatus(204));
+
+  app.get("/api/public/recent-events", publicEventsCors, publicRateLimit, async (_req, res) => {
     try {
       const now = Date.now();
       if (cachedRecentEvents && now - cachedRecentEventsAt < RECENT_EVENTS_CACHE_MS) {
-        return res.json({ events: cachedRecentEvents });
+        return res.json({ events: cachedRecentEvents, available: cachedRecentEvents.length > 0 });
       }
       const [acts, rewards] = await Promise.all([
         storage.getRecentSharedActivity(RECENT_EVENTS_LIMIT * 2),
@@ -767,17 +788,17 @@ export async function registerRoutes(
         const kind = activityKindFor(a.type);
         if (!kind) continue;
         const handle = redactHandle(a.telegramUserId, a.userName);
-        events.push({ kind, at: a.createdAt.toISOString(), label: labelFor(kind, handle) });
+        events.push({ kind, at: a.createdAt.toISOString(), label: labelFor(kind, handle, communityLabel(a.publicAlias)) });
       }
       for (const r of rewards) {
         const handle = redactHandle(r.recipientTelegramId, r.recipientHandle);
-        events.push({ kind: "reward", at: r.createdAt.toISOString(), label: labelFor("reward", handle) });
+        events.push({ kind: "reward", at: r.createdAt.toISOString(), label: labelFor("reward", handle, communityLabel(r.publicAlias)) });
       }
       events.sort((a, b) => (a.at < b.at ? 1 : -1));
       const trimmed = events.slice(0, RECENT_EVENTS_LIMIT);
       cachedRecentEvents = trimmed;
       cachedRecentEventsAt = now;
-      res.json({ events: trimmed });
+      res.json({ events: trimmed, available: trimmed.length > 0 });
     } catch (err: any) {
       res.status(err?.status || 500).json({ error: err.message });
     }

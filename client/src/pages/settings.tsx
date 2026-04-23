@@ -48,6 +48,7 @@ const settingsSchema = z.object({
   autoBanThreshold: z.number().min(0).max(100),
   scamSensitivity: z.string(),
   shareAnonymizedEvents: z.boolean(),
+  publicAlias: z.string().max(40, "Keep it under 40 characters").optional(),
   trackReports: z.boolean(),
   reportKeywords: z.array(z.string()),
   bankrEnabled: z.boolean(),
@@ -104,6 +105,7 @@ export default function SettingsPage() {
       autoBanThreshold: 0,
       scamSensitivity: "medium",
       shareAnonymizedEvents: false,
+      publicAlias: "",
       trackReports: true,
       reportKeywords: ["report", "issue", "bug", "problem", "broken"],
       bankrEnabled: false,
@@ -155,6 +157,7 @@ export default function SettingsPage() {
         autoBanThreshold: config.autoBanThreshold ?? 0,
         scamSensitivity: config.scamSensitivity ?? "medium",
         shareAnonymizedEvents: config.shareAnonymizedEvents ?? false,
+        publicAlias: config.publicAlias ?? "",
         trackReports: config.trackReports,
         reportKeywords: config.reportKeywords || ["report", "issue", "bug", "problem", "broken"],
         bankrEnabled: config.bankrEnabled ?? false,
@@ -542,6 +545,17 @@ export default function SettingsPage() {
                     </FormControl>
                   </FormItem>
                 )} />
+                {form.watch("shareAnonymizedEvents") && (
+                  <FormField control={form.control} name="publicAlias" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Public Alias</FormLabel>
+                      <FormControl>
+                        <Input placeholder="a community" {...field} value={field.value ?? ""} data-testid="input-public-alias" />
+                      </FormControl>
+                      <FormDescription>Optional label shown in shared events instead of "a community". Leave blank to stay fully anonymous. Your bot's real name is never exposed.</FormDescription>
+                    </FormItem>
+                  )} />
+                )}
                 <RecentlyFlaggedList botId={selectedBotId!} />
               </CardContent>
             </Card>
