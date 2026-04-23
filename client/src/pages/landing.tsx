@@ -275,79 +275,129 @@ function ChatBadge({ children, tone = "default" }: { children: React.ReactNode; 
   );
 }
 
-function HeroChatCard() {
+type ChatBadgeTone = "default" | "danger" | "ai";
+
+type ChatRow =
+  | {
+      kind: "msg";
+      avatar: string;
+      inverted?: boolean;
+      name: string;
+      time?: string;
+      badge?: { text: string; tone?: ChatBadgeTone };
+      text: string;
+      mono?: boolean;
+      faded?: boolean;
+      strike?: boolean;
+    }
+  | { kind: "reward"; label: string; text: string };
+
+type HeroScenario = {
+  id: string;
+  headerLabel: string;
+  rows: ChatRow[];
+};
+
+const HERO_SCENARIOS: HeroScenario[] = [
+  {
+    id: "web-widget",
+    headerLabel: "Live · widget · acme.xyz",
+    rows: [
+      { kind: "msg", avatar: "V", name: "visitor", time: "10:14", text: "Does Acme Pro support webhooks for new orders?" },
+      { kind: "msg", avatar: "T", inverted: true, name: "TeliGent", badge: { text: "AI", tone: "ai" }, text: "Yes. Pro and Business expose order.created and order.paid webhooks. Add your URL under Settings, Integrations." },
+      { kind: "msg", avatar: "V", name: "visitor", time: "10:15", text: "Where can I ask the team live?" },
+      { kind: "msg", avatar: "T", inverted: true, name: "TeliGent", badge: { text: "AI", tone: "ai" }, text: "The community is active on Telegram at t.me/acmehq, 24/7. The link is also in your dashboard footer." },
+      { kind: "reward", label: "Reward", text: "+5 contribution pts → @maria · KB author" },
+    ],
+  },
+  {
+    id: "telegram-bankr",
+    headerLabel: "Live · #general",
+    rows: [
+      { kind: "msg", avatar: "SX", name: "@scammer_x", badge: { text: "Removed · Scam", tone: "danger" }, text: "DM me to claim your airdrop", faded: true, strike: true },
+      { kind: "msg", avatar: "A", name: "@alice", time: "14:02", text: "How do I stake $TELI?" },
+      { kind: "msg", avatar: "T", inverted: true, name: "TeliGent", badge: { text: "AI", tone: "ai" }, text: "Staking is on Base. Approve once, then deposit at app.teli.gent/stake. APR ~12% from the rewards pool." },
+      { kind: "msg", avatar: "B", name: "@bob", time: "14:03", text: "/price $TELI" },
+      { kind: "msg", avatar: "T", inverted: true, name: "TeliGent", badge: { text: "Bankr", tone: "ai" }, text: "$TELI · $0.014 · +6.2% (24h) · vol $312k", mono: true },
+      { kind: "reward", label: "Reward", text: "+5 contribution pts → @alice" },
+    ],
+  },
+  {
+    id: "impersonator",
+    headerLabel: "Live · #general",
+    rows: [
+      { kind: "msg", avatar: "TA", name: "@teli_admin", badge: { text: "Removed · Impersonation", tone: "danger" }, text: "DM me your seed to verify your wallet", faded: true, strike: true },
+      { kind: "msg", avatar: "S", name: "@sam", time: "09:41", text: "thanks for catching that one" },
+      { kind: "msg", avatar: "T", inverted: true, name: "TeliGent", badge: { text: "AI", tone: "ai" }, text: "It was a homoglyph clone of the real admin handle. Pattern is now in the shared scam list." },
+      { kind: "msg", avatar: "L", name: "@lee", time: "09:42", text: "I reported the same handle yesterday" },
+      { kind: "reward", label: "Reward", text: "+10 contribution pts → @lee · first to report" },
+    ],
+  },
+  {
+    id: "onboarding",
+    headerLabel: "Live · #welcome",
+    rows: [
+      { kind: "msg", avatar: "N", name: "@nina", badge: { text: "New", tone: "default" }, text: "joined the group", faded: true },
+      { kind: "msg", avatar: "T", inverted: true, name: "TeliGent", badge: { text: "AI", tone: "ai" }, text: "Welcome @nina. Acme is a lending protocol on Base. The 60-second quickstart is at acme.xyz/start." },
+      { kind: "msg", avatar: "N", name: "@nina", time: "16:08", text: "What's the gas like to deposit?" },
+      { kind: "msg", avatar: "T", inverted: true, name: "TeliGent", badge: { text: "AI", tone: "ai" }, text: "About $0.02 on Base. Approve once, then each deposit costs roughly $0.01." },
+      { kind: "reward", label: "Reward", text: "+1 contribution pt → @nina · first question" },
+    ],
+  },
+];
+
+function HeroChatRow({ row, index }: { row: ChatRow; index: number }) {
+  if (row.kind === "reward") {
+    return (
+      <div className="flex items-center justify-between px-4 py-2.5 bg-foreground text-background" data-testid={`chat-row-${index}`}>
+        <span className="text-[10px] font-mono uppercase tracking-widest">{row.label}</span>
+        <span className="text-[10px] font-mono">{row.text}</span>
+      </div>
+    );
+  }
   return (
-    <div className="border bg-card" data-testid="card-hero-chat">
+    <div
+      className={`flex gap-3 px-4 py-3 ${row.inverted ? "bg-muted/40" : ""} ${row.faded ? "opacity-60" : ""}`}
+      data-testid={`chat-row-${index}`}
+    >
+      <ChatAvatar label={row.avatar} inverted={row.inverted} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-xs font-semibold truncate">{row.name}</span>
+          {row.badge ? <ChatBadge tone={row.badge.tone}>{row.badge.text}</ChatBadge> : null}
+          {row.time ? <span className="text-[10px] font-mono text-muted-foreground">{row.time}</span> : null}
+        </div>
+        <p className={`text-xs leading-snug ${row.mono ? "font-mono" : ""} ${row.strike ? "line-through text-muted-foreground" : ""}`}>
+          {row.text}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function HeroChatCard() {
+  const [scenario] = useState<HeroScenario>(
+    () => HERO_SCENARIOS[Math.floor(Math.random() * HERO_SCENARIOS.length)],
+  );
+  return (
+    <div className="border bg-card" data-testid="card-hero-chat" data-hero-chat-scenario={scenario.id}>
+      <div data-testid={`hero-chat-scenario-${scenario.id}`} className="hidden" />
       <div className="flex items-center justify-between px-4 py-2.5 border-b bg-foreground text-background">
         <div className="flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 bg-background animate-pulse" />
-          <span className="text-[10px] font-mono uppercase tracking-widest">Live · #general</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest">{scenario.headerLabel}</span>
         </div>
         <span className="text-[10px] font-mono uppercase tracking-widest text-background/60">v2 · Base</span>
       </div>
 
-      <div className="divide-y">
-        <div className="flex gap-3 px-4 py-3 opacity-60" data-testid="chat-row-1">
-          <ChatAvatar label="SX" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-semibold truncate">@scammer_x</span>
-              <ChatBadge tone="danger">Removed · Scam</ChatBadge>
-            </div>
-            <p className="text-xs text-muted-foreground line-through truncate">DM me to claim your airdrop</p>
-          </div>
+      <div className="divide-y min-h-[360px] flex flex-col">
+        <div className="divide-y flex-1">
+          {scenario.rows.map((row, i) => (
+            <HeroChatRow key={i} row={row} index={i + 1} />
+          ))}
         </div>
 
-        <div className="flex gap-3 px-4 py-3" data-testid="chat-row-2">
-          <ChatAvatar label="A" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-semibold">@alice</span>
-              <span className="text-[10px] font-mono text-muted-foreground">14:02</span>
-            </div>
-            <p className="text-xs">How do I stake $TELI?</p>
-          </div>
-        </div>
-
-        <div className="flex gap-3 px-4 py-3 bg-muted/40" data-testid="chat-row-3">
-          <ChatAvatar label="T" inverted />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-semibold">TeliGent</span>
-              <ChatBadge tone="ai">AI</ChatBadge>
-            </div>
-            <p className="text-xs leading-snug">Staking is on Base. Approve once, then deposit at app.teli.gent/stake. APR ~12% from the rewards pool.</p>
-          </div>
-        </div>
-
-        <div className="flex gap-3 px-4 py-3" data-testid="chat-row-4">
-          <ChatAvatar label="B" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-semibold">@bob</span>
-              <span className="text-[10px] font-mono text-muted-foreground">14:03</span>
-            </div>
-            <p className="text-xs">/price $TELI</p>
-          </div>
-        </div>
-
-        <div className="flex gap-3 px-4 py-3 bg-muted/40" data-testid="chat-row-5">
-          <ChatAvatar label="T" inverted />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-semibold">TeliGent</span>
-              <ChatBadge tone="ai">Bankr</ChatBadge>
-            </div>
-            <p className="text-xs font-mono">$TELI · $0.014 · +6.2% (24h) · vol $312k</p>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between px-4 py-2.5 bg-foreground text-background" data-testid="chat-row-reward">
-          <span className="text-[10px] font-mono uppercase tracking-widest">Reward</span>
-          <span className="text-[10px] font-mono">+5 contribution pts → @alice</span>
-        </div>
-
-        <div className="grid grid-cols-3 divide-x">
+        <div className="grid grid-cols-3 divide-x border-t">
           <div className="px-3 py-2.5">
             <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Engine</div>
             <div className="text-[10px] font-mono mt-0.5">GPT-5.2 · 5-mini</div>
