@@ -4,8 +4,24 @@ import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { db } from "./db";
-import { users, sessions } from "@shared/schema";
+import { users, sessions, type User } from "@shared/schema";
 import { eq } from "drizzle-orm";
+
+type SafeUser = Omit<User, "passwordHash">;
+
+// Normalize a paid plan to "free" once planPeriodEnd has elapsed, so the
+// dashboard never shows a stale paid badge after a period expires (especially
+// for crypto rails which have no Stripe webhook to mark expiry). Also clears
+// teliPaid for the same reason.
+function normalizePlanForResponse(safeUser: SafeUser): SafeUser {
+  const periodEnd = safeUser.planPeriodEnd ? new Date(safeUser.planPeriodEnd).getTime() : 0;
+  const planActive = !!safeUser.plan && safeUser.plan !== "free" && periodEnd > Date.now();
+  return {
+    ...safeUser,
+    plan: planActive ? safeUser.plan : "free",
+    teliPaid: !!(safeUser.teliPaid && planActive),
+  };
+}
 
 const PgSession = connectPg(session);
 
@@ -201,14 +217,7 @@ export function registerAuthRoutes(app: Express) {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const { passwordHash: _, ...safeUser } = user;
-      const periodEnd = (safeUser as any).planPeriodEnd ? new Date((safeUser as any).planPeriodEnd as any).getTime() : 0;
-      const planActive = (safeUser as any).plan && (safeUser as any).plan !== "free" && periodEnd > Date.now();
-      // Normalize stale paid plans to Free at read-time so dashboard badges
-      // can't drift past the period end (especially for crypto rails which
-      // have no Stripe webhook to mark expiry).
-      if (!planActive) (safeUser as any).plan = "free";
-      (safeUser as any).teliPaid = !!((safeUser as any).teliPaid && planActive);
-      res.json(safeUser);
+      res.json(normalizePlanForResponse(safeUser));
     } catch (err: any) {
       res.status(500).json({ message: "Server error" });
     }

@@ -729,14 +729,26 @@ export async function registerRoutes(
   // botId we can recognise, we'll mark the request as belonging to a TELI-paying owner so the
   // rate-limit cap is bumped accordingly.
   async function resolveAgentRequestOwner(req: Request): Promise<void> {
+    // Owner-scoped agent services require an explicit, valid botId so we can
+    // resolve the owner and enforce their tier. Missing/invalid botId or
+    // unknown owner => 402 (PaywallError) so callers can't bypass tier gating
+    // by simply omitting the field.
     const botIdRaw = req.body?.botId;
-    if (botIdRaw == null) return;
+    if (botIdRaw == null) {
+      throw new PaywallError("allowAgentApi", "botId is required to use the agent API.");
+    }
     const botId = parseInt(String(botIdRaw));
-    if (!Number.isFinite(botId)) return;
+    if (!Number.isFinite(botId)) {
+      throw new PaywallError("allowAgentApi", "botId must be a valid integer.");
+    }
     const bot = await storage.getBotConfig(botId).catch(() => null);
-    if (!bot) return;
+    if (!bot) {
+      throw new PaywallError("allowAgentApi", "Unknown botId.");
+    }
     const owner = await storage.getUserById(bot.userId).catch(() => null);
-    if (!owner) return;
+    if (!owner) {
+      throw new PaywallError("allowAgentApi", "Bot owner could not be resolved.");
+    }
     // Tier check: agent API must be enabled for the targeted bot's owner.
     requirePermission(owner, "allowAgentApi");
     // Expose owner's tier limits to the rate limiter so Pro/Business owners
