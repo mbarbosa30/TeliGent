@@ -599,6 +599,7 @@ async function ensureBillingSchema(client: any) {
     ["plan_cancel_at_period_end", "BOOLEAN NOT NULL DEFAULT false"],
     ["teli_paid", "BOOLEAN NOT NULL DEFAULT false"],
     ["stripe_customer_id", "VARCHAR"],
+    ["stripe_subscription_id", "VARCHAR"],
   ];
   for (const [name, def] of userCols) {
     if (!(await columnExists(client, "users", name))) {

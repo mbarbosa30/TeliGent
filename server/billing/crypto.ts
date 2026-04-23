@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { createPublicClient, http, parseAbiItem, getAddress, isAddress, formatUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
@@ -55,10 +56,12 @@ export async function getUsdPerTeli(): Promise<number> {
  * Adds a per-intent micro-suffix so we can match incoming transfers by exact amount.
  */
 function uniqueAmount(baseAtomic: bigint, suffix: bigint, decimals: number): bigint {
-  // Use last 4 atomic units as a unique suffix (e.g. 0.000001 USDC steps).
-  const cappedSuffix = (suffix % 9999n) + 1n;
-  // Strip last 4 digits then add suffix to guarantee uniqueness
-  const clean = (baseAtomic / 10000n) * 10000n;
+  // Use last 6 atomic units as a unique suffix (1..999999) so the collision
+  // surface is large enough to make accidental same-amount matches against
+  // other concurrent intents extremely unlikely. We also reject historical
+  // (pre-intent-creation) matches in the poller as a second layer of defense.
+  const cappedSuffix = (suffix % 999999n) + 1n;
+  const clean = (baseAtomic / 1000000n) * 1000000n;
   return clean + cappedSuffix;
 }
 
@@ -77,7 +80,11 @@ export async function createCryptoIntent(input: CryptoIntentInput) {
 
   const discounted = input.rail === "teli" ? usd * (1 - TELI_DISCOUNT_PCT / 100) : usd;
   const expiresAt = new Date(Date.now() + INTENT_TTL_MIN * 60 * 1000);
-  const suffix = BigInt(Date.now() % 100000);
+  // Use cryptographically strong randomness so the suffix can't be guessed/
+  // collided with prior transfers. Combined with the larger 6-decimal suffix
+  // space in uniqueAmount() this drives collision probability ~1 in a million
+  // per concurrent intent in the same token.
+  const suffix = BigInt("0x" + crypto.randomBytes(8).toString("hex"));
 
   let tokenAddress: `0x${string}`;
   let tokenSymbol: string;
@@ -176,15 +183,40 @@ export async function pollCryptoIntents(): Promise<{ matched: number; expired: n
         fromBlock,
         toBlock: head,
       });
+      // Cache block timestamps so we don't refetch the same block repeatedly.
+      const blockTsCache = new Map<bigint, number>();
+      const getBlockTs = async (bn: bigint): Promise<number> => {
+        const cached = blockTsCache.get(bn);
+        if (cached !== undefined) return cached;
+        try {
+          const blk = await baseClient.getBlock({ blockNumber: bn });
+          const ts = Number(blk.timestamp) * 1000;
+          blockTsCache.set(bn, ts);
+          return ts;
+        } catch {
+          return 0;
+        }
+      };
       for (const lg of logs) {
         const value = lg.args.value;
         if (value === undefined) continue;
         const txHash = lg.transactionHash;
+        const blockNumber = lg.blockNumber;
         for (const intent of stillPending) {
           if (intent.tokenAddress.toLowerCase() !== tokenAddr) continue;
           if (intent.status !== "pending") continue;
           const expected = BigInt(intent.expectedAmount);
-          if (value === expected) {
+          if (value !== expected) continue;
+          // Replay/collision defense: only credit transfers that landed on
+          // chain at or after the intent was created. Without this, a
+          // historical Transfer with the same exact amount could falsely
+          // activate a freshly created intent.
+          if (blockNumber != null) {
+            const blockTs = await getBlockTs(blockNumber);
+            const intentCreatedTs = new Date(intent.createdAt).getTime();
+            if (blockTs > 0 && blockTs < intentCreatedTs) continue;
+          }
+          {
             // markPlanPaymentIntent does an atomic WHERE status='pending' update;
             // if it returns undefined, another poll already claimed this intent.
             const claimed = await activateIntent(intent, txHash || null);
