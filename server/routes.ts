@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { createHash } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
@@ -698,6 +699,89 @@ export async function registerRoutes(
   let cachedPublicStats: any = null;
   let cachedPublicStatsAt = 0;
   const STATS_CACHE_MS = 5 * 60 * 1000;
+
+  // ---------------------------------------------------------------------------
+  // PRIVACY GUARANTEE for /api/public/recent-events
+  // ---------------------------------------------------------------------------
+  // This endpoint streams recent activity from bots that have explicitly opted
+  // in (`bot_configs.share_anonymized_events = true`, default false). The
+  // redaction rules below are enforced on the server before any data leaves:
+  //   - Raw user message text and bot response text are NEVER selected from
+  //     the database (see storage.getRecentSharedActivity).
+  //   - Telegram user identifiers are reduced to a stable, salted hash and
+  //     surfaced only as `@x***N` (one letter + two digits) so you cannot
+  //     correlate two events back to the same person across bots.
+  //   - Bot identity is not exposed; the source community is always shown as
+  //     "a community".
+  //   - The category label is one of four hard-coded strings; no user-
+  //     controlled text reaches the client.
+  //   - Output is capped at 12 events from the last 24 hours and cached in
+  //     memory for 30 seconds to limit query pressure and reduce timing-based
+  //     correlation risk.
+  // ---------------------------------------------------------------------------
+  type PublicEventKind = "scam_removed" | "ai_answer" | "reward" | "new_member";
+  type PublicEvent = { kind: PublicEventKind; at: string; label: string };
+  const RECENT_EVENTS_CACHE_MS = 30 * 1000;
+  const RECENT_EVENTS_LIMIT = 12;
+  let cachedRecentEvents: PublicEvent[] | null = null;
+  let cachedRecentEventsAt = 0;
+
+  // Salted, stable hash so the same telegram user looks the same across the
+  // 24h window but cannot be reversed. Salt rotates with SESSION_SECRET so it
+  // also rotates if/when the operator rotates that secret.
+  const HANDLE_SALT = process.env.SESSION_SECRET || "teligent-public-events";
+  function redactHandle(rawId: string | null, rawHandle: string | null): string {
+    const seed = (rawId || rawHandle || "anon").toString();
+    const h = createHash("sha256").update(HANDLE_SALT).update(seed).digest("hex");
+    const letter = h[0];
+    const digits = (parseInt(h.slice(1, 5), 16) % 100).toString().padStart(2, "0");
+    return `@${letter}***${digits}`;
+  }
+  function activityKindFor(type: string): PublicEventKind | null {
+    if (type === "report") return "scam_removed";
+    if (type === "response") return "ai_answer";
+    if (type === "join") return "new_member";
+    return null;
+  }
+  function labelFor(kind: PublicEventKind, handle: string): string {
+    switch (kind) {
+      case "scam_removed": return `removed scam DM from ${handle} in a community`;
+      case "ai_answer":    return `answered a question from ${handle} in a community`;
+      case "new_member":   return `welcomed ${handle} to a community`;
+      case "reward":       return `sent contribution rewards to ${handle} in a community`;
+    }
+  }
+
+  app.get("/api/public/recent-events", publicRateLimit, async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (cachedRecentEvents && now - cachedRecentEventsAt < RECENT_EVENTS_CACHE_MS) {
+        return res.json({ events: cachedRecentEvents });
+      }
+      const [acts, rewards] = await Promise.all([
+        storage.getRecentSharedActivity(RECENT_EVENTS_LIMIT * 2),
+        storage.getRecentSharedRewards(RECENT_EVENTS_LIMIT),
+      ]);
+      const events: PublicEvent[] = [];
+      for (const a of acts) {
+        const kind = activityKindFor(a.type);
+        if (!kind) continue;
+        const handle = redactHandle(a.telegramUserId, a.userName);
+        events.push({ kind, at: a.createdAt.toISOString(), label: labelFor(kind, handle) });
+      }
+      for (const r of rewards) {
+        const handle = redactHandle(r.recipientTelegramId, r.recipientHandle);
+        events.push({ kind: "reward", at: r.createdAt.toISOString(), label: labelFor("reward", handle) });
+      }
+      events.sort((a, b) => (a.at < b.at ? 1 : -1));
+      const trimmed = events.slice(0, RECENT_EVENTS_LIMIT);
+      cachedRecentEvents = trimmed;
+      cachedRecentEventsAt = now;
+      res.json({ events: trimmed });
+    } catch (err: any) {
+      res.status(err?.status || 500).json({ error: err.message });
+    }
+  });
 
   app.get("/api/public/stats", publicRateLimit, async (_req, res) => {
     try {

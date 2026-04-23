@@ -300,11 +300,21 @@ type ChatRow =
     }
   | { kind: "reward"; label: string; text: string };
 
-type HeroScenario = {
-  id: string;
-  headerLabel: string;
-  rows: ChatRow[];
-};
+type HeroScenario =
+  | {
+      id: string;
+      kind?: "scripted";
+      headerLabel: string;
+      rows: ChatRow[];
+    }
+  | {
+      id: "live-feed";
+      kind: "live";
+      headerLabel: string;
+    };
+
+type PublicEventKind = "scam_removed" | "ai_answer" | "reward" | "new_member";
+type PublicEvent = { kind: PublicEventKind; at: string; label: string };
 
 const HERO_SCENARIOS: HeroScenario[] = [
   {
@@ -352,6 +362,11 @@ const HERO_SCENARIOS: HeroScenario[] = [
       { kind: "reward", label: "Reward", text: "+1 contribution pt → @nina · first question" },
     ],
   },
+  {
+    id: "live-feed",
+    kind: "live",
+    headerLabel: "Live · network · last 24h",
+  },
 ];
 
 function HeroChatRow({ row, index }: { row: ChatRow; index: number }) {
@@ -383,24 +398,72 @@ function HeroChatRow({ row, index }: { row: ChatRow; index: number }) {
   );
 }
 
-function HeroChatCard({ scenario }: { scenario: HeroScenario }) {
+function eventKindToBadge(kind: PublicEventKind): { text: string; tone: ChatBadgeTone } {
+  switch (kind) {
+    case "scam_removed": return { text: "Removed · Scam", tone: "danger" };
+    case "ai_answer":    return { text: "AI", tone: "ai" };
+    case "new_member":   return { text: "New", tone: "default" };
+    case "reward":       return { text: "Reward", tone: "default" };
+  }
+}
+
+function eventsToRows(events: PublicEvent[]): ChatRow[] {
+  return events.slice(0, 6).map((ev): ChatRow => {
+    const time = new Date(ev.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    if (ev.kind === "reward") {
+      return { kind: "reward", label: "Reward", text: ev.label };
+    }
+    const inverted = ev.kind === "ai_answer";
+    return {
+      kind: "msg",
+      avatar: inverted ? "T" : "U",
+      inverted,
+      name: inverted ? "TeliGent" : ev.label.split(" from ")[1]?.split(" in ")[0] ?? "member",
+      time,
+      badge: eventKindToBadge(ev.kind),
+      text: ev.label,
+      faded: ev.kind === "scam_removed",
+      strike: ev.kind === "scam_removed",
+    };
+  });
+}
+
+function HeroChatCard({ scenario, scriptedFallback }: { scenario: HeroScenario; scriptedFallback: HeroScenario }) {
+  const isLive = scenario.kind === "live";
+  const liveQuery = useQuery<{ events: PublicEvent[] }>({
+    queryKey: ["/api/public/recent-events"],
+    enabled: isLive,
+    staleTime: 60 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+
+  // Resolve which scenario actually renders: when the live feed is selected
+  // but the request fails or returns nothing, fall back to a scripted scenario
+  // so visitors never see an empty card.
+  const liveEvents = liveQuery.data?.events ?? [];
+  const useFallback = isLive && (liveQuery.isError || (liveQuery.isFetched && liveEvents.length === 0));
+  const effective = useFallback ? scriptedFallback : scenario;
+  const headerLabel = effective.kind === "live" ? "Live · network · last 24h" : effective.headerLabel;
+  const statusText = effective.kind === "live" ? "Live feed" : "Operational";
+  const rows: ChatRow[] = effective.kind === "live" ? eventsToRows(liveEvents) : effective.rows;
+
   return (
     <div
       className="border bg-card"
-      data-testid={`hero-chat-scenario-${scenario.id}`}
+      data-testid={`hero-chat-scenario-${effective.id}`}
       data-card="card-hero-chat"
     >
       <div className="flex items-center justify-between px-4 py-2.5 border-b bg-foreground text-background">
         <div className="flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 bg-background animate-pulse" />
-          <span className="text-[10px] font-mono uppercase tracking-widest">{scenario.headerLabel}</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest">{headerLabel}</span>
         </div>
         <span className="text-[10px] font-mono uppercase tracking-widest text-background/60">v2 · Base</span>
       </div>
 
       <div className="divide-y min-h-[360px] flex flex-col">
         <div className="divide-y flex-1">
-          {scenario.rows.map((row, i) => (
+          {rows.map((row, i) => (
             <HeroChatRow key={i} row={row} index={i + 1} />
           ))}
         </div>
@@ -416,7 +479,7 @@ function HeroChatCard({ scenario }: { scenario: HeroScenario }) {
           </div>
           <div className="px-3 py-2.5">
             <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Status</div>
-            <div className="text-[10px] font-mono mt-0.5">Operational</div>
+            <div className="text-[10px] font-mono mt-0.5" data-testid="text-hero-status">{statusText}</div>
           </div>
         </div>
       </div>
@@ -715,6 +778,12 @@ export default function LandingPage() {
   const [heroScenario] = useState<HeroScenario>(
     () => HERO_SCENARIOS[Math.floor(Math.random() * HERO_SCENARIOS.length)],
   );
+  // Stable scripted fallback for the live-feed scenario when the public feed
+  // is empty or fails. Picked once per page load so the card never flickers.
+  const [scriptedFallback] = useState<HeroScenario>(() => {
+    const scripted = HERO_SCENARIOS.filter((s) => s.kind !== "live");
+    return scripted[Math.floor(Math.random() * scripted.length)];
+  });
   return (
     <div className="min-h-screen bg-background">
       <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
@@ -773,7 +842,7 @@ export default function LandingPage() {
           </div>
 
           <div className="md:col-span-5">
-            <HeroChatCard scenario={heroScenario} />
+            <HeroChatCard scenario={heroScenario} scriptedFallback={scriptedFallback} />
           </div>
         </div>
       </section>

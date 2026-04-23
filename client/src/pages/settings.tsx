@@ -47,6 +47,7 @@ const settingsSchema = z.object({
   respondToReplies: z.boolean(),
   autoBanThreshold: z.number().min(0).max(100),
   scamSensitivity: z.string(),
+  shareAnonymizedEvents: z.boolean(),
   trackReports: z.boolean(),
   reportKeywords: z.array(z.string()),
   bankrEnabled: z.boolean(),
@@ -102,6 +103,7 @@ export default function SettingsPage() {
       respondToReplies: true,
       autoBanThreshold: 0,
       scamSensitivity: "medium",
+      shareAnonymizedEvents: false,
       trackReports: true,
       reportKeywords: ["report", "issue", "bug", "problem", "broken"],
       bankrEnabled: false,
@@ -152,6 +154,7 @@ export default function SettingsPage() {
         respondToReplies: config.respondToReplies,
         autoBanThreshold: config.autoBanThreshold ?? 0,
         scamSensitivity: config.scamSensitivity ?? "medium",
+        shareAnonymizedEvents: config.shareAnonymizedEvents ?? false,
         trackReports: config.trackReports,
         reportKeywords: config.reportKeywords || ["report", "issue", "bug", "problem", "broken"],
         bankrEnabled: config.bankrEnabled ?? false,
@@ -526,6 +529,17 @@ export default function SettingsPage() {
                       </SelectContent>
                     </Select>
                     <FormDescription>Controls how strict the AI and learned-pattern checks are. Lower means fewer deletions and a softer AI verdict.</FormDescription>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="shareAnonymizedEvents" render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <div>
+                      <FormLabel>Share Anonymized Events</FormLabel>
+                      <FormDescription>Share anonymized recent events on the TeliGent landing page demo. Only event categories and salted handle initials leave the server. Off by default.</FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-share-anonymized-events" />
+                    </FormControl>
                   </FormItem>
                 )} />
                 <RecentlyFlaggedList botId={selectedBotId!} />

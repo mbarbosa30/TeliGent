@@ -25,6 +25,7 @@ I prefer simple language and detailed explanations. I want iterative development
 **ERC-8004 Bot Registration on Celo**: Bots can register on the ERC-8004 Agent Identity Registry on Celo, creating an on-chain identity with bot stats.
 **Plans & Billing**: Three SaaS tiers (Free, Pro, Business) with features and quotas defined in `server/limits.ts`. Supports Stripe for card payments and crypto payments on Base (USDC + $TELI) via on-chain transfer monitoring. $TELI token offers perks like discounts and rewards multipliers. Paywall enforcement is managed by `server/billing/gates.ts`.
 **Production Configuration**: Includes robust session secret validation, centralized resource limits (`server/limits.ts`), daily AI call budget enforcement via `ai_usage_daily` table, and widget origin allowlisting.
+**Public Activity Feed**: Bots can opt in via `bot_configs.shareAnonymizedEvents` (off by default). When opted in, the public `GET /api/public/recent-events` endpoint streams the last 24h of category-only events (scam_removed, ai_answer, reward, new_member) with telegram handles redacted to a salted `@x***NN` form and bot identity hidden behind "a community". Output is capped at 12 events and cached in-memory for 30s. The landing page hero card includes a `live-feed` scenario that polls this endpoint and falls back to a scripted scenario when the feed is empty.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database.

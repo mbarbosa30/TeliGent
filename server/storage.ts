@@ -60,6 +60,12 @@ export interface IStorage {
   getWidgetConversations(botConfigId: number, limit?: number): Promise<(WidgetConversation & { messageCount: number; lastMessage?: string })[]>;
 
   getPublicStats(): Promise<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }>;
+  // Returns recent activity from bots that have opted in to anonymized public
+  // sharing, in the last 24 hours, ordered newest first. Only the redaction-
+  // safe columns are selected (no userMessage/botResponse text). The route
+  // layer is responsible for the final hashing/labelling.
+  getRecentSharedActivity(limit: number): Promise<Array<{ id: number; botConfigId: number; type: string; telegramUserId: string | null; userName: string | null; createdAt: Date }>>;
+  getRecentSharedRewards(limit: number): Promise<Array<{ id: number; botConfigId: number; recipientTelegramId: string | null; recipientHandle: string | null; createdAt: Date }>>;
   getUserById(userId: string): Promise<User | undefined>;
   updateUserPlan(userId: string, data: Partial<Pick<User, "plan" | "planRail" | "planPeriodEnd" | "planCancelAtPeriodEnd" | "teliPaid" | "stripeCustomerId" | "stripeSubscriptionId">>): Promise<User | undefined>;
   createPlanPaymentIntent(data: InsertPlanPaymentIntent): Promise<PlanPaymentIntent>;
@@ -996,6 +1002,55 @@ export class DatabaseStorage implements IStorage {
   async updateRewardPayout(id: number, data: Partial<InsertRewardPayout>): Promise<RewardPayout | undefined> {
     const [updated] = await db.update(rewardPayouts).set(data as any).where(eq(rewardPayouts.id, id)).returning();
     return updated;
+  }
+
+  async getRecentSharedActivity(limit: number) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const rows = await db
+      .select({
+        id: activityLogs.id,
+        botConfigId: activityLogs.botConfigId,
+        type: activityLogs.type,
+        telegramUserId: activityLogs.telegramUserId,
+        userName: activityLogs.userName,
+        createdAt: activityLogs.createdAt,
+      })
+      .from(activityLogs)
+      .innerJoin(botConfigs, eq(botConfigs.id, activityLogs.botConfigId))
+      .where(
+        and(
+          eq(botConfigs.shareAnonymizedEvents, true),
+          sql`${activityLogs.createdAt} > ${since}`,
+          sql`${activityLogs.type} IN ('report', 'response', 'join')`,
+        ),
+      )
+      .orderBy(desc(activityLogs.createdAt))
+      .limit(limit);
+    return rows;
+  }
+
+  async getRecentSharedRewards(limit: number) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const rows = await db
+      .select({
+        id: rewardPayouts.id,
+        botConfigId: rewardPayouts.botConfigId,
+        recipientTelegramId: rewardPayouts.telegramUserId,
+        recipientHandle: rewardPayouts.userName,
+        createdAt: rewardPayouts.createdAt,
+      })
+      .from(rewardPayouts)
+      .innerJoin(botConfigs, eq(botConfigs.id, rewardPayouts.botConfigId))
+      .where(
+        and(
+          eq(botConfigs.shareAnonymizedEvents, true),
+          sql`${rewardPayouts.createdAt} > ${since}`,
+          sql`${rewardPayouts.status} = 'sent'`,
+        ),
+      )
+      .orderBy(desc(rewardPayouts.createdAt))
+      .limit(limit);
+    return rows;
   }
 
   async listRewardPayouts(botConfigId: number, limit = 100): Promise<RewardPayout[]> {
