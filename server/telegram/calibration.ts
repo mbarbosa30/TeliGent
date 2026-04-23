@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { log } from "../index";
 import { openai } from "./utils";
+import { tryConsumeAiBudget } from "../ai-budget";
 import { redactPII, extractKeywords, sanitizeKeywords } from "./pii";
 import type { ChatMessage } from "./conversation-history";
 
@@ -114,6 +115,11 @@ Existing patterns (avoid duplicates of these titles): ${existingPatternTitles ||
 
 If nothing qualifies, set save=false on both. NEVER include PII (wallets, emails, phones, IDs).`;
 
+  const allowedCal = await tryConsumeAiBudget(botConfigId);
+  if (!allowedCal) {
+    log(`Calibration skipped (daily budget exhausted) for bot ${botConfigId}`, "ai-budget");
+    return;
+  }
   let raw = "";
   try {
     const resp = await openai.chat.completions.create({
