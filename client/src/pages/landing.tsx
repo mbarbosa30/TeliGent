@@ -5,9 +5,33 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bot, Shield, Brain, Zap, Users, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown, Cpu, Trophy, Code2, LineChart, ArrowRight } from "lucide-react";
+import { Bot, Shield, Brain, Zap, Users, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown, Cpu, Trophy, Code2, LineChart, ArrowRight, Sun, Moon } from "lucide-react";
 import { SiX, SiTelegram } from "react-icons/si";
 import { useAuth } from "@/hooks/use-auth";
+
+function ThemeToggle() {
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof document === "undefined") return false;
+    return document.documentElement.classList.contains("dark");
+  });
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDark) root.classList.add("dark");
+    else root.classList.remove("dark");
+    try { localStorage.setItem("teligent-theme", isDark ? "dark" : "light"); } catch {}
+  }, [isDark]);
+  return (
+    <button
+      type="button"
+      onClick={() => setIsDark((v) => !v)}
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+      data-testid="button-theme-toggle"
+    >
+      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+    </button>
+  );
+}
 
 function AuthForm() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -550,6 +574,7 @@ export default function LandingPage() {
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-features">Features</a>
             <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-pricing">Pricing</a>
             <a href="#faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-faq">FAQ</a>
+            <ThemeToggle />
             <a
               href="#auth"
               className="text-xs font-mono uppercase tracking-widest bg-foreground text-background px-4 py-2 hover:bg-foreground/90 transition-colors"
