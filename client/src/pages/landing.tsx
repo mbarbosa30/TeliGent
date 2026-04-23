@@ -375,13 +375,13 @@ function HeroChatRow({ row, index }: { row: ChatRow; index: number }) {
   );
 }
 
-function HeroChatCard() {
-  const [scenario] = useState<HeroScenario>(
-    () => HERO_SCENARIOS[Math.floor(Math.random() * HERO_SCENARIOS.length)],
-  );
+function HeroChatCard({ scenario }: { scenario: HeroScenario }) {
   return (
-    <div className="border bg-card" data-testid="card-hero-chat" data-hero-chat-scenario={scenario.id}>
-      <div data-testid={`hero-chat-scenario-${scenario.id}`} className="hidden" />
+    <div
+      className="border bg-card"
+      data-testid={`hero-chat-scenario-${scenario.id}`}
+      data-card="card-hero-chat"
+    >
       <div className="flex items-center justify-between px-4 py-2.5 border-b bg-foreground text-background">
         <div className="flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 bg-background animate-pulse" />
@@ -704,6 +704,9 @@ function FAQSection() {
 }
 
 export default function LandingPage() {
+  const [heroScenario] = useState<HeroScenario>(
+    () => HERO_SCENARIOS[Math.floor(Math.random() * HERO_SCENARIOS.length)],
+  );
   return (
     <div className="min-h-screen bg-background">
       <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
@@ -762,7 +765,7 @@ export default function LandingPage() {
           </div>
 
           <div className="md:col-span-5">
-            <HeroChatCard />
+            <HeroChatCard scenario={heroScenario} />
           </div>
         </div>
       </section>
