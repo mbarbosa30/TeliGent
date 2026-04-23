@@ -272,10 +272,127 @@ function TokenAddress() {
   );
 }
 
+function ChatAvatar({ label, inverted = false }: { label: string; inverted?: boolean }) {
+  return (
+    <div
+      className={`flex h-7 w-7 shrink-0 items-center justify-center text-[10px] font-mono font-bold ${
+        inverted ? "bg-foreground text-background" : "bg-muted text-foreground border"
+      }`}
+    >
+      {label}
+    </div>
+  );
+}
+
+function ChatBadge({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "danger" | "ai" }) {
+  const cls =
+    tone === "danger"
+      ? "border-destructive/50 text-destructive"
+      : tone === "ai"
+      ? "bg-foreground text-background border-foreground"
+      : "border text-muted-foreground";
+  return (
+    <span className={`text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 border ${cls}`}>
+      {children}
+    </span>
+  );
+}
+
+function HeroChatCard() {
+  return (
+    <div className="border bg-card" data-testid="card-hero-chat">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b bg-foreground text-background">
+        <div className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 bg-background animate-pulse" />
+          <span className="text-[10px] font-mono uppercase tracking-widest">Live · #general</span>
+        </div>
+        <span className="text-[10px] font-mono uppercase tracking-widest text-background/60">v2 · Base</span>
+      </div>
+
+      <div className="divide-y">
+        <div className="flex gap-3 px-4 py-3 opacity-60" data-testid="chat-row-1">
+          <ChatAvatar label="SX" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs font-semibold truncate">@scammer_x</span>
+              <ChatBadge tone="danger">Removed · Scam</ChatBadge>
+            </div>
+            <p className="text-xs text-muted-foreground line-through truncate">DM me to claim your airdrop</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 px-4 py-3" data-testid="chat-row-2">
+          <ChatAvatar label="A" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs font-semibold">@alice</span>
+              <span className="text-[10px] font-mono text-muted-foreground">14:02</span>
+            </div>
+            <p className="text-xs">How do I stake $TELI?</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 px-4 py-3 bg-muted/40" data-testid="chat-row-3">
+          <ChatAvatar label="T" inverted />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs font-semibold">TeliGent</span>
+              <ChatBadge tone="ai">AI</ChatBadge>
+            </div>
+            <p className="text-xs leading-snug">Staking is on Base. Approve once, then deposit at app.teli.gent/stake. APR ~12% from the rewards pool.</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 px-4 py-3" data-testid="chat-row-4">
+          <ChatAvatar label="B" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs font-semibold">@bob</span>
+              <span className="text-[10px] font-mono text-muted-foreground">14:03</span>
+            </div>
+            <p className="text-xs">/price $TELI</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 px-4 py-3 bg-muted/40" data-testid="chat-row-5">
+          <ChatAvatar label="T" inverted />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs font-semibold">TeliGent</span>
+              <ChatBadge tone="ai">Bankr</ChatBadge>
+            </div>
+            <p className="text-xs font-mono">$TELI · $0.014 · +6.2% (24h) · vol $312k</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between px-4 py-2.5 bg-foreground text-background" data-testid="chat-row-reward">
+          <span className="text-[10px] font-mono uppercase tracking-widest">Reward</span>
+          <span className="text-[10px] font-mono">+5 contribution pts → @alice</span>
+        </div>
+
+        <div className="grid grid-cols-3 divide-x">
+          <div className="px-3 py-2.5">
+            <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Engine</div>
+            <div className="text-[10px] font-mono mt-0.5">GPT-5.2</div>
+          </div>
+          <div className="px-3 py-2.5">
+            <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Chains</div>
+            <div className="text-[10px] font-mono mt-0.5">Base · Celo</div>
+          </div>
+          <div className="px-3 py-2.5">
+            <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Status</div>
+            <div className="text-[10px] font-mono mt-0.5">Operational</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const FAQ_ITEMS = [
   {
     question: "What is TeliGent?",
-    answer: "An AI-powered Telegram bot that moderates your community, blocks scams in real time, and answers members in your brand's voice."
+    answer: "An AI agent that runs your Telegram group, answers visitors on your website via an embeddable chat widget, blocks scams in real time, and rewards your top contributors on-chain."
   },
   {
     question: "How does the scam detection work?",
@@ -338,7 +455,7 @@ const FEATURES = [
   { icon: Shield, title: "Anti-Scam & Spam Filter", body: "Catches phishing, DM solicitation, pump schemes, and token shills automatically." },
   { icon: Zap, title: "AI-Assisted Group Moderation", body: "Members flag with /report. Your bot reviews, acts, and learns new patterns over time." },
   { icon: Users, title: "Multi-Group Management", body: "Run one bot across many Telegram groups from a single dashboard." },
-  { icon: Trophy, title: "Passive CEO Rewards Loop", body: "Score top contributors and pay out any ERC-20 on Base or Celo each period. Built-in referrals." },
+  { icon: Trophy, title: "Community Contribution Rewards", body: "Score top contributors on real signals and pay any ERC-20 on Base or Celo each period. Referrals built-in, no custody." },
   { icon: LineChart, title: "Crypto Intelligence (Bankr)", body: "Optional /price command and live market data injected into AI answers for token communities." },
   { icon: Code2, title: "Embeddable Web Chat Widget", body: "One script tag drops the same on-brand AI agent on your website." },
   { icon: Cpu, title: "Master Agent API & On-Chain Identity", body: "Bots get an ERC-8004 identity on Celo. Platform takes USDC on Base via Locus." },
@@ -587,7 +704,7 @@ export default function LandingPage() {
       <section className="py-24 sm:py-32 px-6">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-10 items-center">
           <div className="md:col-span-7 space-y-7">
-            <Eyebrow number="00" label="AI-Powered Telegram Moderation Bot" />
+            <Eyebrow number="00" label="AI Agent for Telegram, Web, and On-Chain Communities" />
             <h1
               className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[0.95]"
               data-testid="text-hero-heading"
@@ -599,7 +716,7 @@ export default function LandingPage() {
               Community.
             </h1>
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              The 24/7 AI that moderates your Telegram group and answers members in your voice.
+              The 24/7 AI that runs your Telegram group, answers visitors on your website, and rewards your top contributors.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <Button size="lg" asChild data-testid="button-get-started">
@@ -618,30 +735,7 @@ export default function LandingPage() {
           </div>
 
           <div className="md:col-span-5">
-            <div className="border bg-card">
-              <div className="aspect-square bg-foreground flex items-center justify-center relative">
-                <Bot className="h-24 w-24 text-background" />
-                <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 bg-background animate-pulse" />
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-background/80">Live</span>
-                </div>
-                <div className="absolute bottom-3 right-3 text-[10px] font-mono uppercase tracking-widest text-background/60">v2 · Base</div>
-              </div>
-              <div className="divide-y">
-                <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Status</span>
-                  <span className="text-xs font-mono">Operational</span>
-                </div>
-                <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Engine</span>
-                  <span className="text-xs font-mono">GPT-5.2 · GPT-5-mini</span>
-                </div>
-                <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Chains</span>
-                  <span className="text-xs font-mono">Base · Celo</span>
-                </div>
-              </div>
-            </div>
+            <HeroChatCard />
           </div>
         </div>
       </section>
@@ -658,7 +752,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-10 items-start">
           <div className="md:col-span-6 space-y-6">
             <Eyebrow number="04" label="Start" />
-            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.05]">Add an AI moderator to your Telegram group</h2>
+            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.05]">Plug an AI agent into your community</h2>
             <ul className="border-t border-b divide-y">
               <li className="flex items-center gap-3 py-3">
                 <span className="font-mono text-xs text-muted-foreground w-6">01</span>
@@ -666,11 +760,11 @@ export default function LandingPage() {
               </li>
               <li className="flex items-center gap-3 py-3">
                 <span className="font-mono text-xs text-muted-foreground w-6">02</span>
-                <span className="text-sm">Drop in your Telegram bot token</span>
+                <span className="text-sm">Drop in a Telegram bot token, or paste the chat widget script on your site</span>
               </li>
               <li className="flex items-center gap-3 py-3">
                 <span className="font-mono text-xs text-muted-foreground w-6">03</span>
-                <span className="text-sm">Add the bot to your group as admin</span>
+                <span className="text-sm">Train it on your brand and let it moderate, answer, and reward 24/7</span>
               </li>
             </ul>
           </div>
@@ -681,28 +775,30 @@ export default function LandingPage() {
       </section>
 
       <footer className="border-t py-10 px-6">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-6 w-6 items-center justify-center bg-foreground">
-              <Bot className="h-3 w-3 text-background" />
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-6 w-6 items-center justify-center bg-foreground">
+                <Bot className="h-3 w-3 text-background" />
+              </div>
+              <span className="text-sm font-semibold tracking-tight">TeliGent</span>
+              <span className="text-xs text-muted-foreground ml-1">teli.gent</span>
             </div>
-            <span className="text-sm font-semibold tracking-tight">TeliGent</span>
-            <span className="text-xs text-muted-foreground ml-2">teli.gent</span>
+            <div className="flex items-center gap-4">
+              <a href="https://x.com/Teli_Gent_" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-x-twitter" aria-label="X (Twitter)">
+                <SiX className="h-4 w-4" />
+              </a>
+              <a href="https://t.me/teli_gent" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-telegram" aria-label="Telegram">
+                <SiTelegram className="h-4 w-4" />
+              </a>
+              <a href="https://dexscreener.com/base/0x0d65bab223f60d04fb509046096f14934f0bea2943514b32f131c96a781f380f" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-dexscreener" aria-label="DexScreener">
+                <BarChart3 className="h-4 w-4" />
+              </a>
+            </div>
           </div>
-          <div className="flex items-center justify-center text-xs text-muted-foreground gap-1.5">
+          <div className="flex items-center md:justify-end text-xs text-muted-foreground gap-2">
             <span className="font-mono uppercase tracking-widest">CA</span>
-            <TokenAddress />
-          </div>
-          <div className="flex items-center md:justify-end gap-4">
-            <a href="https://x.com/Teli_Gent_" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-x-twitter" aria-label="X (Twitter)">
-              <SiX className="h-4 w-4" />
-            </a>
-            <a href="https://t.me/teli_gent" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-telegram" aria-label="Telegram">
-              <SiTelegram className="h-4 w-4" />
-            </a>
-            <a href="https://dexscreener.com/base/0x0d65bab223f60d04fb509046096f14934f0bea2943514b32f131c96a781f380f" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-dexscreener" aria-label="DexScreener">
-              <BarChart3 className="h-4 w-4" />
-            </a>
+            <code className="text-xs font-mono select-all break-all" data-testid="text-token-ca-footer">0x2822656E2Eec1c608a223752B4e0A651b50c4bA3</code>
           </div>
         </div>
       </footer>
