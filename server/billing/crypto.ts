@@ -4,7 +4,6 @@ import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { storage } from "../storage";
 import { TELI_DISCOUNT_PCT, type PlanTier, getEffectivePlan } from "../limits";
-import type { User } from "@shared/schema";
 import { getPriceUsd } from "./stripe";
 import { log } from "../index";
 
