@@ -373,7 +373,7 @@ function HeroChatCard() {
         <div className="grid grid-cols-3 divide-x">
           <div className="px-3 py-2.5">
             <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Engine</div>
-            <div className="text-[10px] font-mono mt-0.5">GPT-5.2</div>
+            <div className="text-[10px] font-mono mt-0.5">GPT-5.2 · 5-mini</div>
           </div>
           <div className="px-3 py-2.5">
             <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Chains</div>
