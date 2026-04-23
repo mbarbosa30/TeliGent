@@ -50,3 +50,4 @@ timeoutMs = 20000
 
 [userenv.shared]
 LOCUS_WALLET_ADDRESS = "0x3b93fe5aeebe68582b68955b57621f34f994c27f"
+MAIL_FROM = "TeliGent <noreply@in.teli.gent>"
