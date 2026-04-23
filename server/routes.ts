@@ -711,9 +711,9 @@ export async function registerRoutes(
     const ownerLimits = (req as any).agentOwnerLimits as { agentApiRateLimitPerMin: number; agentApiTrustedRateLimitPerMin: number } | undefined;
     const baseUntrusted = ownerLimits?.agentApiRateLimitPerMin ?? _defaultLimits.agentApiRateLimitPerMin;
     const baseTrusted = ownerLimits?.agentApiTrustedRateLimitPerMin ?? _defaultLimits.agentApiTrustedRateLimitPerMin;
-    let cap = isVerified ? baseTrusted : baseUntrusted;
-    const ownerTeli = !!(req as any).ownerTeliPaid;
-    if (ownerTeli) cap *= 2;
+    // Note: getLimitsForUser already applies the TELI 2x multiplier on agent
+    // caps when teliPaid is active, so we must NOT double-apply it here.
+    const cap = isVerified ? baseTrusted : baseUntrusted;
     return cap;
   };
   const agentLimitKeyFn = (req: Request): string => {
