@@ -762,7 +762,16 @@ export async function registerRoutes(
   // The public events endpoint is intentionally cross-origin friendly so the
   // landing page (and any embedded version of the hero card) can read it
   // without a per-bot widget allowlist. Permissive CORS is safe here because
-  // the response is fully redacted and rate-limited.
+  // the response is fully redacted and rate-limited. Privacy contract:
+  //   - Only category labels leave the server (no userMessage/botResponse).
+  //   - Telegram handles are reduced to a salted SHA-256 of the form
+  //     `@x***NN`. The salt is global and stable, so the SAME underlying
+  //     user produces the SAME pseudonym across events and across bots —
+  //     coarse correlation is possible by design (it keeps the feed
+  //     coherent). Follow-up #58 will rotate the salt daily.
+  //   - Bot identity is hidden behind the bot's optional public alias
+  //     (capped at 40 chars, trimmed) or "a community" when no alias is
+  //     set. The bot's real name and ID are never exposed.
   function publicEventsCors(_req: Request, res: Response, next: NextFunction) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Vary", "Origin");
