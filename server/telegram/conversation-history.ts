@@ -47,7 +47,7 @@ export function cleanupOldHistories(): void {
   let cleaned = 0;
 
   for (const [key, history] of histories.entries()) {
-    const filtered = history.filter(m => m.timestamp >= cutoff);
+    const filtered = history.filter((m: ChatMessage) => m.timestamp >= cutoff);
     if (filtered.length === 0) {
       histories.delete(key);
       cleaned++;

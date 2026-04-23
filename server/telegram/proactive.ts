@@ -114,7 +114,7 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
         const active = kb.filter(e => e.isActive);
         if (active.length > 0) {
           const pick = active[Math.floor(Math.random() * Math.min(5, active.length))];
-          topKbTopic = pick.topic || null;
+          topKbTopic = pick.title || null;
         }
       } catch {
         // optional personalisation, ignore failures

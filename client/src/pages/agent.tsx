@@ -433,7 +433,9 @@ export default function AgentPage() {
                     </Badge>
                     <span className="font-mono text-xs">{log.service}</span>
                     {log.selfVerified && (
-                      <Fingerprint className="h-3 w-3 text-muted-foreground" title="Self-verified agent" />
+                      <span aria-label="Self-verified agent" title="Self-verified agent">
+                        <Fingerprint className="h-3 w-3 text-muted-foreground" />
+                      </span>
                     )}
                     <span className="text-muted-foreground text-xs truncate max-w-[200px]">{log.reason}</span>
                   </div>

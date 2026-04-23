@@ -81,7 +81,9 @@ export async function verifySelfRequestHeaders(req: {
   headers: Record<string, string | string[] | undefined>;
   method: string;
   url: string;
-  rawBody?: string;
+  // Express types `req.rawBody` as unknown (set by the json() verify hook to a
+  // Buffer). Accept that here and normalize to a string before signing.
+  rawBody?: unknown;
   body?: any;
 }): Promise<SelfVerificationResult> {
   const signature = req.headers["x-self-agent-signature"];
@@ -99,11 +101,17 @@ export async function verifySelfRequestHeaders(req: {
     }
 
     const result = await new Promise<SelfVerificationResult>((resolve) => {
+      const rawBodyStr =
+        typeof req.rawBody === "string"
+          ? req.rawBody
+          : Buffer.isBuffer(req.rawBody)
+            ? req.rawBody.toString("utf8")
+            : (req.body ? JSON.stringify(req.body) : "");
       const mockReq = {
         headers: req.headers,
         method: req.method,
         url: req.url,
-        rawBody: req.rawBody || (req.body ? JSON.stringify(req.body) : ""),
+        rawBody: rawBodyStr,
         agent: null as any,
       };
 

@@ -7,6 +7,8 @@ export interface AuthUser {
   firstName: string | null;
   lastName: string | null;
   profileImageUrl: string | null;
+  emailVerified?: boolean | null;
+  emailVerifiedAt?: string | null;
   plan?: "free" | "pro" | "business" | null;
   planRail?: string | null;
   planPeriodEnd?: string | null;

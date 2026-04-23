@@ -21,6 +21,16 @@ function getUserId(req: any): string {
   return req.session?.userId;
 }
 
+// Express 5 types route params as `string | string[]`. This narrows them to a
+// single string so we can pass them straight into storage methods. Returns
+// the first element when the param is array-shaped, or the empty string when
+// missing or non-string — callers should validate as needed.
+function asString(p: unknown): string {
+  if (typeof p === "string") return p;
+  if (Array.isArray(p) && typeof p[0] === "string") return p[0];
+  return "";
+}
+
 async function loadUser(req: Request) {
   const userId = getUserId(req);
   if (!userId) return null;
@@ -619,7 +629,7 @@ export async function registerRoutes(
 
   app.get("/api/widget/:widgetKey/config", widgetCors, widgetRateLimit, async (req, res) => {
     try {
-      const config = await storage.getBotByWidgetKey(req.params.widgetKey);
+      const config = await storage.getBotByWidgetKey(asString(req.params.widgetKey));
       if (!config) return res.status(404).json({ error: "Widget not found" });
       res.json({
         botName: config.botName || "Assistant",
@@ -632,7 +642,7 @@ export async function registerRoutes(
 
   app.post("/api/widget/:widgetKey/message", widgetCors, widgetRateLimit, async (req, res) => {
     try {
-      const config = await storage.getBotByWidgetKey(req.params.widgetKey);
+      const config = await storage.getBotByWidgetKey(asString(req.params.widgetKey));
       if (!config) return res.status(404).json({ error: "Widget not found" });
 
       const { message, sessionId, pageUrl } = req.body;
@@ -1073,7 +1083,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/rewards/leaderboard", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const limit = Math.min(parseInt((req.query.limit as string) || "50"), 200);
       const groupIdRaw = req.query.groupId as string | undefined;
       const groupId = groupIdRaw === undefined || groupIdRaw === "" ? undefined : (groupIdRaw === "null" ? null : parseInt(groupIdRaw));
@@ -1093,7 +1103,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/rewards/periods", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const periods = await storage.listContributionScorePeriods(botId, 24);
       res.json(periods);
     } catch (err: any) {
@@ -1103,7 +1113,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/rewards/distributions", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const distributions = await storage.listRewardDistributions(botId, 30);
       res.json(distributions);
     } catch (err: any) {
@@ -1113,7 +1123,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/rewards/payouts", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const payouts = await storage.listRewardPayouts(botId, 100);
       res.json(payouts);
     } catch (err: any) {
@@ -1123,7 +1133,7 @@ export async function registerRoutes(
 
   app.post("/api/bots/:botId/rewards/run", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const config = await storage.getBotConfig(botId);
       if (!config) return res.status(404).json({ error: "Bot not found" });
       const { runRewardsForBot } = await import("./telegram/rewards");
@@ -1136,7 +1146,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/rewards/wallet-status", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const config = await storage.getBotConfig(botId);
       if (!config) return res.status(404).json({ error: "Bot not found" });
       const erc20 = await import("./agent/erc20");
@@ -1154,7 +1164,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/proactive/queue", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const status = (req.query.status as string) || undefined;
       const prompts = await storage.listProactivePrompts(botId, status, 100);
       res.json(prompts);
@@ -1165,7 +1175,7 @@ export async function registerRoutes(
 
   app.post("/api/bots/:botId/proactive/run", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const config = await storage.getBotConfig(botId);
       if (!config) return res.status(404).json({ error: "Bot not found" });
       const { maybeRunProactiveForBot } = await import("./telegram/proactive");
@@ -1178,8 +1188,8 @@ export async function registerRoutes(
 
   app.post("/api/bots/:botId/proactive/:promptId/post", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
-      const promptId = parseInt(req.params.promptId);
+      const botId = parseInt(asString(req.params.botId));
+      const promptId = parseInt(asString(req.params.promptId));
       const { postProactivePrompt } = await import("./telegram/proactive");
       const result = await postProactivePrompt(botId, promptId);
       res.json(result);
@@ -1190,8 +1200,8 @@ export async function registerRoutes(
 
   app.post("/api/bots/:botId/proactive/:promptId/skip", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
-      const promptId = parseInt(req.params.promptId);
+      const botId = parseInt(asString(req.params.botId));
+      const promptId = parseInt(asString(req.params.promptId));
       const updated = await storage.updateProactivePrompt(botId, promptId, { status: "skipped" });
       res.json(updated || { ok: false });
     } catch (err: any) {
@@ -1201,7 +1211,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/referrals", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const status = (req.query.status as string) || undefined;
       const refs = await storage.listReferrals(botId, status, 100);
       res.json(refs);
@@ -1212,7 +1222,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/wallets", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const wallets = await storage.listMemberWallets(botId);
       res.json(wallets);
     } catch (err: any) {
@@ -1222,7 +1232,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/feedback", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const theme = (req.query.theme as string) || undefined;
       const sentiment = (req.query.sentiment as string) || undefined;
       const groupIdRaw = req.query.groupId ? parseInt(req.query.groupId as string) : NaN;
@@ -1240,7 +1250,7 @@ export async function registerRoutes(
 
   app.get("/api/bots/:botId/feedback/stats", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const sinceDaysRaw = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 30;
       const sinceDays = Number.isFinite(sinceDaysRaw) && sinceDaysRaw > 0 && sinceDaysRaw <= 365 ? sinceDaysRaw : 30;
       const [byTheme, bySentiment] = await Promise.all([
@@ -1257,7 +1267,7 @@ export async function registerRoutes(
     try {
       const owner = await loadUser(req);
       requirePermission(owner, "allowFeedbackDigest");
-      const botId = parseInt(req.params.botId);
+      const botId = parseInt(asString(req.params.botId));
       const sinceDays = req.body?.sinceDays ? parseInt(String(req.body.sinceDays)) : 14;
       const { generateFeedbackDigest } = await import("./telegram/feedback");
       const digest = await generateFeedbackDigest(botId, sinceDays);
@@ -1473,7 +1483,7 @@ export async function registerRoutes(
   app.get("/api/billing/crypto/intent/:id", isAuthenticated, apiRateLimit, async (req, res) => {
     const user = await loadUser(req);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const id = parseInt(req.params.id);
+    const id = parseInt(asString(req.params.id));
     const intent = await storage.getPlanPaymentIntent(id);
     if (!intent || intent.userId !== user.id) return res.status(404).json({ error: "Not found" });
     res.json(CryptoBilling.formatIntentForDisplay(intent));
@@ -1492,7 +1502,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/admin/users/:userId/plan", isAdminAuthenticated, async (req, res) => {
-    const userId = req.params.userId;
+    const userId = asString(req.params.userId);
     const plan = req.body?.plan as PlanTier;
     const days = parseInt(String(req.body?.days || "30"));
     const reasonRaw = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";

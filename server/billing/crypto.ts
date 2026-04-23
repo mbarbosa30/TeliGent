@@ -4,6 +4,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { storage } from "../storage";
 import { TELI_DISCOUNT_PCT, type PlanTier, getEffectivePlan } from "../limits";
+import type { User } from "@shared/schema";
 import { getPriceUsd } from "./stripe";
 import { log } from "../index";
 
@@ -265,5 +266,11 @@ async function activateIntent(intent: any, txHash: string | null): Promise<boole
 
 export function getUserActivePlan(user: { plan: string | null; planPeriodEnd: Date | null } | null | undefined): PlanTier {
   if (!user) return "free";
-  return getEffectivePlan({ plan: user.plan ?? null, planPeriodEnd: user.planPeriodEnd ?? null });
+  // getEffectivePlan only reads `plan` and `planPeriodEnd` off the user. We
+  // build a minimal shape that matches its parameter type without depending on
+  // the rest of the User row.
+  return getEffectivePlan({
+    plan: user.plan ?? "free",
+    planPeriodEnd: user.planPeriodEnd ?? null,
+  } as User);
 }

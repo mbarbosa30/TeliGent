@@ -111,6 +111,6 @@ export async function computeContributorScoresByGroup(botConfigId: number, perio
     list.push(entry);
     byGroup.set(a.groupId, list);
   }
-  for (const list of byGroup.values()) list.sort((x, y) => y.score - x.score);
+  for (const list of byGroup.values()) list.sort((x: ContributorScore, y: ContributorScore) => y.score - x.score);
   return byGroup;
 }

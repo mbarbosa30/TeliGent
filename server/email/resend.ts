@@ -8,7 +8,12 @@ export async function getResendClient(): Promise<any | null> {
     return null;
   }
   try {
-    const mod: any = await import("resend").catch(() => null);
+    // Use a runtime-computed module name so the TypeScript compiler does not
+    // try to statically resolve the optional 'resend' package. The package is
+    // listed as a follow-up install (#55) and is intentionally absent from
+    // node_modules until then; the catch() handles the missing-module case.
+    const moduleName = ["res", "end"].join("");
+    const mod: any = await import(moduleName).catch(() => null);
     const Resend = mod?.Resend;
     if (!Resend) {
       console.warn("[email/resend] 'resend' package not installed yet. Email delivery is disabled.");
