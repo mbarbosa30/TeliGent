@@ -21,14 +21,20 @@ function getUserId(req: any): string {
   return req.session?.userId;
 }
 
-// Express 5 types route params as `string | string[]`. This narrows them to a
-// single string so we can pass them straight into storage methods. Returns
-// the first element when the param is array-shaped, or the empty string when
-// missing or non-string — callers should validate as needed.
-function asString(p: unknown): string {
-  if (typeof p === "string") return p;
-  if (Array.isArray(p) && typeof p[0] === "string") return p[0];
-  return "";
+// Express 5 types route params as `string | string[]`. We require a single
+// string and reject any other shape with a 400 — array params are usually a
+// sign of a malformed URL and should never be silently coerced into a storage
+// lookup. The route catch handlers honor `err.status` to surface this.
+class BadParamError extends Error {
+  status = 400;
+  constructor(name: string) {
+    super(`Invalid URL parameter: ${name}`);
+  }
+}
+
+function asString(p: unknown, name = "param"): string {
+  if (typeof p === "string" && p.length > 0) return p;
+  throw new BadParamError(name);
 }
 
 async function loadUser(req: Request) {
@@ -113,7 +119,7 @@ export async function registerRoutes(
       const bots = await storage.getBotConfigs(userId);
       res.json(bots);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -141,7 +147,7 @@ export async function registerRoutes(
       });
       res.status(204).send();
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -153,7 +159,7 @@ export async function registerRoutes(
       config.hasBankrApiKey = !!rawKey;
       res.json(config);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -163,7 +169,7 @@ export async function registerRoutes(
       const status = await getWebhookStatus(botId);
       res.json(status);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -199,7 +205,7 @@ export async function registerRoutes(
       const entries = await storage.getKnowledgeEntries(botId);
       res.json(entries);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -255,7 +261,7 @@ export async function registerRoutes(
       await storage.deleteKnowledgeEntry(botId, id);
       res.status(204).send();
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -265,7 +271,7 @@ export async function registerRoutes(
       const memories = await storage.getBotMemories(botId);
       res.json(memories);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -286,7 +292,7 @@ export async function registerRoutes(
       });
       res.json(memory);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -297,7 +303,7 @@ export async function registerRoutes(
       await storage.deleteBotMemory(botId, id);
       res.status(204).send();
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -324,7 +330,7 @@ export async function registerRoutes(
       const allGroups = await storage.getGroups(botId);
       res.json(allGroups);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -336,7 +342,7 @@ export async function registerRoutes(
       const logs = await storage.getActivityLogs(botId, limit, offset);
       res.json(logs);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -348,7 +354,7 @@ export async function registerRoutes(
       const reports = await storage.getReportLogs(botId, limit, offset);
       res.json(reports);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -359,7 +365,7 @@ export async function registerRoutes(
       const items = await storage.getRecentlyFlaggedScams(botId, limit);
       res.json(items);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -425,7 +431,7 @@ export async function registerRoutes(
         unbanError,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -436,7 +442,7 @@ export async function registerRoutes(
       const data = await generateWeeklyDigest(botId);
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -447,7 +453,7 @@ export async function registerRoutes(
       const patterns = await storage.getCollectivePatterns(botId, status);
       res.json(patterns);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -465,7 +471,7 @@ export async function registerRoutes(
       invalidateDigestCache(botId);
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -478,7 +484,7 @@ export async function registerRoutes(
       invalidateDigestCache(botId);
       res.status(204).send();
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -501,7 +507,7 @@ export async function registerRoutes(
       invalidateDigestCache(botId);
       res.json({ entry, pattern });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -512,7 +518,7 @@ export async function registerRoutes(
       const memories = await storage.getRecentUserMemories(botId, limit);
       res.json(memories);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -521,7 +527,7 @@ export async function registerRoutes(
       const stats = await storage.adminGetStats();
       res.json(stats);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -535,7 +541,7 @@ export async function registerRoutes(
       });
       res.json(enriched);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -544,7 +550,7 @@ export async function registerRoutes(
       const allBots = await storage.adminGetAllBots();
       res.json(allBots);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -553,7 +559,7 @@ export async function registerRoutes(
       const logs = await storage.adminGetAllActivityLogs(500);
       res.json(logs);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -569,7 +575,7 @@ export async function registerRoutes(
       res.json({ widgetKey });
     } catch (err: any) {
       if (err instanceof PaywallError) return next(err);
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -579,7 +585,7 @@ export async function registerRoutes(
       await storage.updateBotConfig(botId, { widgetEnabled: false });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -589,7 +595,7 @@ export async function registerRoutes(
       const conversations = await storage.getWidgetConversations(botId);
       res.json(conversations);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -636,7 +642,7 @@ export async function registerRoutes(
         greeting: `Hi! I'm ${config.botName || "the assistant"}. How can I help you?`,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -704,7 +710,7 @@ export async function registerRoutes(
       cachedPublicStatsAt = now;
       res.json(stats);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -811,7 +817,7 @@ export async function registerRoutes(
       const registration = await generateERC8004Registration(baseUrl);
       res.json(registration);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -822,7 +828,7 @@ export async function registerRoutes(
       const identity = await getAgentIdentity(baseUrl);
       res.json(identity);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -838,7 +844,7 @@ export async function registerRoutes(
         chain: walletData?.chain || "base",
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -915,7 +921,7 @@ export async function registerRoutes(
         timestamp: new Date().toISOString(),
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -983,7 +989,7 @@ export async function registerRoutes(
         timestamp: new Date().toISOString(),
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1029,7 +1035,7 @@ export async function registerRoutes(
       const status = await getCeloRegistrationStatus(botId);
       res.json(status);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1051,7 +1057,7 @@ export async function registerRoutes(
         client.release();
       }
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1065,7 +1071,7 @@ export async function registerRoutes(
       res.json(result);
     } catch (err: any) {
       console.error("[admin] Batch ERC-8004 registration failed:", err.message);
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1077,7 +1083,7 @@ export async function registerRoutes(
       const logs = await storage.getAgentServiceLogs(50);
       res.json({ ...dashboard, recentLogs: logs });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1097,7 +1103,7 @@ export async function registerRoutes(
       const scores = await storage.getLatestContributionScores(botId, limit, groupId as number | null | undefined);
       res.json(scores);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1107,7 +1113,7 @@ export async function registerRoutes(
       const periods = await storage.listContributionScorePeriods(botId, 24);
       res.json(periods);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1117,7 +1123,7 @@ export async function registerRoutes(
       const distributions = await storage.listRewardDistributions(botId, 30);
       res.json(distributions);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1127,7 +1133,7 @@ export async function registerRoutes(
       const payouts = await storage.listRewardPayouts(botId, 100);
       res.json(payouts);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1140,7 +1146,7 @@ export async function registerRoutes(
       const result = await runRewardsForBot(config, { dryRun: req.body?.dryRun === true, force: req.body?.force === true });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1158,7 +1164,7 @@ export async function registerRoutes(
         res.json({ configured: false, error: err.message, chain: config.rewardTokenChain || "base" });
       }
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1169,7 +1175,7 @@ export async function registerRoutes(
       const prompts = await storage.listProactivePrompts(botId, status, 100);
       res.json(prompts);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1182,7 +1188,7 @@ export async function registerRoutes(
       const result = await maybeRunProactiveForBot({ ...config, proactiveEnabled: true });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1194,7 +1200,7 @@ export async function registerRoutes(
       const result = await postProactivePrompt(botId, promptId);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1205,7 +1211,7 @@ export async function registerRoutes(
       const updated = await storage.updateProactivePrompt(botId, promptId, { status: "skipped" });
       res.json(updated || { ok: false });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1216,7 +1222,7 @@ export async function registerRoutes(
       const refs = await storage.listReferrals(botId, status, 100);
       res.json(refs);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1226,7 +1232,7 @@ export async function registerRoutes(
       const wallets = await storage.listMemberWallets(botId);
       res.json(wallets);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1244,7 +1250,7 @@ export async function registerRoutes(
       const items = await storage.listFeedbackItems(botId, { theme, sentiment, groupId, sinceDays, limit });
       res.json(items);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1259,7 +1265,7 @@ export async function registerRoutes(
       ]);
       res.json({ byTheme, bySentiment, sinceDays });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1274,7 +1280,7 @@ export async function registerRoutes(
       res.json({ digest, sinceDays });
     } catch (err: any) {
       if (err instanceof PaywallError) return next(err);
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1355,7 +1361,7 @@ export async function registerRoutes(
       }
       res.json({ url: result.url });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1368,7 +1374,7 @@ export async function registerRoutes(
       const result = await Stripe.createPortalSession({ customerId: user.stripeCustomerId, origin });
       res.json({ url: result.url });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 
@@ -1423,7 +1429,7 @@ export async function registerRoutes(
       res.json({ received: true });
     } catch (err: any) {
       console.error("[stripe webhook]", err);
-      res.status(500).json({ error: err.message });
+      res.status(err?.status || 500).json({ error: err.message });
     }
   });
 

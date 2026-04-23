@@ -97,14 +97,19 @@ function normalisePlan(plan: string | null | undefined): PlanTier {
   return "free";
 }
 
-export function isPlanActive(user: User | null | undefined): boolean {
+// Both helpers only read `plan` and `planPeriodEnd`, so accept the minimal
+// shape rather than the full User row. This lets callers with partial user
+// data (e.g. crypto billing intents) pass typed objects without casts.
+type PlanFields = Pick<User, "plan" | "planPeriodEnd">;
+
+export function isPlanActive(user: PlanFields | null | undefined): boolean {
   if (!user) return false;
   if (user.plan === "free") return true;
   if (!user.planPeriodEnd) return false;
   return new Date(user.planPeriodEnd).getTime() > Date.now();
 }
 
-export function getEffectivePlan(user: User | null | undefined): PlanTier {
+export function getEffectivePlan(user: PlanFields | null | undefined): PlanTier {
   if (!user) return "free";
   return isPlanActive(user) ? normalisePlan(user.plan) : "free";
 }

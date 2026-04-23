@@ -266,11 +266,10 @@ async function activateIntent(intent: any, txHash: string | null): Promise<boole
 
 export function getUserActivePlan(user: { plan: string | null; planPeriodEnd: Date | null } | null | undefined): PlanTier {
   if (!user) return "free";
-  // getEffectivePlan only reads `plan` and `planPeriodEnd` off the user. We
-  // build a minimal shape that matches its parameter type without depending on
-  // the rest of the User row.
+  // getEffectivePlan accepts the minimal {plan, planPeriodEnd} shape directly,
+  // so no cast is needed.
   return getEffectivePlan({
     plan: user.plan ?? "free",
     planPeriodEnd: user.planPeriodEnd ?? null,
-  } as User);
+  });
 }
