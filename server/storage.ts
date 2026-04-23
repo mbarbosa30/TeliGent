@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, scamAllowlist, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals, feedbackItems, planPaymentIntents, planPeriods, platformSettings } from "@shared/schema";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, scamAllowlist, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals, feedbackItems, planPaymentIntents, planPeriods, platformSettings, aiUsageDaily } from "@shared/schema";
 import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, ScamAllowlistEntry, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot, MemberWallet, ContributionScore, InsertContributionScore, RewardDistribution, InsertRewardDistribution, RewardPayout, InsertRewardPayout, ProactivePrompt, InsertProactivePrompt, Referral, InsertReferral, FeedbackItem, InsertFeedbackItem, PlanPaymentIntent, InsertPlanPaymentIntent, PlanPeriod, InsertPlanPeriod, PlatformSetting } from "@shared/schema";
 import { eq, desc, and, sql, count, inArray } from "drizzle-orm";
 
@@ -68,6 +68,7 @@ export interface IStorage {
   markPlanPaymentIntent(id: number, status: "matched" | "expired" | "pending", txHash?: string | null): Promise<PlanPaymentIntent | undefined>;
   createPlanPeriod(data: InsertPlanPeriod): Promise<PlanPeriod>;
   listPlanPeriodsForUser(userId: string, limit?: number): Promise<PlanPeriod[]>;
+  getAiUsageForDay(botConfigId: number, usageDate: string): Promise<number>;
   getPlatformSetting(key: string): Promise<string | null>;
   setPlatformSetting(key: string, value: string): Promise<void>;
   adminGetAllUsers(): Promise<Omit<User, "passwordHash">[]>;
@@ -438,6 +439,14 @@ export class DatabaseStorage implements IStorage {
 
   async listPlanPeriodsForUser(userId: string, limit = 20): Promise<PlanPeriod[]> {
     return db.select().from(planPeriods).where(eq(planPeriods.userId, userId)).orderBy(desc(planPeriods.startsAt)).limit(limit);
+  }
+
+  async getAiUsageForDay(botConfigId: number, usageDate: string): Promise<number> {
+    const [row] = await db.select({ count: aiUsageDaily.count })
+      .from(aiUsageDaily)
+      .where(and(eq(aiUsageDaily.botConfigId, botConfigId), eq(aiUsageDaily.usageDate, usageDate)))
+      .limit(1);
+    return row?.count ?? 0;
   }
 
   async getPlatformSetting(key: string): Promise<string | null> {

@@ -12,7 +12,7 @@ import crypto from "crypto";
 
 const serverStartTime = Date.now();
 
-import { getLimitsForUser, getLimitsForBot, getDefaultLimits, TIER_LIMITS, TIER_PRICING, TELI_DISCOUNT_PCT, TELI_REWARDS_BOOST_PCT, getEffectivePlan, type PlanTier } from "./limits";
+import { getLimitsForUser, getLimitsForBot, getDefaultLimits, TIER_LIMITS, TIER_PRICING, TELI_DISCOUNT_PCT, TELI_REWARDS_BOOST_PCT, getEffectivePlan, isPlanActive, type PlanTier } from "./limits";
 import { PaywallError, requirePermission, requireQuota, paywallErrorMiddleware } from "./billing/gates";
 import * as Stripe from "./billing/stripe";
 import * as CryptoBilling from "./billing/crypto";
@@ -27,7 +27,7 @@ async function loadUser(req: Request) {
   return storage.getUserById(userId);
 }
 
-function createApiRateLimiter(windowMs: number, maxRequests: number) {
+function createApiRateLimiter(windowMs: number, maxRequests: number, opts?: { keyFn?: (req: Request) => string; maxFn?: (req: Request) => number }) {
   const store = new Map<string, { count: number; resetAt: number }>();
   setInterval(() => {
     const now = Date.now();
@@ -37,11 +37,12 @@ function createApiRateLimiter(windowMs: number, maxRequests: number) {
   }, 60 * 1000);
 
   return (req: Request, res: Response, next: NextFunction) => {
-    const key = req.session?.userId || req.ip || "unknown";
+    const key = opts?.keyFn ? opts.keyFn(req) : (req.session?.userId || req.ip || "unknown");
+    const limit = opts?.maxFn ? opts.maxFn(req) : maxRequests;
     const now = Date.now();
     const entry = store.get(key);
     if (entry && now < entry.resetAt) {
-      if (entry.count >= maxRequests) {
+      if (entry.count >= limit) {
         const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
         res.set("Retry-After", String(retryAfter));
         return res.status(429).json({ error: "Too many requests. Please slow down." });
@@ -692,8 +693,40 @@ export async function registerRoutes(
     }
   });
 
-  const agentRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.agentApiRateLimitPerMin);
-  const agentTrustRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.agentApiTrustedRateLimitPerMin);
+  // Agent API rate limit is keyed per caller (Self-verified agent address > callerIdentifier > IP)
+  // so one noisy caller can't exhaust a global bucket. The per-minute cap also stacks for
+  // trusted callers: Self verified -> 2x, plus another 2x if the targeted bot's owner has
+  // teliPaid=true. This delivers the "$TELI -> 2x agent rate limit" perk in a way that's
+  // resilient to callers that don't authenticate as a TeliGent user.
+  const agentLimitMaxFn = (req: Request): number => {
+    const isVerified = !!(req as any).selfVerified;
+    let cap = isVerified ? _defaultLimits.agentApiTrustedRateLimitPerMin : _defaultLimits.agentApiRateLimitPerMin;
+    const ownerTeli = !!(req as any).ownerTeliPaid;
+    if (ownerTeli) cap *= 2;
+    return cap;
+  };
+  const agentLimitKeyFn = (req: Request): string => {
+    const verifiedAddr = (req as any).selfAgentAddress as string | null;
+    if (verifiedAddr) return `agent:self:${verifiedAddr.toLowerCase()}`;
+    const caller = typeof req.body?.callerIdentifier === "string" ? req.body.callerIdentifier.slice(0, 64) : "";
+    return caller ? `agent:caller:${caller}` : `agent:ip:${req.ip || "unknown"}`;
+  };
+  const agentRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.agentApiRateLimitPerMin, { keyFn: agentLimitKeyFn, maxFn: agentLimitMaxFn });
+  const agentTrustRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.agentApiTrustedRateLimitPerMin, { keyFn: agentLimitKeyFn, maxFn: agentLimitMaxFn });
+
+  // Resolve owner-tier-aware perks before the rate limiter runs. If the request body carries a
+  // botId we can recognise, we'll mark the request as belonging to a TELI-paying owner so the
+  // rate-limit cap is bumped accordingly.
+  async function resolveAgentRequestOwner(req: Request): Promise<void> {
+    const botIdRaw = req.body?.botId;
+    if (botIdRaw == null) return;
+    const botId = parseInt(String(botIdRaw));
+    if (!Number.isFinite(botId)) return;
+    const bot = await storage.getBotConfig(botId).catch(() => null);
+    if (!bot) return;
+    const owner = await storage.getUserById(bot.userId).catch(() => null);
+    if (owner?.teliPaid && isPlanActive(owner)) (req as any).ownerTeliPaid = true;
+  }
 
   const { registerOpenServRoutes } = await import("./agent/openserv");
   registerOpenServRoutes(app);
@@ -741,6 +774,7 @@ export async function registerRoutes(
     const selfResult = await verifySelfRequestHeaders(req);
     (req as any).selfVerified = selfResult.verified;
     (req as any).selfAgentAddress = selfResult.agentAddress;
+    await resolveAgentRequestOwner(req);
     const limiter = selfResult.verified ? agentTrustRateLimit : agentRateLimit;
     limiter(req, res, next);
   }, async (req, res) => {
@@ -825,6 +859,7 @@ export async function registerRoutes(
     const selfResult = await verifySelfRequestHeaders(req);
     (req as any).selfVerified = selfResult.verified;
     (req as any).selfAgentAddress = selfResult.agentAddress;
+    await resolveAgentRequestOwner(req);
     const limiter = selfResult.verified ? agentTrustRateLimit : agentRateLimit;
     limiter(req, res, next);
   }, async (req, res) => {
@@ -1193,6 +1228,22 @@ export async function registerRoutes(
     const plan = getEffectivePlan(user);
     const limits = getLimitsForUser(user);
     const bots = user ? await storage.getBotConfigs(user.id) : [];
+    // Real usage stats: KB entries summed across all of the user's bots, and the
+    // largest single-bot AI-call count for today (the one that would hit the cap first).
+    let kbCount = 0;
+    let aiCallsToday = 0;
+    if (bots.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      const perBot = await Promise.all(bots.map(async (b) => {
+        const [kbs, ai] = await Promise.all([
+          storage.getKnowledgeEntries(b.id).catch(() => []),
+          storage.getAiUsageForDay(b.id, today).catch(() => 0),
+        ]);
+        return { kbs: kbs.length, ai };
+      }));
+      kbCount = perBot.reduce((s, x) => s + x.kbs, 0);
+      aiCallsToday = perBot.reduce((m, x) => Math.max(m, x.ai), 0);
+    }
     res.json({
       plan,
       planRail: user?.planRail || "none",
@@ -1210,6 +1261,10 @@ export async function registerRoutes(
       usage: {
         bots: bots.length,
         botsLimit: limits.maxBots,
+        kb: kbCount,
+        kbLimitPerBot: limits.maxKbEntries,
+        aiCallsTodayMax: aiCallsToday,
+        aiCallsLimitPerBot: limits.dailyAiCallsPerBot,
       },
     });
   });

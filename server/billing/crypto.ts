@@ -46,8 +46,8 @@ export async function getUsdPerTeli(): Promise<number> {
     const n = parseFloat(stored);
     if (Number.isFinite(n) && n > 0) return n;
   }
-  const fallback = parseFloat(process.env.USD_PER_TELI || "0.01");
-  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0.01;
+  const fallback = parseFloat(process.env.USD_PER_TELI || "0.10");
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0.10;
 }
 
 /**

@@ -115,8 +115,8 @@ export default function BillingPage() {
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <UsageStat label="Bots" current={limits.usage.bots} max={limits.usage.botsLimit} testId="stat-bots" />
-            <UsageStat label="KB / bot" current={0} max={limits.limits.maxKbEntries as number} testId="stat-kb" suffix=" max" />
-            <UsageStat label="AI calls / bot / day" current={0} max={limits.limits.dailyAiCallsPerBot as number} testId="stat-ai" suffix=" max" />
+            <UsageStat label="KB entries (total)" current={limits.usage.kb} max={limits.usage.kbLimitPerBot * Math.max(1, limits.usage.bots)} testId="stat-kb" suffix=" cap" />
+            <UsageStat label="AI calls today (busiest bot)" current={limits.usage.aiCallsTodayMax} max={limits.usage.aiCallsLimitPerBot} testId="stat-ai" suffix=" / day" />
           </CardContent>
         </Card>
 

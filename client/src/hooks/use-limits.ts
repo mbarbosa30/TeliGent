@@ -14,7 +14,14 @@ export interface LimitsResponse {
   cryptoEnabled: boolean;
   receiveAddress: string | null;
   stripePublishableKey: string | null;
-  usage: { bots: number; botsLimit: number };
+  usage: {
+    bots: number;
+    botsLimit: number;
+    kb: number;
+    kbLimitPerBot: number;
+    aiCallsTodayMax: number;
+    aiCallsLimitPerBot: number;
+  };
 }
 
 export function useLimits() {

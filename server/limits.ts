@@ -97,7 +97,7 @@ function normalisePlan(plan: string | null | undefined): PlanTier {
   return "free";
 }
 
-function isPlanActive(user: User | null | undefined): boolean {
+export function isPlanActive(user: User | null | undefined): boolean {
   if (!user) return false;
   if (user.plan === "free") return true;
   if (!user.planPeriodEnd) return false;

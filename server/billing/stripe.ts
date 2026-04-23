@@ -114,6 +114,8 @@ export async function getSubscription(subscriptionId: string): Promise<any> {
 /**
  * Verify Stripe webhook signature. Header format: `t=...,v1=hex,...`
  */
+const WEBHOOK_TIMESTAMP_TOLERANCE_SEC = 5 * 60; // 5 minutes, matches Stripe's recommended window
+
 export function verifyWebhookSignature(rawBody: Buffer | string, signatureHeader: string | undefined): boolean {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret || !signatureHeader) return false;
@@ -121,6 +123,11 @@ export function verifyWebhookSignature(rawBody: Buffer | string, signatureHeader
   const t = parts["t"];
   const v1 = parts["v1"];
   if (!t || !v1) return false;
+  // Replay-resistance: reject any event whose timestamp is older than our tolerance window.
+  const ts = parseInt(t, 10);
+  if (!Number.isFinite(ts)) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSec - ts) > WEBHOOK_TIMESTAMP_TOLERANCE_SEC) return false;
   const payload = `${t}.${typeof rawBody === "string" ? rawBody : rawBody.toString("utf8")}`;
   const expected = crypto.createHmac("sha256", secret).update(payload).digest("hex");
   try {
