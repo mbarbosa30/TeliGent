@@ -733,16 +733,24 @@ export async function registerRoutes(
     // resolve the owner and enforce their tier. Missing/invalid botId or
     // unknown owner => 402 (PaywallError) so callers can't bypass tier gating
     // by simply omitting the field.
+    // Two valid call modes:
+    //   (a) Owner-scoped: caller supplies a valid botId so we resolve the
+    //       owner and enforce their tier (`allowAgentApi`) plus expose their
+    //       per-minute caps for the rate limiter.
+    //   (b) Global/platform-agent: caller omits botId. We treat the request as
+    //       a public/platform invocation and apply the Free-tier baseline caps.
+    //       This preserves backwards compatibility for callers that don't map
+    //       to a specific tenant bot.
+    // Invalid/unknown botId is rejected (402) so callers cannot bypass tier
+    // gating by guessing or supplying junk.
+    const botIdRaw = req.body?.botId;
+    if (botIdRaw == null) return; // global/platform-agent path: Free defaults apply
     const agentEntitlementError = (message: string) => new PaywallError({
       feature: "allowAgentApi",
       currentPlan: "free",
       requiredPlan: "pro",
       message,
     });
-    const botIdRaw = req.body?.botId;
-    if (botIdRaw == null) {
-      throw agentEntitlementError("botId is required to use the agent API.");
-    }
     const botId = parseInt(String(botIdRaw));
     if (!Number.isFinite(botId)) {
       throw agentEntitlementError("botId must be a valid integer.");
