@@ -733,21 +733,27 @@ export async function registerRoutes(
     // resolve the owner and enforce their tier. Missing/invalid botId or
     // unknown owner => 402 (PaywallError) so callers can't bypass tier gating
     // by simply omitting the field.
+    const agentEntitlementError = (message: string) => new PaywallError({
+      feature: "allowAgentApi",
+      currentPlan: "free",
+      requiredPlan: "pro",
+      message,
+    });
     const botIdRaw = req.body?.botId;
     if (botIdRaw == null) {
-      throw new PaywallError("allowAgentApi", "botId is required to use the agent API.");
+      throw agentEntitlementError("botId is required to use the agent API.");
     }
     const botId = parseInt(String(botIdRaw));
     if (!Number.isFinite(botId)) {
-      throw new PaywallError("allowAgentApi", "botId must be a valid integer.");
+      throw agentEntitlementError("botId must be a valid integer.");
     }
     const bot = await storage.getBotConfig(botId).catch(() => null);
     if (!bot) {
-      throw new PaywallError("allowAgentApi", "Unknown botId.");
+      throw agentEntitlementError("Unknown botId.");
     }
     const owner = await storage.getUserById(bot.userId).catch(() => null);
     if (!owner) {
-      throw new PaywallError("allowAgentApi", "Bot owner could not be resolved.");
+      throw agentEntitlementError("Bot owner could not be resolved.");
     }
     // Tier check: agent API must be enabled for the targeted bot's owner.
     requirePermission(owner, "allowAgentApi");
