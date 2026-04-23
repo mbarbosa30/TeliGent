@@ -5,7 +5,7 @@ import { db } from "./db";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
 import { startBotEngine, getWebhookStatus } from "./telegram";
 import { generateAIResponse } from "./telegram/commands";
-import { isAuthenticated, isAdminAuthenticated } from "./auth";
+import { isAuthenticated, isAdminAuthenticated, requireVerifiedEmail } from "./auth";
 import { sql } from "drizzle-orm";
 import { scrapeUrl } from "./scraper";
 import crypto from "crypto";
@@ -977,7 +977,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bots/:botId/erc8004/register", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res, next) => {
+  app.post("/api/bots/:botId/erc8004/register", isAuthenticated, requireVerifiedEmail, apiRateLimit, requireBotOwnership, async (req, res, next) => {
     try {
       const owner = await loadUser(req);
       requirePermission(owner, "allowErc8004");
@@ -1323,7 +1323,7 @@ export async function registerRoutes(
     res.json(periods);
   });
 
-  app.post("/api/billing/checkout", isAuthenticated, apiRateLimit, async (req, res) => {
+  app.post("/api/billing/checkout", isAuthenticated, requireVerifiedEmail, apiRateLimit, async (req, res) => {
     try {
       const user = await loadUser(req);
       if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -1451,7 +1451,7 @@ export async function registerRoutes(
     }
   }
 
-  app.post("/api/billing/crypto/intent", isAuthenticated, apiRateLimit, async (req, res) => {
+  app.post("/api/billing/crypto/intent", isAuthenticated, requireVerifiedEmail, apiRateLimit, async (req, res) => {
     try {
       const user = await loadUser(req);
       if (!user) return res.status(401).json({ error: "Unauthorized" });

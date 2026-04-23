@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Bot, Shield, Brain, Zap, Users, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown, Cpu, Trophy, Code2, LineChart, ArrowRight } from "lucide-react";
 import { SiX, SiTelegram } from "react-icons/si";
+import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -115,6 +116,13 @@ function AuthForm() {
             {isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             {mode === "login" ? "Sign In" : "Create Account"}
           </Button>
+          {mode === "login" && (
+            <p className="text-center text-xs text-muted-foreground">
+              <Link href="/forgot-password" className="hover:text-foreground underline underline-offset-2" data-testid="link-forgot-password">
+                Forgot your password?
+              </Link>
+            </p>
+          )}
           <p className="text-center text-sm text-muted-foreground">
             {mode === "login" ? (
               <>Don't have an account?{" "}

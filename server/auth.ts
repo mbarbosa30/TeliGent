@@ -3,11 +3,71 @@ import session from "express-session";
 import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { db } from "./db";
-import { users, sessions, type User } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { db, pool } from "./db";
+import { users, sessions, emailVerificationTokens, passwordResetTokens, type User } from "@shared/schema";
+import { eq, and, gt, isNull, lt } from "drizzle-orm";
+import { sendVerificationEmail, sendPasswordResetEmail } from "./email/mailer";
 
 type SafeUser = Omit<User, "passwordHash">;
+
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function generateToken(): string {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+function buildAppOrigin(req: Request): string {
+  const forwardedHost = req.get("x-forwarded-host");
+  const host = forwardedHost?.split(",")[0]?.trim() || req.get("host");
+  const forwardedProto = req.get("x-forwarded-proto");
+  const proto = forwardedProto?.split(",")[0]?.trim() || req.protocol;
+  return `${proto}://${host}`;
+}
+
+async function issueAndSendVerificationEmail(user: User, origin: string): Promise<void> {
+  const token = generateToken();
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
+  await db.insert(emailVerificationTokens).values({ tokenHash, userId: user.id, expiresAt });
+  const link = `${origin}/verify-email?token=${encodeURIComponent(token)}`;
+  await sendVerificationEmail(user.email, link).catch((err) => {
+    console.error("[auth] verification email send failed:", err?.message || err);
+  });
+}
+
+async function destroySessionsForUser(userId: string): Promise<void> {
+  try {
+    await pool.query(
+      `DELETE FROM sessions WHERE (sess::jsonb)->>'userId' = $1`,
+      [userId]
+    );
+  } catch (err: any) {
+    console.error("[auth] failed to destroy sessions for user:", err?.message || err);
+  }
+}
+
+export function requireVerifiedEmail(req: Request, res: Response, next: NextFunction) {
+  if (!req.session?.userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  db.select().from(users).where(eq(users.id, req.session.userId)).limit(1)
+    .then(([user]) => {
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+      if (!user.emailVerified) {
+        return res.status(403).json({
+          code: "EMAIL_NOT_VERIFIED",
+          message: "Please verify your email address to continue. Check your inbox or request a new verification link from the Account page.",
+        });
+      }
+      next();
+    })
+    .catch(() => res.status(500).json({ message: "Server error" }));
+}
 
 // Normalize a paid plan to "free" once planPeriodEnd has elapsed, so the
 // dashboard never shows a stale paid badge after a period expires (especially
@@ -157,17 +217,133 @@ export function registerAuthRoutes(app: Express) {
       }).returning();
 
       req.session.userId = user.id;
-      req.session.save((err) => {
+      req.session.save(async (err) => {
         if (err) {
           console.error("Session save error:", err);
           return res.status(500).json({ message: "Session error" });
         }
+        await issueAndSendVerificationEmail(user, buildAppOrigin(req));
         const { passwordHash: _, ...safeUser } = user;
         res.status(201).json(safeUser);
       });
     } catch (err: any) {
       console.error("Register error:", err);
       res.status(500).json({ message: "Registration failed" });
+    }
+  });
+
+  // Verify an email using a token from the verification link. Public.
+  app.post("/api/auth/verify-email", authRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { token } = req.body || {};
+      if (!token || typeof token !== "string") {
+        return res.status(400).json({ message: "Verification token is required" });
+      }
+      const tokenHash = hashToken(token);
+      const [record] = await db.select().from(emailVerificationTokens)
+        .where(and(eq(emailVerificationTokens.tokenHash, tokenHash), gt(emailVerificationTokens.expiresAt, new Date())))
+        .limit(1);
+      if (!record) {
+        return res.status(400).json({ message: "This verification link has expired or is invalid. Request a new one from your Account page." });
+      }
+      await db.update(users)
+        .set({ emailVerified: true, emailVerifiedAt: new Date(), updatedAt: new Date() })
+        .where(eq(users.id, record.userId));
+      // Burn this token + any other pending verification tokens for the same user.
+      await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, record.userId));
+      // Cleanup expired tokens opportunistically.
+      await db.delete(emailVerificationTokens).where(lt(emailVerificationTokens.expiresAt, new Date())).catch(() => {});
+      res.json({ verified: true });
+    } catch (err: any) {
+      console.error("Verify email error:", err);
+      res.status(500).json({ message: "Failed to verify email" });
+    }
+  });
+
+  // Resend a verification email to the currently signed-in user. Auth required.
+  app.post("/api/auth/resend-verification", authRateLimit, async (req: Request, res: Response) => {
+    if (!req.session?.userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+      if (user.emailVerified) {
+        return res.json({ alreadyVerified: true });
+      }
+      await issueAndSendVerificationEmail(user, buildAppOrigin(req));
+      res.json({ sent: true });
+    } catch (err: any) {
+      console.error("Resend verification error:", err);
+      res.status(500).json({ message: "Failed to send verification email" });
+    }
+  });
+
+  // Forgot-password: always returns success to avoid leaking which emails exist.
+  app.post("/api/auth/forgot-password", authRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body || {};
+      if (!email || typeof email !== "string") {
+        return res.status(400).json({ message: "Email is required" });
+      }
+      const emailLower = email.toLowerCase().trim();
+      const [user] = await db.select().from(users).where(eq(users.email, emailLower)).limit(1);
+      if (user) {
+        const token = generateToken();
+        const tokenHash = hashToken(token);
+        const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+        await db.insert(passwordResetTokens).values({ tokenHash, userId: user.id, expiresAt });
+        const link = `${buildAppOrigin(req)}/reset-password?token=${encodeURIComponent(token)}`;
+        await sendPasswordResetEmail(user.email, link).catch((err) => {
+          console.error("[auth] reset email send failed:", err?.message || err);
+        });
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("Forgot password error:", err);
+      res.json({ ok: true });
+    }
+  });
+
+  // Complete a password reset using a token. Public.
+  app.post("/api/auth/reset-password", authRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { token, password } = req.body || {};
+      if (!token || typeof token !== "string") {
+        return res.status(400).json({ message: "Reset token is required" });
+      }
+      if (!password || typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+      if (password.length > 128) {
+        return res.status(400).json({ message: "Password must be 128 characters or fewer" });
+      }
+      const tokenHash = hashToken(token);
+      const [record] = await db.select().from(passwordResetTokens)
+        .where(and(
+          eq(passwordResetTokens.tokenHash, tokenHash),
+          gt(passwordResetTokens.expiresAt, new Date()),
+          isNull(passwordResetTokens.usedAt),
+        ))
+        .limit(1);
+      if (!record) {
+        return res.status(400).json({ message: "This reset link has expired or has already been used. Request a new one." });
+      }
+      const newHash = await bcrypt.hash(password, 12);
+      await db.update(users)
+        .set({ passwordHash: newHash, emailVerified: true, emailVerifiedAt: new Date(), updatedAt: new Date() })
+        .where(eq(users.id, record.userId));
+      await db.update(passwordResetTokens)
+        .set({ usedAt: new Date() })
+        .where(eq(passwordResetTokens.tokenHash, tokenHash));
+      // Force sign-out from any other active sessions for this user.
+      await destroySessionsForUser(record.userId);
+      // Opportunistic cleanup.
+      await db.delete(passwordResetTokens).where(lt(passwordResetTokens.expiresAt, new Date())).catch(() => {});
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("Reset password error:", err);
+      res.status(500).json({ message: "Failed to reset password" });
     }
   });
 

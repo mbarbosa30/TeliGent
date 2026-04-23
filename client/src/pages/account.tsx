@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { User, Lock, Save, Loader2, LogOut } from "lucide-react";
+import { User, Lock, Save, Loader2, LogOut, MailWarning, MailCheck } from "lucide-react";
 
 export default function AccountPage() {
   const { user, logout, isLoggingOut } = useAuth();
@@ -66,6 +66,30 @@ export default function AccountPage() {
 
   const canUpdatePassword = currentPassword && newPassword && newPassword.length >= 6 && newPassword === confirmPassword;
 
+  const resendVerificationMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/auth/resend-verification", {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data?.alreadyVerified) {
+        toast({ title: "Email already verified" });
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      } else {
+        toast({ title: "Verification email sent", description: "Check your inbox for a fresh verification link." });
+      }
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Failed to send verification email";
+      try {
+        const parsed = JSON.parse(msg.substring(msg.indexOf(": ") + 2));
+        toast({ title: "Error", description: parsed.message || msg, variant: "destructive" });
+      } catch {
+        toast({ title: "Error", description: msg, variant: "destructive" });
+      }
+    },
+  });
+
   return (
     <ScrollArea className="h-full">
       <div className="p-6 space-y-6 max-w-3xl mx-auto">
@@ -73,6 +97,34 @@ export default function AccountPage() {
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Account</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage your profile and security settings</p>
         </div>
+
+        {user && !user.emailVerified ? (
+          <Card className="border-yellow-500/40 bg-yellow-500/5" data-testid="card-email-unverified">
+            <CardContent className="pt-6 space-y-3">
+              <div className="flex items-start gap-3">
+                <MailWarning className="h-5 w-5 mt-0.5 text-yellow-600 dark:text-yellow-500 shrink-0" />
+                <div className="space-y-2 flex-1 min-w-0">
+                  <div>
+                    <p className="text-sm font-medium">Your email is not verified yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Verify your email to unlock paid plans, on-chain bot registration, and password recovery.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => resendVerificationMutation.mutate()}
+                    disabled={resendVerificationMutation.isPending}
+                    data-testid="button-resend-verification"
+                  >
+                    {resendVerificationMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <MailCheck className="h-3 w-3 mr-2" />}
+                    Resend verification email
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>
