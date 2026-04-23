@@ -18,7 +18,7 @@ function ThemeToggle() {
     const root = document.documentElement;
     if (isDark) root.classList.add("dark");
     else root.classList.remove("dark");
-    try { localStorage.setItem("teligent-theme", isDark ? "dark" : "light"); } catch {}
+    try { localStorage.setItem("theme", isDark ? "dark" : "light"); } catch {}
   }, [isDark]);
   return (
     <button
