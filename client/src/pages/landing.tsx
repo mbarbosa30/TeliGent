@@ -259,7 +259,7 @@ const FAQ_ITEMS = [
   },
   {
     question: "How much does TeliGent cost?",
-    answer: "Free tier covers 1 bot. Pro is $19/mo, Business is $79/mo. Pay by card via Stripe or in USDC or $TELI on Base. Paying in $TELI gives you 25% off and extra perks."
+    answer: "Free covers 1 bot, Pro is $19/mo, Business is $79/mo. Pay by card or in USDC or $TELI on Base for 25% off."
   },
   {
     question: "How do I set up TeliGent for my Telegram group?",
@@ -267,7 +267,7 @@ const FAQ_ITEMS = [
   },
   {
     question: "How do token rewards for top contributors work?",
-    answer: "Score members on real signals and pay out any ERC-20 on Base or Celo each period. You set the token, amounts, and caps. The bot wallet sends the transfer, TeliGent never custodies funds."
+    answer: "Score members on real signals and pay any ERC-20 on Base or Celo each period. The bot wallet sends the transfer, TeliGent never custodies funds."
   },
   {
     question: "Can other AI agents call TeliGent's threat intelligence?",
@@ -574,7 +574,7 @@ export default function LandingPage() {
               Community.
             </h1>
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              The AI that moderates your Telegram group and answers members in your voice. 24/7.
+              The 24/7 AI that moderates your Telegram group and answers members in your voice.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <Button size="lg" asChild data-testid="button-get-started">
