@@ -251,47 +251,27 @@ function TokenAddress() {
 const FAQ_ITEMS = [
   {
     question: "What is TeliGent?",
-    answer: "TeliGent is an AI-powered Telegram bot platform that moderates your community, detects scams and spam in real time, and engages members with intelligent, on-brand responses. It learns from your website, knowledge base, and conversation history to provide contextual support."
+    answer: "An AI-powered Telegram bot that moderates your community, blocks scams in real time, and answers members in your brand's voice."
   },
   {
     question: "How does the scam detection work?",
-    answer: "TeliGent uses a multi-layered approach combining deterministic pattern matching (detecting phishing, DM solicitation, pump schemes, impersonation) with AI-powered analysis. It catches scam messages that bypass simple keyword filters by understanding context, homoglyph evasion, and message structure."
+    answer: "Deterministic pattern matching for phishing, DM solicitation, pump schemes, and impersonation, plus AI fallback that catches context-aware and homoglyph evasion."
   },
   {
     question: "How much does TeliGent cost?",
-    answer: "There's a Free tier (1 bot, 50 KB entries, 200 AI calls/day). Pro is $19/mo or $190/yr (3 bots, embed widget, Bankr, agent API, ERC-8004). Business is $79/mo or $790/yr (10 bots, expanded quotas). Cards via Stripe (Apple Pay supported), or pay in USDC or $TELI on Base. Paying in $TELI gives you 25% off, a TELI badge, +20% rewards multiplier, and 2x agent API rate limits."
-  },
-  {
-    question: "What types of communities can use TeliGent?",
-    answer: "TeliGent works for any Telegram community — crypto and web3 projects, NFT communities, DeFi protocols, gaming groups, developer communities, and any group that needs intelligent moderation and engagement. The bot adapts to your specific project context."
+    answer: "Free tier covers 1 bot. Pro is $19/mo, Business is $79/mo. Pay by card via Stripe or in USDC or $TELI on Base. Paying in $TELI gives you 25% off and extra perks."
   },
   {
     question: "How do I set up TeliGent for my Telegram group?",
-    answer: "Setup takes under 5 minutes: create a free account at teli.gent, enter your Telegram bot token (from BotFather), configure your bot's personality and knowledge base, then add it to your group as an admin. The bot starts protecting and engaging your community immediately."
-  },
-  {
-    question: "Can I manage multiple Telegram groups with one account?",
-    answer: "Yes, TeliGent supports multi-group management. You can deploy your bot across multiple Telegram groups and monitor all activity, scam reports, and conversations from a single dashboard."
+    answer: "Create a free account, drop in your Telegram bot token from BotFather, then add the bot to your group as admin. Under 5 minutes."
   },
   {
     question: "How do token rewards for top contributors work?",
-    answer: "Each bot owner can enable a Passive CEO Rewards Loop: TeliGent scores members on real signals (helpful answers, scam reports validated, days active, calibration feedback) and pays out an ERC-20 token of your choice on Base or Celo every period. You set the token, amount per winner or pool size, top N, minimum days active, and per-user caps. Members register their wallet with /wallet — TeliGent never custodies funds, the bot wallet sends the transfer directly."
-  },
-  {
-    question: "Can I run a referral program?",
-    answer: "Yes. Members get a personal invite link via /invite (a /start ref_<id> deep link). When invitees join and stay active for the configured activation window, the referrer is credited and eligible for referral rewards. Self Protocol verified members can be granted higher per-period caps."
-  },
-  {
-    question: "Does TeliGent have crypto market data built in?",
-    answer: "Optionally yes. Enable the Bankr integration on a bot to add a /price <token> command and have live token and market data injected into AI responses for crypto questions — useful for token communities and DeFi groups."
-  },
-  {
-    question: "Can I embed the AI on my website too?",
-    answer: "Yes. TeliGent ships an embeddable chat widget that reuses the same AI engine, knowledge base, and memories as your Telegram bot, so your website visitors get the exact same on-brand support experience."
+    answer: "Score members on real signals and pay out any ERC-20 on Base or Celo each period. You set the token, amounts, and caps. The bot wallet sends the transfer, TeliGent never custodies funds."
   },
   {
     question: "Can other AI agents call TeliGent's threat intelligence?",
-    answer: "Yes. TeliGent exposes its scam detection and community-health signals as an agent-to-agent API. It is discoverable on the OpenServ marketplace, has a verifiable on-chain identity via ERC-8004, and accepts USDC payments on Base via Locus. Self Protocol verified callers get pricing discounts and higher rate limits."
+    answer: "Yes. The agent-to-agent API is discoverable on OpenServ, has an ERC-8004 identity, and accepts USDC on Base via Locus. Self Protocol verified callers get discounts."
   },
 ];
 
@@ -329,15 +309,15 @@ const PRICING_PLANS = [
 ];
 
 const FEATURES = [
-  { icon: Brain, title: "Grounded AI Responses", body: "Your bot pulls answers from your website, knowledge base, and recent conversation memory. It also learns new facts from substantive messages over time, so the longer it runs, the better it supports your community." },
-  { icon: Sparkles, title: "Customizable Bot Personality", body: "Give your Telegram bot a name, tone, and character that matches your brand. It speaks with your voice — professional, casual, or anywhere in between." },
-  { icon: Shield, title: "Anti-Scam & Spam Filter", body: "Automatically detects and removes scam messages, phishing attempts, DM solicitation, pump schemes, and token shills — keeping your Telegram group safe 24/7." },
-  { icon: Zap, title: "AI-Assisted Group Moderation", body: "Members flag suspicious messages with /report. Your bot evaluates reports with AI, takes action automatically, and learns new threat patterns as it goes." },
-  { icon: Users, title: "Multi-Group Management", body: "Deploy your bot across multiple Telegram groups. Monitor activity, scam reports, and conversations from a single dashboard." },
-  { icon: Trophy, title: "Passive CEO Rewards Loop", body: "Score top contributors on real signals, run a per-group leaderboard, and pay out any ERC-20 token on Base or Celo each period. Built-in referrals with /invite, share-to-earn prompts, and Self Protocol gating for higher caps. You set the rules, the bot runs the loop." },
-  { icon: LineChart, title: "Crypto Intelligence (Bankr)", body: "Optional per-bot integration with Bankr for live token prices and market data. Adds a /price command and enriches AI answers with real-time crypto context — perfect for token communities and DeFi groups." },
-  { icon: Code2, title: "Embeddable Web Chat Widget", body: "Drop a single script tag on your website and get the same on-brand AI agent your Telegram members talk to — same knowledge base, same memories, same voice." },
-  { icon: Cpu, title: "Master Agent API & On-Chain Identity", body: "Every bot can register an on-chain identity via ERC-8004 on Celo. The platform itself is discoverable on the OpenServ marketplace and exposes scam detection to other agents, with USDC payments on Base via Locus and trust-tier pricing for Self Protocol verified callers." },
+  { icon: Brain, title: "Grounded AI Responses", body: "Answers from your website, knowledge base, and chat memory. Gets smarter the longer it runs." },
+  { icon: Sparkles, title: "Customizable Bot Personality", body: "Pick a name, tone, and character. Your bot speaks with your brand's voice." },
+  { icon: Shield, title: "Anti-Scam & Spam Filter", body: "Catches phishing, DM solicitation, pump schemes, and token shills automatically." },
+  { icon: Zap, title: "AI-Assisted Group Moderation", body: "Members flag with /report. Your bot reviews, acts, and learns new patterns over time." },
+  { icon: Users, title: "Multi-Group Management", body: "Run one bot across many Telegram groups from a single dashboard." },
+  { icon: Trophy, title: "Passive CEO Rewards Loop", body: "Score top contributors and pay out any ERC-20 on Base or Celo each period. Built-in referrals." },
+  { icon: LineChart, title: "Crypto Intelligence (Bankr)", body: "Optional /price command and live market data injected into AI answers for token communities." },
+  { icon: Code2, title: "Embeddable Web Chat Widget", body: "One script tag drops the same on-brand AI agent on your website." },
+  { icon: Cpu, title: "Master Agent API & On-Chain Identity", body: "Bots get an ERC-8004 identity on Celo. Platform takes USDC on Base via Locus." },
 ];
 
 function FeaturesSection() {
@@ -393,7 +373,7 @@ function PricingSection() {
             <Eyebrow number="02" label="Pricing" />
             <h2 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.05]">Simple plans, two ways to pay</h2>
           </div>
-          <p className="md:col-span-4 text-sm text-muted-foreground">Cards via Stripe (Apple Pay supported) or stablecoin/$TELI on Base. Pay in $TELI for 25% off and extra perks.</p>
+          <p className="md:col-span-4 text-sm text-muted-foreground">Card or crypto. Pay in $TELI for 25% off.</p>
         </div>
 
         <div className="flex items-center justify-center">
@@ -477,9 +457,15 @@ function PricingSection() {
             <p className="font-mono font-bold text-5xl sm:text-6xl tracking-tight leading-none">$TELI</p>
             <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mt-2">Native token · Base</p>
           </div>
-          <p className="md:col-span-8 text-sm text-muted-foreground leading-relaxed">
-            <span className="font-semibold text-foreground">Pay in $TELI on Base for more:</span> 25% discount on every plan, a TELI badge across the dashboard, +20% on rewards paid out by your bots, and 2x rate limit on the Master Agent API. The token is settled to your bot wallet, TeliGent never custodies funds.
-          </p>
+          <div className="md:col-span-8 space-y-4">
+            <p className="text-sm text-foreground leading-relaxed">Pay in $TELI on Base for more.</p>
+            <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <li className="flex items-start gap-2"><Check className="h-3.5 w-3.5 mt-1 shrink-0" /><span>25% discount</span></li>
+              <li className="flex items-start gap-2"><Check className="h-3.5 w-3.5 mt-1 shrink-0" /><span>+20% rewards multiplier</span></li>
+              <li className="flex items-start gap-2"><Check className="h-3.5 w-3.5 mt-1 shrink-0" /><span>2x agent API rate</span></li>
+              <li className="flex items-start gap-2"><Check className="h-3.5 w-3.5 mt-1 shrink-0" /><span>TELI badge</span></li>
+            </ul>
+          </div>
         </div>
 
         <div className="overflow-x-auto" data-testid="table-pricing-comparison">
@@ -588,7 +574,7 @@ export default function LandingPage() {
               Community.
             </h1>
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              An AI community support agent that understands your project, speaks with your voice, and moderates your Telegram groups — with real-time scam detection, spam filtering, and intelligent member engagement around the clock.
+              The AI that moderates your Telegram group and answers members in your voice. 24/7.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <Button size="lg" asChild data-testid="button-get-started">
@@ -602,7 +588,7 @@ export default function LandingPage() {
               </Button>
             </div>
             <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground pt-1">
-              Plans from $19/mo · Pay in $TELI for 25% off & +20% rewards
+              From $19/mo · 25% off in $TELI
             </p>
           </div>
 
@@ -648,7 +634,6 @@ export default function LandingPage() {
           <div className="md:col-span-6 space-y-6">
             <Eyebrow number="04" label="Start" />
             <h2 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.05]">Add an AI moderator to your Telegram group</h2>
-            <p className="text-muted-foreground">Set up in under 5 minutes. Your bot handles the rest.</p>
             <ul className="border-t border-b divide-y">
               <li className="flex items-center gap-3 py-3">
                 <span className="font-mono text-xs text-muted-foreground w-6">01</span>
