@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Bot, Shield, Brain, Zap, Users, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown, Cpu, Trophy, Code2, LineChart } from "lucide-react";
+import { Bot, Shield, Brain, Zap, Users, Loader2, MessageCircle, ShieldCheck, Radio, Sparkles, BarChart3, Copy, Check, ChevronDown, Cpu, Trophy, Code2, LineChart, ArrowRight } from "lucide-react";
 import { SiX, SiTelegram } from "react-icons/si";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -48,38 +48,42 @@ function AuthForm() {
         <CardTitle className="text-xl">{mode === "login" ? "Sign In" : "Create Account"}</CardTitle>
         <CardDescription>
           {mode === "login"
-            ? "Enter your email and password to sign in"
-            : "Fill in your details to create an account"}
+            ? "Welcome back. Enter your credentials to continue."
+            : "Get started with TeliGent in seconds."}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-3">
           {mode === "register" && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
-                <Label htmlFor="firstName">First Name</Label>
+                <Label htmlFor="firstName" className="text-xs">First Name</Label>
                 <Input
                   id="firstName"
+                  type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   placeholder="John"
+                  required
                   data-testid="input-first-name"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="lastName">Last Name</Label>
+                <Label htmlFor="lastName" className="text-xs">Last Name</Label>
                 <Input
                   id="lastName"
+                  type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   placeholder="Doe"
+                  required
                   data-testid="input-last-name"
                 />
               </div>
             </div>
           )}
           <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-xs">Email</Label>
             <Input
               id="email"
               type="email"
@@ -91,7 +95,7 @@ function AuthForm() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" className="text-xs">Password</Label>
             <Input
               id="password"
               type="password"
@@ -166,6 +170,16 @@ function AnimatedCounter({ value, duration = 1500 }: { value: number; duration?:
   return <span ref={ref}>{formatted}</span>;
 }
 
+function Eyebrow({ number, label }: { number: string; label: string }) {
+  return (
+    <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+      <span className="text-foreground">{number}</span>
+      <span className="mx-2 text-muted-foreground/50">/</span>
+      <span>{label}</span>
+    </p>
+  );
+}
+
 function MetricsSection() {
   const { data: stats } = useQuery<{ scamsCaught: number; groupsProtected: number; botsActive: number; conversationsHandled: number }>({
     queryKey: ["/api/public/stats"],
@@ -177,23 +191,28 @@ function MetricsSection() {
   if (!hasData) return null;
 
   const metrics = [
-    { label: "Scams Blocked", value: stats.scamsCaught, icon: ShieldCheck },
-    { label: "AI Conversations", value: stats.conversationsHandled, icon: MessageCircle },
-    { label: "Groups Protected", value: stats.groupsProtected, icon: Users },
-    { label: "Active Bots", value: stats.botsActive, icon: Radio },
+    { label: "Scams Blocked", value: stats.scamsCaught },
+    { label: "AI Conversations", value: stats.conversationsHandled },
+    { label: "Groups Protected", value: stats.groupsProtected },
+    { label: "Active Bots", value: stats.botsActive },
   ].filter(m => m.value > 0);
 
+  const cols = metrics.length === 4 ? 'md:grid-cols-4' : metrics.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2';
+
   return (
-    <section className="py-12 px-6 border-t">
-      <div className="max-w-4xl mx-auto">
-        <div className={`grid grid-cols-2 ${metrics.length === 4 ? 'md:grid-cols-4' : metrics.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
+    <section className="py-20 px-6 border-t">
+      <div className="max-w-6xl mx-auto">
+        <div className={`grid grid-cols-2 ${cols} md:divide-x divide-border`}>
           {metrics.map((m) => (
-            <div key={m.label} className="text-center space-y-1" data-testid={`stat-${m.label.toLowerCase().replace(/\s+/g, '-')}`}>
-              <m.icon className="h-4 w-4 mx-auto text-muted-foreground mb-2" />
-              <p className="text-3xl sm:text-4xl font-bold font-mono tracking-tight">
+            <div
+              key={m.label}
+              className="px-2 md:px-8 py-4 space-y-2 text-left"
+              data-testid={`stat-${m.label.toLowerCase().replace(/\s+/g, '-')}`}
+            >
+              <p className="text-5xl sm:text-6xl font-bold font-mono tracking-tight leading-none">
                 <AnimatedCounter value={m.value} />
               </p>
-              <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{m.label}</p>
+              <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{m.label}</p>
             </div>
           ))}
         </div>
@@ -309,97 +328,182 @@ const PRICING_PLANS = [
   },
 ];
 
+const FEATURES = [
+  { icon: Brain, title: "Grounded AI Responses", body: "Your bot pulls answers from your website, knowledge base, and recent conversation memory. It also learns new facts from substantive messages over time, so the longer it runs, the better it supports your community." },
+  { icon: Sparkles, title: "Customizable Bot Personality", body: "Give your Telegram bot a name, tone, and character that matches your brand. It speaks with your voice — professional, casual, or anywhere in between." },
+  { icon: Shield, title: "Anti-Scam & Spam Filter", body: "Automatically detects and removes scam messages, phishing attempts, DM solicitation, pump schemes, and token shills — keeping your Telegram group safe 24/7." },
+  { icon: Zap, title: "AI-Assisted Group Moderation", body: "Members flag suspicious messages with /report. Your bot evaluates reports with AI, takes action automatically, and learns new threat patterns as it goes." },
+  { icon: Users, title: "Multi-Group Management", body: "Deploy your bot across multiple Telegram groups. Monitor activity, scam reports, and conversations from a single dashboard." },
+  { icon: Trophy, title: "Passive CEO Rewards Loop", body: "Score top contributors on real signals, run a per-group leaderboard, and pay out any ERC-20 token on Base or Celo each period. Built-in referrals with /invite, share-to-earn prompts, and Self Protocol gating for higher caps. You set the rules, the bot runs the loop." },
+  { icon: LineChart, title: "Crypto Intelligence (Bankr)", body: "Optional per-bot integration with Bankr for live token prices and market data. Adds a /price command and enriches AI answers with real-time crypto context — perfect for token communities and DeFi groups." },
+  { icon: Code2, title: "Embeddable Web Chat Widget", body: "Drop a single script tag on your website and get the same on-brand AI agent your Telegram members talk to — same knowledge base, same memories, same voice." },
+  { icon: Cpu, title: "Master Agent API & On-Chain Identity", body: "Every bot can register an on-chain identity via ERC-8004 on Celo. The platform itself is discoverable on the OpenServ marketplace and exposes scam detection to other agents, with USDC payments on Base via Locus and trust-tier pricing for Self Protocol verified callers." },
+];
+
+function FeaturesSection() {
+  return (
+    <section id="features" className="py-24 px-6 border-t">
+      <div className="max-w-6xl mx-auto space-y-14">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+          <div className="md:col-span-8 space-y-3">
+            <Eyebrow number="01" label="Capabilities" />
+            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.05]">AI-Powered Community Management</h2>
+          </div>
+          <p className="md:col-span-4 text-sm text-muted-foreground">Automated Telegram moderation, intelligent member support, and real-time scam protection.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 border-t border-b">
+          {FEATURES.map((f, i) => {
+            const Icon = f.icon;
+            const isLastRow = i >= FEATURES.length - (FEATURES.length % 2 === 0 ? 2 : 1);
+            const isRightCol = i % 2 === 1;
+            return (
+              <div
+                key={f.title}
+                className={[
+                  "py-8 px-2 md:px-8 flex gap-5 items-start",
+                  !isLastRow ? "border-b" : "",
+                  isRightCol ? "md:border-l" : "",
+                ].join(" ")}
+                data-testid={`feature-${f.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`}
+              >
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-foreground">
+                  <Icon className="h-5 w-5 text-background" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-base leading-tight">{f.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{f.body}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PricingSection() {
   const [period, setPeriod] = useState<"monthly" | "annual">("monthly");
   return (
-    <section id="pricing" className="py-16 px-6 border-t">
-      <div className="max-w-5xl mx-auto space-y-8">
-        <div className="text-center space-y-2">
-          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Pricing</p>
-          <h2 className="text-2xl font-bold tracking-tight">Simple plans, two ways to pay</h2>
-          <p className="text-muted-foreground">Cards via Stripe (Apple Pay supported) or stablecoin/$TELI on Base. Pay in $TELI for 25% off and extra perks.</p>
+    <section id="pricing" className="py-24 px-6 border-t">
+      <div className="max-w-6xl mx-auto space-y-12">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+          <div className="md:col-span-8 space-y-3">
+            <Eyebrow number="02" label="Pricing" />
+            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.05]">Simple plans, two ways to pay</h2>
+          </div>
+          <p className="md:col-span-4 text-sm text-muted-foreground">Cards via Stripe (Apple Pay supported) or stablecoin/$TELI on Base. Pay in $TELI for 25% off and extra perks.</p>
         </div>
+
         <div className="flex items-center justify-center">
           <div className="inline-flex border" role="tablist">
             <button
               type="button"
               onClick={() => setPeriod("monthly")}
-              className={`px-4 py-2 text-xs uppercase tracking-wider ${period === "monthly" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              className={`px-5 py-2 text-[11px] font-mono uppercase tracking-widest transition-colors ${period === "monthly" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
               data-testid="button-pricing-monthly"
             >Monthly</button>
             <button
               type="button"
               onClick={() => setPeriod("annual")}
-              className={`px-4 py-2 text-xs uppercase tracking-wider ${period === "annual" ? "bg-foreground text-background" : "hover:bg-muted/50"}`}
+              className={`px-5 py-2 text-[11px] font-mono uppercase tracking-widest transition-colors border-l ${period === "annual" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
               data-testid="button-pricing-annual"
             >Annual · 2 months free</button>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {PRICING_PLANS.map((p) => {
+
+        <div className="grid grid-cols-1 md:grid-cols-3 border-t border-b">
+          {PRICING_PLANS.map((p, idx) => {
             const usd = period === "annual" ? p.annual : p.monthly;
             const teliUsd = period === "annual" ? Math.round(p.teliMonthly * 10) : p.teliMonthly;
+            const inverted = p.highlight;
+            const colBorder = idx > 0 ? "md:border-l" : "";
             return (
-              <Card key={p.name} className={p.highlight ? "border-foreground" : ""} data-testid={`card-pricing-${p.name.toLowerCase()}`}>
-                <CardContent className="pt-6 space-y-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-bold">{p.name}</h3>
-                      {p.highlight && <Badge variant="secondary" className="text-xs uppercase">Popular</Badge>}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{p.description}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="font-mono text-3xl font-bold">
-                      ${usd}
-                      <span className="text-base text-muted-foreground font-normal">/{period === "annual" ? "yr" : "mo"}</span>
-                    </div>
-                    {p.monthly > 0 && (
-                      <p className="text-xs text-muted-foreground">or ${teliUsd} in $TELI · 25% off</p>
+              <div
+                key={p.name}
+                className={[
+                  "p-8 flex flex-col gap-6",
+                  colBorder,
+                  inverted ? "bg-foreground text-background" : "",
+                  !inverted ? "hover:bg-muted/30 transition-colors" : "",
+                ].join(" ")}
+                data-testid={`card-pricing-${p.name.toLowerCase()}`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-bold tracking-tight">{p.name}</h3>
+                    {p.highlight && (
+                      <span className="text-[10px] font-mono uppercase tracking-widest border border-background/40 px-2 py-0.5">Popular</span>
                     )}
                   </div>
-                  <ul className="space-y-1.5 text-sm">
-                    {p.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2">
-                        <Check className="h-3.5 w-3.5 mt-1 shrink-0 text-muted-foreground" />
-                        <span>{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Button asChild className="w-full" variant={p.highlight ? "default" : "outline"} data-testid={`button-pricing-${p.name.toLowerCase()}`}>
-                    <a href="#auth">{p.cta}</a>
-                  </Button>
-                </CardContent>
-              </Card>
+                  <p className={`text-xs ${inverted ? "text-background/60" : "text-muted-foreground"}`}>{p.description}</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="font-mono text-5xl font-bold tracking-tight leading-none">
+                    ${usd}
+                    <span className={`text-base font-normal ml-1 ${inverted ? "text-background/60" : "text-muted-foreground"}`}>/{period === "annual" ? "yr" : "mo"}</span>
+                  </div>
+                  {p.monthly > 0 && (
+                    <p className={`text-xs ${inverted ? "text-background/60" : "text-muted-foreground"}`}>or ${teliUsd} in $TELI · 25% off</p>
+                  )}
+                </div>
+                <ul className="space-y-2 text-sm flex-1">
+                  {p.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2.5">
+                      <Check className={`h-3.5 w-3.5 mt-1 shrink-0 ${inverted ? "text-background" : "text-foreground"}`} />
+                      <span className={inverted ? "text-background/90" : ""}>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  asChild
+                  className={`w-full ${inverted ? "bg-background text-foreground hover:bg-background/90" : ""}`}
+                  variant={inverted ? "default" : "outline"}
+                  data-testid={`button-pricing-${p.name.toLowerCase()}`}
+                >
+                  <a href="#auth" className="inline-flex items-center justify-center gap-2">
+                    {p.cta}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </a>
+                </Button>
+              </div>
             );
           })}
         </div>
-        <div className="border p-4 text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">Pay in $TELI on Base for more:</span> 25% discount on every plan, a TELI badge across the dashboard, +20% on rewards paid out by your bots, and 2x rate limit on the Master Agent API. The token is settled to your bot wallet, TeliGent never custodies funds.
+
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center border-t border-b py-10">
+          <div className="md:col-span-4">
+            <p className="font-mono font-bold text-5xl sm:text-6xl tracking-tight leading-none">$TELI</p>
+            <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mt-2">Native token · Base</p>
+          </div>
+          <p className="md:col-span-8 text-sm text-muted-foreground leading-relaxed">
+            <span className="font-semibold text-foreground">Pay in $TELI on Base for more:</span> 25% discount on every plan, a TELI badge across the dashboard, +20% on rewards paid out by your bots, and 2x rate limit on the Master Agent API. The token is settled to your bot wallet, TeliGent never custodies funds.
+          </p>
         </div>
 
-        <div className="border overflow-x-auto" data-testid="table-pricing-comparison">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto" data-testid="table-pricing-comparison">
+          <table className="w-full text-sm border-t-2 border-b-2 border-foreground">
             <thead>
-              <tr className="border-b bg-muted/40">
-                <th className="text-left px-4 py-3 font-semibold">Feature</th>
-                <th className="text-center px-4 py-3 font-semibold">Free</th>
-                <th className="text-center px-4 py-3 font-semibold">Pro</th>
-                <th className="text-center px-4 py-3 font-semibold">Business</th>
+              <tr className="border-b">
+                <th className="text-left px-4 py-4 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Feature</th>
+                <th className="text-center px-4 py-4 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Free</th>
+                <th className="text-center px-4 py-4 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Pro</th>
+                <th className="text-center px-4 py-4 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Business</th>
               </tr>
             </thead>
-            <tbody className="[&>tr]:border-b">
-              <tr><td className="px-4 py-2.5">Bots</td><td className="text-center px-4 py-2.5">1</td><td className="text-center px-4 py-2.5">3</td><td className="text-center px-4 py-2.5">10</td></tr>
-              <tr><td className="px-4 py-2.5">Knowledge base entries / bot</td><td className="text-center px-4 py-2.5">50</td><td className="text-center px-4 py-2.5">250</td><td className="text-center px-4 py-2.5">1,000</td></tr>
-              <tr><td className="px-4 py-2.5">AI calls / bot / day</td><td className="text-center px-4 py-2.5">200</td><td className="text-center px-4 py-2.5">1,500</td><td className="text-center px-4 py-2.5">8,000</td></tr>
-              <tr><td className="px-4 py-2.5">Telegram groups / bot</td><td className="text-center px-4 py-2.5">2</td><td className="text-center px-4 py-2.5">10</td><td className="text-center px-4 py-2.5">50</td></tr>
-              <tr><td className="px-4 py-2.5">Embeddable chat widget</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
-              <tr><td className="px-4 py-2.5">Bankr crypto intelligence</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
-              <tr><td className="px-4 py-2.5">Agent-to-agent API</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
-              <tr><td className="px-4 py-2.5">ERC-8004 on-chain identity</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
-              <tr><td className="px-4 py-2.5">AI feedback digest</td><td className="text-center px-4 py-2.5 text-muted-foreground">No</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
-              <tr><td className="px-4 py-2.5">Rewards + leaderboards</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
-              <tr><td className="px-4 py-2.5">$TELI perks (25% off, +20% rewards, 2x agent rate)</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td><td className="text-center px-4 py-2.5">Yes</td></tr>
+            <tbody className="[&>tr]:border-b [&>tr:last-child]:border-b-0">
+              <tr><td className="px-4 py-3">Bots</td><td className="text-center px-4 py-3 font-mono">1</td><td className="text-center px-4 py-3 font-mono">3</td><td className="text-center px-4 py-3 font-mono">10</td></tr>
+              <tr><td className="px-4 py-3">Knowledge base entries / bot</td><td className="text-center px-4 py-3 font-mono">50</td><td className="text-center px-4 py-3 font-mono">250</td><td className="text-center px-4 py-3 font-mono">1,000</td></tr>
+              <tr><td className="px-4 py-3">AI calls / bot / day</td><td className="text-center px-4 py-3 font-mono">200</td><td className="text-center px-4 py-3 font-mono">1,500</td><td className="text-center px-4 py-3 font-mono">8,000</td></tr>
+              <tr><td className="px-4 py-3">Telegram groups / bot</td><td className="text-center px-4 py-3 font-mono">2</td><td className="text-center px-4 py-3 font-mono">10</td><td className="text-center px-4 py-3 font-mono">50</td></tr>
+              <tr><td className="px-4 py-3">Embeddable chat widget</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
+              <tr><td className="px-4 py-3">Bankr crypto intelligence</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
+              <tr><td className="px-4 py-3">Agent-to-agent API</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
+              <tr><td className="px-4 py-3">ERC-8004 on-chain identity</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
+              <tr><td className="px-4 py-3">AI feedback digest</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
+              <tr><td className="px-4 py-3">Rewards + leaderboards</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
+              <tr><td className="px-4 py-3">$TELI perks (25% off, +20% rewards, 2x agent rate)</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
             </tbody>
           </table>
         </div>
@@ -412,27 +516,29 @@ function FAQSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <section id="faq" className="py-16 px-6 border-t">
-      <div className="max-w-3xl mx-auto space-y-10">
-        <div className="text-center space-y-2">
-          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Frequently Asked Questions</p>
-          <h2 className="text-2xl font-bold tracking-tight">Everything You Need to Know</h2>
-          <p className="text-muted-foreground">Common questions about our AI Telegram moderation bot.</p>
+    <section id="faq" className="py-24 px-6 border-t">
+      <div className="max-w-4xl mx-auto space-y-12">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+          <div className="md:col-span-8 space-y-3">
+            <Eyebrow number="03" label="Frequently Asked Questions" />
+            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.05]">Everything You Need to Know</h2>
+          </div>
+          <p className="md:col-span-4 text-sm text-muted-foreground">Common questions about our AI Telegram moderation bot.</p>
         </div>
-        <div className="space-y-2">
+        <div className="border-t border-b">
           {FAQ_ITEMS.map((item, i) => (
-            <div key={i} className="border" data-testid={`faq-item-${i}`}>
+            <div key={i} className={i < FAQ_ITEMS.length - 1 ? "border-b" : ""} data-testid={`faq-item-${i}`}>
               <button
                 onClick={() => setOpenIndex(openIndex === i ? null : i)}
-                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-muted/50 transition-colors"
+                className="w-full flex items-center justify-between py-5 px-2 text-left hover:bg-muted/40 transition-colors"
                 data-testid={`button-faq-toggle-${i}`}
               >
-                <span className="font-medium text-sm pr-4">{item.question}</span>
+                <span className="font-medium text-base pr-4">{item.question}</span>
                 <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${openIndex === i ? 'rotate-180' : ''}`} />
               </button>
               {openIndex === i && (
-                <div className="px-5 pb-4">
-                  <p className="text-sm text-muted-foreground leading-relaxed">{item.answer}</p>
+                <div className="px-2 pb-5 -mt-1">
+                  <p className="text-sm text-muted-foreground leading-relaxed max-w-3xl">{item.answer}</p>
                 </div>
               )}
             </div>
@@ -446,179 +552,147 @@ function FAQSection() {
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
-      <nav className="sticky top-0 z-50 border-b bg-background">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-6 h-14">
-          <div className="flex items-center gap-2">
+      <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
+        <div className="max-w-6xl mx-auto flex items-center justify-between px-6 h-16">
+          <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center bg-foreground">
               <Bot className="h-4 w-4 text-background" />
             </div>
             <span className="font-semibold text-lg tracking-tight">TeliGent</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-5">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-features">Features</a>
             <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-pricing">Pricing</a>
             <a href="#faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:inline" data-testid="link-faq">FAQ</a>
-            <a href="#auth" className="text-sm text-muted-foreground hover:text-foreground transition-colors" data-testid="link-sign-in">Sign In</a>
+            <a
+              href="#auth"
+              className="text-xs font-mono uppercase tracking-widest bg-foreground text-background px-4 py-2 hover:bg-foreground/90 transition-colors"
+              data-testid="link-sign-in"
+            >Sign In</a>
           </div>
         </div>
       </nav>
 
-      <section className="py-24 px-6">
-        <div className="max-w-4xl mx-auto text-center space-y-6">
-          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">AI-Powered Telegram Moderation Bot</p>
-          <h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-[1.1]" data-testid="text-hero-heading">
-            Smart Agent
-            <br />
-            for Your Community
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            An AI community support agent that understands your project, speaks with your voice, and moderates your Telegram groups — with real-time scam detection, spam filtering, and intelligent member engagement around the clock.
-          </p>
-          <div className="flex items-center justify-center gap-3 pt-2">
-            <Button size="lg" asChild data-testid="button-get-started">
-              <a href="#pricing">See Pricing</a>
-            </Button>
-            <Button size="lg" variant="outline" asChild data-testid="button-create-account">
-              <a href="#auth">Create Account</a>
-            </Button>
+      <section className="py-24 sm:py-32 px-6">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-10 items-center">
+          <div className="md:col-span-7 space-y-7">
+            <Eyebrow number="00" label="AI-Powered Telegram Moderation Bot" />
+            <h1
+              className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[0.95]"
+              data-testid="text-hero-heading"
+            >
+              Smart Agent
+              <br />
+              for Your
+              <br />
+              Community.
+            </h1>
+            <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
+              An AI community support agent that understands your project, speaks with your voice, and moderates your Telegram groups — with real-time scam detection, spam filtering, and intelligent member engagement around the clock.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Button size="lg" asChild data-testid="button-get-started">
+                <a href="#pricing" className="inline-flex items-center gap-2">
+                  See Pricing
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+              </Button>
+              <Button size="lg" variant="outline" asChild data-testid="button-create-account">
+                <a href="#auth">Create Account</a>
+              </Button>
+            </div>
+            <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground pt-1">
+              Plans from $19/mo · Pay in $TELI for 25% off & +20% rewards
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">Plans from $19/mo. Pay in $TELI for 25% off and a +20% rewards multiplier.</p>
+
+          <div className="md:col-span-5">
+            <div className="border bg-card">
+              <div className="aspect-square bg-foreground flex items-center justify-center relative">
+                <Bot className="h-24 w-24 text-background" />
+                <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 bg-background animate-pulse" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-background/80">Live</span>
+                </div>
+                <div className="absolute bottom-3 right-3 text-[10px] font-mono uppercase tracking-widest text-background/60">v2 · Base</div>
+              </div>
+              <div className="divide-y">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Status</span>
+                  <span className="text-xs font-mono">Operational</span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Engine</span>
+                  <span className="text-xs font-mono">GPT-5.2 · GPT-5-mini</span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Chains</span>
+                  <span className="text-xs font-mono">Base · Celo</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
       <MetricsSection />
 
-      <section id="features" className="py-16 px-6 border-t">
-        <div className="max-w-5xl mx-auto space-y-10">
-          <div className="text-center space-y-2">
-            <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Capabilities</p>
-            <h2 className="text-2xl font-bold tracking-tight">AI-Powered Community Management</h2>
-            <p className="text-muted-foreground">Automated Telegram moderation, intelligent member support, and real-time scam protection.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="pt-6 space-y-3">
-                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <Brain className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold">Grounded AI Responses</h3>
-                <p className="text-sm text-muted-foreground">Your bot pulls answers from your website, knowledge base, and recent conversation memory. It also learns new facts from substantive messages over time, so the longer it runs, the better it supports your community.</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6 space-y-3">
-                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold">Customizable Bot Personality</h3>
-                <p className="text-sm text-muted-foreground">Give your Telegram bot a name, tone, and character that matches your brand. It speaks with your voice — professional, casual, or anywhere in between.</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6 space-y-3">
-                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <Shield className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold">Anti-Scam & Spam Filter</h3>
-                <p className="text-sm text-muted-foreground">Automatically detects and removes scam messages, phishing attempts, DM solicitation, pump schemes, and token shills — keeping your Telegram group safe 24/7.</p>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="pt-6 space-y-3">
-                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <Zap className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold">AI-Assisted Group Moderation</h3>
-                <p className="text-sm text-muted-foreground">Members flag suspicious messages with /report. Your bot evaluates reports with AI, takes action automatically, and learns new threat patterns as it goes.</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6 space-y-3">
-                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <Users className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold">Multi-Group Management</h3>
-                <p className="text-sm text-muted-foreground">Deploy your bot across multiple Telegram groups. Monitor activity, scam reports, and conversations from a single dashboard.</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6 space-y-3">
-                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <Trophy className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold">Passive CEO Rewards Loop</h3>
-                <p className="text-sm text-muted-foreground">Score top contributors on real signals, run a per-group leaderboard, and pay out any ERC-20 token on Base or Celo each period. Built-in referrals with /invite, share-to-earn prompts, and Self Protocol gating for higher caps. You set the rules, the bot runs the loop.</p>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="pt-6 space-y-3">
-                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <LineChart className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold">Crypto Intelligence (Bankr)</h3>
-                <p className="text-sm text-muted-foreground">Optional per-bot integration with Bankr for live token prices and market data. Adds a /price command and enriches AI answers with real-time crypto context — perfect for token communities and DeFi groups.</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6 space-y-3">
-                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <Code2 className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold">Embeddable Web Chat Widget</h3>
-                <p className="text-sm text-muted-foreground">Drop a single script tag on your website and get the same on-brand AI agent your Telegram members talk to — same knowledge base, same memories, same voice.</p>
-              </CardContent>
-            </Card>
-            <Card className="border-foreground/20">
-              <CardContent className="pt-6 space-y-3">
-                <div className="flex h-10 w-10 items-center justify-center border bg-muted">
-                  <Cpu className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold">Master Agent API & On-Chain Identity</h3>
-                <p className="text-sm text-muted-foreground">Every bot can register an on-chain identity via ERC-8004 on Celo. The platform itself is discoverable on the OpenServ marketplace and exposes scam detection to other agents, with USDC payments on Base via Locus and trust-tier pricing for Self Protocol verified callers.</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
+      <FeaturesSection />
 
       <PricingSection />
 
       <FAQSection />
 
-      <section id="auth" className="py-16 px-6 border-t">
-        <div className="max-w-2xl mx-auto text-center space-y-8">
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold tracking-tight">Add an AI moderator to your Telegram group</h2>
+      <section id="auth" className="py-24 px-6 border-t">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-10 items-start">
+          <div className="md:col-span-6 space-y-6">
+            <Eyebrow number="04" label="Start" />
+            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.05]">Add an AI moderator to your Telegram group</h2>
             <p className="text-muted-foreground">Set up in under 5 minutes. Your bot handles the rest.</p>
+            <ul className="border-t border-b divide-y">
+              <li className="flex items-center gap-3 py-3">
+                <span className="font-mono text-xs text-muted-foreground w-6">01</span>
+                <span className="text-sm">Create your free account</span>
+              </li>
+              <li className="flex items-center gap-3 py-3">
+                <span className="font-mono text-xs text-muted-foreground w-6">02</span>
+                <span className="text-sm">Drop in your Telegram bot token</span>
+              </li>
+              <li className="flex items-center gap-3 py-3">
+                <span className="font-mono text-xs text-muted-foreground w-6">03</span>
+                <span className="text-sm">Add the bot to your group as admin</span>
+              </li>
+            </ul>
           </div>
-          <AuthForm />
+          <div className="md:col-span-6">
+            <AuthForm />
+          </div>
         </div>
       </section>
 
-      <footer className="border-t py-6 px-6">
-        <div className="max-w-6xl mx-auto space-y-3">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>TeliGent</span>
-            <div className="flex items-center gap-3">
-              <a href="https://x.com/Teli_Gent_" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" data-testid="link-x-twitter" aria-label="X (Twitter)">
-                <SiX className="h-3.5 w-3.5" />
-              </a>
-              <a href="https://t.me/teli_gent" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" data-testid="link-telegram" aria-label="Telegram">
-                <SiTelegram className="h-3.5 w-3.5" />
-              </a>
-              <a href="https://dexscreener.com/base/0x0d65bab223f60d04fb509046096f14934f0bea2943514b32f131c96a781f380f" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" data-testid="link-dexscreener" aria-label="DexScreener">
-                <BarChart3 className="h-3.5 w-3.5" />
-              </a>
+      <footer className="border-t py-10 px-6">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-6 w-6 items-center justify-center bg-foreground">
+              <Bot className="h-3 w-3 text-background" />
             </div>
-            <span>teli.gent</span>
+            <span className="text-sm font-semibold tracking-tight">TeliGent</span>
+            <span className="text-xs text-muted-foreground ml-2">teli.gent</span>
           </div>
           <div className="flex items-center justify-center text-xs text-muted-foreground gap-1.5">
-            <span>CA</span>
+            <span className="font-mono uppercase tracking-widest">CA</span>
             <TokenAddress />
+          </div>
+          <div className="flex items-center md:justify-end gap-4">
+            <a href="https://x.com/Teli_Gent_" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-x-twitter" aria-label="X (Twitter)">
+              <SiX className="h-4 w-4" />
+            </a>
+            <a href="https://t.me/teli_gent" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-telegram" aria-label="Telegram">
+              <SiTelegram className="h-4 w-4" />
+            </a>
+            <a href="https://dexscreener.com/base/0x0d65bab223f60d04fb509046096f14934f0bea2943514b32f131c96a781f380f" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="link-dexscreener" aria-label="DexScreener">
+              <BarChart3 className="h-4 w-4" />
+            </a>
           </div>
         </div>
       </footer>
