@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,26 @@ import { User, Lock, Save, Loader2, LogOut, MailWarning, MailCheck } from "lucid
 export default function AccountPage() {
   const { user, logout, isLoggingOut } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  // Handle the redirect from GET /api/auth/verify-email which lands here as
+  // /account?verified=1 (success) or /account?verified=0 (expired/invalid).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("verified");
+    if (v === "1") {
+      toast({ title: "Email verified", description: "Thanks. You can now upgrade your plan and use on-chain features." });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      setLocation("/account", { replace: true });
+    } else if (v === "0") {
+      toast({
+        title: "Verification link invalid",
+        description: "This link has expired or has already been used. Click 'Resend verification email' below to get a fresh one.",
+        variant: "destructive",
+      });
+      setLocation("/account", { replace: true });
+    }
+  }, [setLocation, toast]);
 
   const [firstName, setFirstName] = useState(user?.firstName || "");
   const [lastName, setLastName] = useState(user?.lastName || "");
@@ -156,7 +177,20 @@ export default function AccountPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="acc-email">Email</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="acc-email">Email</Label>
+                {user?.emailVerified ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-500" data-testid="badge-email-verified">
+                    <MailCheck className="h-3 w-3" />
+                    Verified
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-500" data-testid="badge-email-unverified">
+                    <MailWarning className="h-3 w-3" />
+                    Not verified
+                  </span>
+                )}
+              </div>
               <Input
                 id="acc-email"
                 type="email"

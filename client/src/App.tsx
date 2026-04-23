@@ -20,7 +20,6 @@ import AccountPage from "@/pages/account";
 import LandingPage from "@/pages/landing";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
-import VerifyEmailPage from "@/pages/verify-email";
 import SetupGuidePage from "@/pages/setup-guide";
 import MemoriesPage from "@/pages/memories";
 import IntelligencePage from "@/pages/intelligence";
@@ -128,10 +127,6 @@ function AppContent() {
 
   if (location === "/reset-password") {
     return <ResetPasswordPage />;
-  }
-
-  if (location === "/verify-email") {
-    return <VerifyEmailPage />;
   }
 
   if (isLoading) {

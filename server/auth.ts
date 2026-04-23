@@ -21,12 +21,20 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString("base64url");
 }
 
-function buildAppOrigin(req: Request): string {
-  const forwardedHost = req.get("x-forwarded-host");
-  const host = forwardedHost?.split(",")[0]?.trim() || req.get("host");
-  const forwardedProto = req.get("x-forwarded-proto");
-  const proto = forwardedProto?.split(",")[0]?.trim() || req.protocol;
-  return `${proto}://${host}`;
+// Build the canonical origin used inside email links. We refuse to trust
+// request-supplied host or x-forwarded-* headers here because tokenized
+// verification/reset links would otherwise be vulnerable to host-header
+// poisoning (an attacker triggering a password reset on a victim's account
+// could redirect the email link to their own server). Always prefer the
+// APP_URL env var. The req fallback is only for local development before
+// APP_URL is configured.
+function getEmailOrigin(req: Request): string {
+  const configured = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    console.warn("[auth] APP_URL is not set in production — falling back to request host for email links. Set APP_URL to a trusted canonical origin.");
+  }
+  return `${req.protocol}://${req.get("host")}`;
 }
 
 async function issueAndSendVerificationEmail(user: User, origin: string): Promise<void> {
@@ -86,6 +94,18 @@ function normalizePlanForResponse(safeUser: SafeUser): SafeUser {
 const PgSession = connectPg(session);
 
 function createRateLimiter(windowMs: number, maxAttempts: number, message: string) {
+  return createKeyedRateLimiter(windowMs, maxAttempts, message, (req) => req.ip || req.socket.remoteAddress || "unknown");
+}
+
+// Generic keyed rate limiter. The keyFn receives the request and returns the
+// bucket key (e.g. user id, normalized email, IP). Returning null skips
+// rate limiting for that request (e.g. body missing required field).
+function createKeyedRateLimiter(
+  windowMs: number,
+  maxAttempts: number,
+  message: string,
+  keyFn: (req: Request) => string | null,
+) {
   const store = new Map<string, { count: number; resetAt: number }>();
 
   setInterval(() => {
@@ -98,9 +118,10 @@ function createRateLimiter(windowMs: number, maxAttempts: number, message: strin
   }, 60 * 1000);
 
   return (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const key = keyFn(req);
+    if (!key) return next();
     const now = Date.now();
-    const entry = store.get(ip);
+    const entry = store.get(key);
 
     if (entry && now < entry.resetAt) {
       if (entry.count >= maxAttempts) {
@@ -110,7 +131,7 @@ function createRateLimiter(windowMs: number, maxAttempts: number, message: strin
       }
       entry.count++;
     } else {
-      store.set(ip, { count: 1, resetAt: now + windowMs });
+      store.set(key, { count: 1, resetAt: now + windowMs });
     }
 
     next();
@@ -222,7 +243,7 @@ export function registerAuthRoutes(app: Express) {
           console.error("Session save error:", err);
           return res.status(500).json({ message: "Session error" });
         }
-        await issueAndSendVerificationEmail(user, buildAppOrigin(req));
+        await issueAndSendVerificationEmail(user, getEmailOrigin(req));
         const { passwordHash: _, ...safeUser } = user;
         res.status(201).json(safeUser);
       });
@@ -233,19 +254,21 @@ export function registerAuthRoutes(app: Express) {
   });
 
   // Verify an email using a token from the verification link. Public.
-  app.post("/api/auth/verify-email", authRateLimit, async (req: Request, res: Response) => {
+  // GET so that clicking the link in an email immediately verifies and
+  // redirects the browser to the account page with a success flag — no
+  // client-side roundtrip required. We always redirect (302) so that even
+  // failures land on a familiar page that explains how to recover.
+  app.get("/api/auth/verify-email", authRateLimit, async (req: Request, res: Response) => {
+    const fallbackOk = "/account?verified=1";
+    const fallbackErr = "/account?verified=0";
     try {
-      const { token } = req.body || {};
-      if (!token || typeof token !== "string") {
-        return res.status(400).json({ message: "Verification token is required" });
-      }
+      const token = typeof req.query.token === "string" ? req.query.token : "";
+      if (!token) return res.redirect(302, fallbackErr);
       const tokenHash = hashToken(token);
       const [record] = await db.select().from(emailVerificationTokens)
         .where(and(eq(emailVerificationTokens.tokenHash, tokenHash), gt(emailVerificationTokens.expiresAt, new Date())))
         .limit(1);
-      if (!record) {
-        return res.status(400).json({ message: "This verification link has expired or is invalid. Request a new one from your Account page." });
-      }
+      if (!record) return res.redirect(302, fallbackErr);
       await db.update(users)
         .set({ emailVerified: true, emailVerifiedAt: new Date(), updatedAt: new Date() })
         .where(eq(users.id, record.userId));
@@ -253,15 +276,23 @@ export function registerAuthRoutes(app: Express) {
       await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, record.userId));
       // Cleanup expired tokens opportunistically.
       await db.delete(emailVerificationTokens).where(lt(emailVerificationTokens.expiresAt, new Date())).catch(() => {});
-      res.json({ verified: true });
+      return res.redirect(302, fallbackOk);
     } catch (err: any) {
       console.error("Verify email error:", err);
-      res.status(500).json({ message: "Failed to verify email" });
+      return res.redirect(302, fallbackErr);
     }
   });
 
-  // Resend a verification email to the currently signed-in user. Auth required.
-  app.post("/api/auth/resend-verification", authRateLimit, async (req: Request, res: Response) => {
+  // Resend a verification email to the currently signed-in user.
+  // Tightly rate limited per-user (1 per minute) so an attacker cannot use
+  // a stolen session to flood a victim's inbox.
+  const resendVerificationLimit = createKeyedRateLimiter(
+    60 * 1000,
+    1,
+    "Please wait a minute before requesting another verification email.",
+    (req) => req.session?.userId || null,
+  );
+  app.post("/api/auth/resend-verification", resendVerificationLimit, async (req: Request, res: Response) => {
     if (!req.session?.userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -271,7 +302,7 @@ export function registerAuthRoutes(app: Express) {
       if (user.emailVerified) {
         return res.json({ alreadyVerified: true });
       }
-      await issueAndSendVerificationEmail(user, buildAppOrigin(req));
+      await issueAndSendVerificationEmail(user, getEmailOrigin(req));
       res.json({ sent: true });
     } catch (err: any) {
       console.error("Resend verification error:", err);
@@ -280,7 +311,18 @@ export function registerAuthRoutes(app: Express) {
   });
 
   // Forgot-password: always returns success to avoid leaking which emails exist.
-  app.post("/api/auth/forgot-password", authRateLimit, async (req: Request, res: Response) => {
+  // Rate limited per-email (3/hour) and per-IP (10/15min via authRateLimit) so
+  // that a single bad actor cannot spam any specific account.
+  const forgotPasswordPerEmail = createKeyedRateLimiter(
+    60 * 60 * 1000,
+    3,
+    "Too many password reset requests for that email. Try again later.",
+    (req) => {
+      const email = (req.body?.email || "").toString().toLowerCase().trim();
+      return email ? `forgot:${email}` : null;
+    },
+  );
+  app.post("/api/auth/forgot-password", authRateLimit, forgotPasswordPerEmail, async (req: Request, res: Response) => {
     try {
       const { email } = req.body || {};
       if (!email || typeof email !== "string") {
@@ -293,7 +335,7 @@ export function registerAuthRoutes(app: Express) {
         const tokenHash = hashToken(token);
         const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
         await db.insert(passwordResetTokens).values({ tokenHash, userId: user.id, expiresAt });
-        const link = `${buildAppOrigin(req)}/reset-password?token=${encodeURIComponent(token)}`;
+        const link = `${getEmailOrigin(req)}/reset-password?token=${encodeURIComponent(token)}`;
         await sendPasswordResetEmail(user.email, link).catch((err) => {
           console.error("[auth] reset email send failed:", err?.message || err);
         });
@@ -330,8 +372,12 @@ export function registerAuthRoutes(app: Express) {
         return res.status(400).json({ message: "This reset link has expired or has already been used. Request a new one." });
       }
       const newHash = await bcrypt.hash(password, 12);
+      // Note: we deliberately do NOT flip emailVerified here. Verification and
+      // password reset are kept as independent flows; if a reset is performed
+      // on an unverified account, the user still needs to verify before
+      // hitting paid features.
       await db.update(users)
-        .set({ passwordHash: newHash, emailVerified: true, emailVerifiedAt: new Date(), updatedAt: new Date() })
+        .set({ passwordHash: newHash, updatedAt: new Date() })
         .where(eq(users.id, record.userId));
       await db.update(passwordResetTokens)
         .set({ usedAt: new Date() })
