@@ -10,6 +10,7 @@ import type { ChatMessage } from "./conversation-history";
 import { getTokenPrice, queryBankr, isCryptoQuery } from "./bankr";
 import { triageMessage } from "./calibration";
 import { tryConsumeAiBudget } from "../ai-budget";
+import { getLimitsForBotAsync } from "../limits";
 
 export { sendBotMessage };
 
@@ -163,6 +164,13 @@ export async function handleCommand(bot: TelegramBot, msg: TelegramBot.Message, 
   if (command === "price") {
     if (!config.bankrEnabled) {
       await sendBotMessage(bot, chatId, "Crypto intelligence is not enabled for this bot.", msg.message_id);
+      return true;
+    }
+    // Runtime tier gate: even if the toggle is on (e.g. owner downgraded to Free),
+    // Bankr is a Pro+ feature and must not run on inactive plans.
+    const ownerLimits = await getLimitsForBotAsync(botConfigId);
+    if (!ownerLimits.allowBankr) {
+      await sendBotMessage(bot, chatId, "Crypto intelligence requires a Pro plan. Ask the bot admin to upgrade.", msg.message_id);
       return true;
     }
     if (!args) {
@@ -452,7 +460,11 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     storage.getActiveKnowledgeEntries(botConfigId),
     storage.getBotMemories(botConfigId),
     config.bankrEnabled && isCryptoQuery(userMessage)
-      ? queryBankr(userMessage, config.bankrApiKey).catch(() => null)
+      ? (async () => {
+          const ol = await getLimitsForBotAsync(botConfigId).catch(() => null);
+          if (!ol?.allowBankr) return null;
+          return queryBankr(userMessage, config.bankrApiKey).catch(() => null);
+        })()
       : Promise.resolve(null),
     wantUserMem ? storage.getUserMemoriesForUser(botConfigId, senderTelegramUserId!).catch(() => []) : Promise.resolve([]),
     wantPatterns ? storage.getCollectivePatterns(botConfigId).catch(() => []) : Promise.resolve([]),

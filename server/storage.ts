@@ -489,7 +489,7 @@ export class DatabaseStorage implements IStorage {
     const map = new Map<string, { paid: number; pending: number; lastPaymentAt: Date | null }>();
     for (const r of rows) {
       const entry = map.get(r.userId) || { paid: 0, pending: 0, lastPaymentAt: null as Date | null };
-      if (r.status === "paid") {
+      if (r.status === "matched") {
         entry.paid += 1;
         if (r.matchedAt && (!entry.lastPaymentAt || r.matchedAt > entry.lastPaymentAt)) {
           entry.lastPaymentAt = r.matchedAt;

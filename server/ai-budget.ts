@@ -1,6 +1,23 @@
 import { pool } from "./db";
-import { getLimitsForBot } from "./limits";
+import { getLimitsForBotAsync, getDefaultLimits, type Limits } from "./limits";
 import { log } from "./index";
+
+const limitsCache = new Map<number, { limits: Limits; resolvedAt: number }>();
+const LIMITS_TTL_MS = 60 * 1000;
+
+async function resolveLimitsForBot(botConfigId: number): Promise<Limits> {
+  const cached = limitsCache.get(botConfigId);
+  const now = Date.now();
+  if (cached && now - cached.resolvedAt < LIMITS_TTL_MS) return cached.limits;
+  const fresh = await getLimitsForBotAsync(botConfigId).catch(() => getDefaultLimits());
+  limitsCache.set(botConfigId, { limits: fresh, resolvedAt: now });
+  return fresh;
+}
+
+export function invalidateBotLimitsCache(botConfigId?: number) {
+  if (botConfigId == null) limitsCache.clear();
+  else limitsCache.delete(botConfigId);
+}
 
 const exhaustionLogged = new Set<string>();
 
@@ -61,7 +78,7 @@ export async function tryConsumeAiBudget(botConfigId: number): Promise<boolean> 
   try {
     if (loadedDate !== date) await loadTodayIntoMemory(date);
     const k = key(botConfigId, date);
-    const limit = getLimitsForBot(botConfigId).dailyAiCallsPerBot;
+    const limit = (await resolveLimitsForBot(botConfigId)).dailyAiCallsPerBot;
     const current = counts.get(k) || 0;
     if (current >= limit) {
       if (!exhaustionLogged.has(k)) {
@@ -105,7 +122,7 @@ export async function getAiUsageToday(botConfigId: number): Promise<{ count: num
   if (loadedDate !== date) await loadTodayIntoMemory(date);
   return {
     count: counts.get(key(botConfigId, date)) || 0,
-    limit: getLimitsForBot(botConfigId).dailyAiCallsPerBot,
+    limit: (await resolveLimitsForBot(botConfigId)).dailyAiCallsPerBot,
   };
 }
 

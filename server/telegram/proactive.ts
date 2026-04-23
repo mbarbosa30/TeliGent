@@ -81,7 +81,11 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
     .sort((a, b) => (b.mentionCount * 2 + b.uniqueUsers * 3) - (a.mentionCount * 2 + a.uniqueUsers * 3))
     .slice(0, 10);
 
-  const feedbackEnabled = !!config.feedbackEnabled;
+  // Runtime tier gate: feedback digest is a Pro+ feature. If the owner downgraded,
+  // disable it here even if the per-bot toggle is still on.
+  const { getLimitsForBotAsync: _getOwnerLimits } = await import("../limits");
+  const ownerLimits = await _getOwnerLimits(config.id).catch(() => null);
+  const feedbackEnabled = !!config.feedbackEnabled && !!ownerLimits?.allowFeedbackDigest;
   const mixRatio = Math.max(0, Math.min(100, config.feedbackMixRatio ?? 40));
 
   if (open.length === 0 && !feedbackEnabled) return { generated: false, posted: false, reason: "no patterns" };
