@@ -12,6 +12,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { LayoutDashboard, BookOpen, Settings, Activity, Bot, Shield, LogOut, Sparkles, Plus, ChevronDown, UserCircle, Brain, Code, Cpu, TrendingUp, CreditCard } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -164,7 +165,10 @@ export function AppSidebar() {
               <Badge className="text-xs bg-foreground text-background" data-testid="badge-teli">TELI</Badge>
             )}
           </div>
-          <Link href="/admin" data-testid="link-nav-admin" className="hover:underline">Admin</Link>
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <Link href="/admin" data-testid="link-nav-admin" className="hover:underline">Admin</Link>
+          </div>
         </div>
       </SidebarFooter>
     </Sidebar>
