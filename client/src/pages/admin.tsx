@@ -467,6 +467,8 @@ function PlanRow({ user, onOverride, pending }: { user: AdminUser; onOverride: (
   const [plan, setPlan] = useState<string>(user.plan || "free");
   const [days, setDays] = useState<string>("30");
   const [teli, setTeli] = useState<boolean>(!!user.teliPaid);
+  const [reason, setReason] = useState<string>("");
+  const { toast } = useToast();
   return (
     <div className="grid grid-cols-[1.4fr_auto_auto_auto_auto_auto] gap-3 px-3 py-3 border-b border-border/50 items-center" data-testid={`row-plan-${user.id}`}>
       <span className="text-sm font-mono truncate">{user.email}</span>
@@ -505,12 +507,28 @@ function PlanRow({ user, onOverride, pending }: { user: AdminUser; onOverride: (
           />
           TELI
         </label>
+        <input
+          type="text"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason (required)"
+          className="h-8 w-44 border bg-background px-2 text-xs"
+          data-testid={`input-reason-${user.id}`}
+          aria-label="Reason for override"
+        />
         <Button
           size="sm"
           variant="outline"
           className="h-8"
           disabled={pending}
-          onClick={() => onOverride({ userId: user.id, plan, days: parseInt(days) || 30, teliPaid: teli })}
+          onClick={() => {
+            const r = reason.trim();
+            if (!r) {
+              toast({ title: "Reason required", description: "Document why you're overriding this user's plan.", variant: "destructive" });
+              return;
+            }
+            onOverride({ userId: user.id, plan, days: parseInt(days) || 30, teliPaid: teli, reason: r });
+          }}
           data-testid={`button-override-${user.id}`}
         >
           Apply

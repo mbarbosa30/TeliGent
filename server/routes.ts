@@ -166,6 +166,7 @@ export async function registerRoutes(
       const user = await loadUser(req);
       if (partial.widgetEnabled === true) requirePermission(user, "allowWidget");
       if (partial.bankrEnabled === true) requirePermission(user, "allowBankr");
+      if (partial.feedbackEnabled === true) requirePermission(user, "allowFeedbackDigest");
       const config = await storage.updateBotConfig(botId, partial);
 
       if (partial.botToken !== undefined || partial.isActive !== undefined) {
@@ -176,6 +177,7 @@ export async function registerRoutes(
 
       res.json(config);
     } catch (err: any) {
+      if (err instanceof PaywallError) return next(err);
       res.status(400).json({ error: err.message });
     }
   });
@@ -190,7 +192,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bots/:botId/knowledge", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+  app.post("/api/bots/:botId/knowledge", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res, next) => {
     try {
       const botId = parseInt(req.params.botId as string);
       const userId = getUserId(req);
@@ -217,6 +219,7 @@ export async function registerRoutes(
       const entry = await storage.createKnowledgeEntry(botId, userId, parsed);
       res.status(201).json(entry);
     } catch (err: any) {
+      if (err instanceof PaywallError) return next(err);
       res.status(400).json({ error: err.message });
     }
   });
@@ -1277,6 +1280,32 @@ export async function registerRoutes(
         const userId = obj?.metadata?.userId;
         if (userId) {
           await storage.updateUserPlan(userId, { plan: "free", planRail: "none", stripeSubscriptionId: null, planCancelAtPeriodEnd: false });
+          await storage.createPlanPeriod({
+            userId, plan: "free", rail: "stripe", billingPeriod: "monthly",
+            teliPaid: false, startsAt: new Date(), endsAt: new Date(),
+            stripeSubscriptionId: obj?.id || null,
+            reason: "stripe_subscription_deleted",
+          });
+        }
+      } else if (event.type === "invoice.paid") {
+        // Renewal payment succeeded — re-fetch subscription to update period_end.
+        const subId = obj?.subscription;
+        if (subId) {
+          const sub = await Stripe.getSubscription(subId as string);
+          await applyStripeSubscription(sub);
+        }
+      } else if (event.type === "invoice.payment_failed") {
+        // Payment failed — record an audit row but leave the active period in place.
+        // Stripe will retry; downgrade happens via subscription.updated/deleted if it ultimately fails.
+        const subId = obj?.subscription;
+        const userId = obj?.metadata?.userId || (subId ? (await Stripe.getSubscription(subId as string).catch(() => null))?.metadata?.userId : null);
+        if (userId) {
+          await storage.createPlanPeriod({
+            userId, plan: "free", rail: "stripe", billingPeriod: "monthly",
+            teliPaid: false, startsAt: new Date(), endsAt: new Date(),
+            stripeSubscriptionId: subId || null,
+            reason: `stripe_invoice_payment_failed (invoice ${obj?.id || "unknown"})`,
+          });
         }
       }
       res.json({ received: true });
@@ -1364,16 +1393,26 @@ export async function registerRoutes(
     const userId = req.params.userId;
     const plan = req.body?.plan as PlanTier;
     const days = parseInt(String(req.body?.days || "30"));
+    const reasonRaw = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
     if (!["free", "pro", "business"].includes(plan)) return res.status(400).json({ error: "Invalid plan" });
+    if (!reasonRaw) return res.status(400).json({ error: "reason is required for admin plan overrides" });
     const planPeriodEnd = plan === "free" ? null : new Date(Date.now() + days * 24 * 60 * 60 * 1000);
     const planRail = plan === "free" ? "none" : "manual";
     await storage.updateUserPlan(userId, { plan, planRail, planPeriodEnd, teliPaid: !!req.body?.teliPaid, planCancelAtPeriodEnd: false });
     if (plan !== "free" && planPeriodEnd) {
       await storage.createPlanPeriod({
-        userId, plan, rail: "manual" as any, billingPeriod: "monthly",
+        userId, plan, rail: "manual", billingPeriod: "monthly",
         teliPaid: !!req.body?.teliPaid,
         startsAt: new Date(), endsAt: planPeriodEnd,
-        reason: "admin_override",
+        reason: `admin_override: ${reasonRaw.slice(0, 240)}`,
+      });
+    } else if (plan === "free") {
+      // Audit row for downgrades too.
+      await storage.createPlanPeriod({
+        userId, plan: "free", rail: "manual", billingPeriod: "monthly",
+        teliPaid: false,
+        startsAt: new Date(), endsAt: new Date(),
+        reason: `admin_override (downgrade): ${reasonRaw.slice(0, 240)}`,
       });
     }
     res.json({ success: true });

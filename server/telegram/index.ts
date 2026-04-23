@@ -384,6 +384,24 @@ async function handleNewMembers(msg: TelegramBot.Message, instance: BotInstance)
     const chatTitle = msg.chat.title || "Unknown Group";
     const memberCount = await bot.getChatMemberCount(msg.chat.id).catch(() => 0);
 
+    // Tier-aware groups quota: silently refuse (and log) when the owner is over their plan limit.
+    // We don't block on read paths because Telegram retries; instead we log + skip persistence.
+    const existingGroups = await storage.getGroups(botConfigId).catch(() => [] as any[]);
+    const isAlreadyTracked = existingGroups.some((g: any) => g.telegramChatId === chatId);
+    if (!isAlreadyTracked) {
+      const { getLimitsForUser } = await import("../limits");
+      const owner = await storage.getUser(userId).catch(() => null);
+      const limits = getLimitsForUser(owner);
+      if (existingGroups.length >= limits.maxGroupsPerBot) {
+        await storage.createActivityLog(botConfigId, userId, {
+          type: "quota_exceeded",
+          message: `Group "${chatTitle}" not tracked: bot is at the ${limits.maxGroupsPerBot}-group limit for the current plan.`,
+          severity: "warning",
+        }).catch(() => {});
+        return; // Skip upsert + welcome message; owner sees the warning in activity feed.
+      }
+    }
+
     await storage.upsertGroup(botConfigId, userId, {
       telegramChatId: chatId,
       name: chatTitle,

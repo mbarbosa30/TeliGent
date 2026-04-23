@@ -177,16 +177,21 @@ export async function pollCryptoIntents(): Promise<{ matched: number; expired: n
         toBlock: head,
       });
       for (const lg of logs) {
-        const value = (lg.args as any).value as bigint;
+        const value = lg.args.value;
+        if (value === undefined) continue;
         const txHash = lg.transactionHash;
         for (const intent of stillPending) {
           if (intent.tokenAddress.toLowerCase() !== tokenAddr) continue;
           if (intent.status !== "pending") continue;
           const expected = BigInt(intent.expectedAmount);
           if (value === expected) {
-            await activateIntent(intent, txHash || null);
-            intent.status = "matched" as any;
-            matched += 1;
+            // markPlanPaymentIntent does an atomic WHERE status='pending' update;
+            // if it returns undefined, another poll already claimed this intent.
+            const claimed = await activateIntent(intent, txHash || null);
+            if (claimed) {
+              intent.status = "matched";
+              matched += 1;
+            }
             break;
           }
         }
@@ -198,9 +203,9 @@ export async function pollCryptoIntents(): Promise<{ matched: number; expired: n
   return { matched, expired };
 }
 
-async function activateIntent(intent: any, txHash: string | null) {
+async function activateIntent(intent: any, txHash: string | null): Promise<boolean> {
   const updated = await storage.markPlanPaymentIntent(intent.id, "matched", txHash);
-  if (!updated) return;
+  if (!updated) return false;
   const periodMs = intent.billingPeriod === "annual" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
   const startsAt = new Date();
   const endsAt = new Date(Date.now() + periodMs);
@@ -223,8 +228,10 @@ async function activateIntent(intent: any, txHash: string | null) {
     planCancelAtPeriodEnd: false,
   });
   log(`Crypto intent ${intent.id} matched: user=${intent.userId} plan=${intent.plan} rail=${intent.rail} tx=${txHash || "?"}`, "billing");
+  return true;
 }
 
 export function getUserActivePlan(user: { plan: string | null; planPeriodEnd: Date | null } | null | undefined): PlanTier {
-  return getEffectivePlan(user as any);
+  if (!user) return "free";
+  return getEffectivePlan({ plan: user.plan ?? null, planPeriodEnd: user.planPeriodEnd ?? null });
 }
