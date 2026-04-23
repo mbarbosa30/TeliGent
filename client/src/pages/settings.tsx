@@ -983,14 +983,33 @@ export default function SettingsPage() {
 }
 
 function RecentlyFlaggedList({ botId }: { botId: number }) {
+  const { toast } = useToast();
   const { data, isLoading } = useQuery<Array<{ id: number; userName: string | null; userMessage: string | null; metadata: any; createdAt: string }>>({
     queryKey: ["/api/bots", botId, "scam-flagged"],
     enabled: !!botId,
   });
+
+  const falsePositiveMutation = useMutation({
+    mutationFn: async (logId: number) => {
+      const res = await apiRequest("POST", `/api/bots/${botId}/scam-flagged/${logId}/false-positive`);
+      return res.json();
+    },
+    onSuccess: (data: { removedPatterns?: number; unbanned?: boolean; unbanAttempted?: boolean }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", botId, "scam-flagged"] });
+      const parts = [`Removed ${data.removedPatterns ?? 0} learned patterns`];
+      if (data.unbanAttempted) parts.push(data.unbanned ? "user unbanned" : "could not unban user");
+      parts.push("similar messages will be allowed");
+      toast({ title: "Marked as false positive", description: parts.join(" — ") + "." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not restore", description: err?.message || "Failed to mark as false positive.", variant: "destructive" });
+    },
+  });
+
   return (
     <div className="space-y-2">
       <Label className="text-sm font-medium">Recently Flagged (last 20)</Label>
-      <p className="text-xs text-muted-foreground">Auto-deleted scam messages. Use these to judge whether your sensitivity is too strict or too loose.</p>
+      <p className="text-xs text-muted-foreground">Auto-deleted scam messages. Use these to judge whether your sensitivity is too strict or too loose. If the bot was wrong, mark a row as a false positive to remove the learned patterns it created and let similar messages through next time.</p>
       {isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : !data || data.length === 0 ? (
@@ -1007,6 +1026,42 @@ function RecentlyFlaggedList({ botId }: { botId: number }) {
                 <Badge variant="outline" className="text-[10px]">{String(item.metadata.reason).slice(0, 80)}</Badge>
               )}
               <p className="text-xs text-muted-foreground line-clamp-2">{item.userMessage || ""}</p>
+              <div className="pt-1">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px]"
+                      disabled={falsePositiveMutation.isPending}
+                      data-testid={`button-false-positive-${item.id}`}
+                    >
+                      Mark as false positive
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent data-testid={`dialog-false-positive-${item.id}`}>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Mark this message as a false positive?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        The original Telegram message can't be restored, but the bot will:
+                        <br />• Forget the learned patterns it created from this message
+                        <br />• Allow similar messages through in the future
+                        <br />• Unban {item.userName || "the user"} if they were auto-banned in this group
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel data-testid={`button-cancel-false-positive-${item.id}`}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => falsePositiveMutation.mutate(item.id)}
+                        data-testid={`button-confirm-false-positive-${item.id}`}
+                      >
+                        Yes, it was wrong
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             </div>
           ))}
         </div>

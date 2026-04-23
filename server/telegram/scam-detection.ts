@@ -28,6 +28,34 @@ export function clearLearnedPatternsCache(botConfigId: number) {
   learnedPatternsCache.delete(botConfigId);
 }
 
+const allowlistCache = new Map<number, { entries: { bigrams: string[] }[]; expiry: number }>();
+
+export function clearScamAllowlistCache(botConfigId: number) {
+  allowlistCache.delete(botConfigId);
+}
+
+export async function getScamAllowlistBigramSets(botConfigId: number): Promise<string[][]> {
+  const cached = allowlistCache.get(botConfigId);
+  if (cached && Date.now() < cached.expiry) return cached.entries.map(e => e.bigrams);
+  const rows = await storage.getScamAllowlist(botConfigId);
+  const entries = rows.map(r => ({ bigrams: r.bigrams || [] })).filter(e => e.bigrams.length > 0);
+  allowlistCache.set(botConfigId, { entries, expiry: Date.now() + 5 * 60 * 1000 });
+  return entries.map(e => e.bigrams);
+}
+
+export function matchesScamAllowlist(messageBigrams: string[], allowlistSets: string[][]): boolean {
+  if (!messageBigrams.length || !allowlistSets.length) return false;
+  const msgSet = new Set(messageBigrams);
+  for (const entry of allowlistSets) {
+    if (!entry.length) continue;
+    let overlap = 0;
+    for (const b of entry) if (msgSet.has(b)) overlap++;
+    const denom = Math.min(entry.length, messageBigrams.length);
+    if (denom >= 3 && overlap / denom >= 0.7) return true;
+  }
+  return false;
+}
+
 export async function getLearnedPatterns(botConfigId: number): Promise<string[]> {
   const cached = learnedPatternsCache.get(botConfigId);
   if (cached && Date.now() < cached.expiry) return cached.patterns;
@@ -317,6 +345,19 @@ export async function detectAndHandleScam(
   if (isProductInterestMessage(normalized, config, botUsername)) {
     log(`Product interest message from ${userName} — skipping scam check`, "telegram");
     return false;
+  }
+
+  try {
+    const allowlistSets = await getScamAllowlistBigramSets(botConfigId);
+    if (allowlistSets.length > 0) {
+      const messageBigrams = extractKeyPhrases(normalized);
+      if (matchesScamAllowlist(messageBigrams, allowlistSets)) {
+        log(`Scam allowlist match — skipping scam check for "${text.substring(0, 60)}"`, "telegram");
+        return false;
+      }
+    }
+  } catch (e: any) {
+    log(`Scam allowlist check failed: ${e.message}`, "telegram");
   }
   if (normalized !== text) {
     log(`Unicode normalized: "${text.substring(0, 60)}" → "${normalized.substring(0, 60)}"`, "telegram");

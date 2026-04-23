@@ -1,7 +1,7 @@
 import { db } from "./db";
-import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals, feedbackItems } from "@shared/schema";
-import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot, MemberWallet, ContributionScore, InsertContributionScore, RewardDistribution, InsertRewardDistribution, RewardPayout, InsertRewardPayout, ProactivePrompt, InsertProactivePrompt, Referral, InsertReferral, FeedbackItem, InsertFeedbackItem } from "@shared/schema";
-import { eq, desc, and, sql, count } from "drizzle-orm";
+import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, scamAllowlist, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals, feedbackItems } from "@shared/schema";
+import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, ScamAllowlistEntry, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot, MemberWallet, ContributionScore, InsertContributionScore, RewardDistribution, InsertRewardDistribution, RewardPayout, InsertRewardPayout, ProactivePrompt, InsertProactivePrompt, Referral, InsertReferral, FeedbackItem, InsertFeedbackItem } from "@shared/schema";
+import { eq, desc, and, sql, count, inArray } from "drizzle-orm";
 
 export interface WisdomComponentsPayload {
   pattern: number;
@@ -41,6 +41,12 @@ export interface IStorage {
   getReportLogs(botConfigId: number, limit?: number, offset?: number): Promise<ActivityLog[]>;
   getReportedScamPatterns(botConfigId: number): Promise<ReportedScamPattern[]>;
   createReportedScamPattern(botConfigId: number, pattern: string, originalText?: string): Promise<ReportedScamPattern>;
+  deleteReportedScamPatterns(botConfigId: number, patterns: string[]): Promise<number>;
+  getActivityLogById(botConfigId: number, id: number): Promise<ActivityLog | undefined>;
+  markActivityLogFalsePositive(botConfigId: number, id: number): Promise<ActivityLog | undefined>;
+  getGroupById(botConfigId: number, id: number): Promise<Group | undefined>;
+  getScamAllowlist(botConfigId: number): Promise<ScamAllowlistEntry[]>;
+  createScamAllowlistEntry(botConfigId: number, originalText: string, normalizedText: string, bigrams: string[], sourceActivityLogId: number | null): Promise<ScamAllowlistEntry>;
 
   getBotMemories(botConfigId: number): Promise<BotMemory[]>;
   createBotMemory(botConfigId: number, data: Omit<InsertBotMemory, "botConfigId">): Promise<BotMemory>;
@@ -212,8 +218,35 @@ export class DatabaseStorage implements IStorage {
         eq(activityLogs.isReport, true),
         sql`${activityLogs.metadata}->>'autoDetected' = 'true'`,
         eq(activityLogs.botResponse, "(silently deleted)"),
+        sql`COALESCE(${activityLogs.metadata}->>'falsePositive','') <> 'true'`,
       )
     ).orderBy(desc(activityLogs.createdAt)).limit(limit);
+  }
+
+  async getActivityLogById(botConfigId: number, id: number): Promise<ActivityLog | undefined> {
+    const [row] = await db.select().from(activityLogs)
+      .where(and(eq(activityLogs.id, id), eq(activityLogs.botConfigId, botConfigId)))
+      .limit(1);
+    return row;
+  }
+
+  async markActivityLogFalsePositive(botConfigId: number, id: number): Promise<ActivityLog | undefined> {
+    const existing = await this.getActivityLogById(botConfigId, id);
+    if (!existing) return undefined;
+    const meta = (existing.metadata as Record<string, unknown> | null) ?? {};
+    const nextMeta = { ...meta, falsePositive: true, falsePositiveAt: new Date().toISOString() };
+    const [updated] = await db.update(activityLogs)
+      .set({ metadata: nextMeta })
+      .where(and(eq(activityLogs.id, id), eq(activityLogs.botConfigId, botConfigId)))
+      .returning();
+    return updated;
+  }
+
+  async getGroupById(botConfigId: number, id: number): Promise<Group | undefined> {
+    const [row] = await db.select().from(groups)
+      .where(and(eq(groups.id, id), eq(groups.botConfigId, botConfigId)))
+      .limit(1);
+    return row;
   }
 
   async cleanOldActivityLogs(retentionDays = 90): Promise<number> {
@@ -249,6 +282,29 @@ export class DatabaseStorage implements IStorage {
     ).limit(1);
     if (existing.length > 0) return existing[0];
     const [created] = await db.insert(reportedScamPatterns).values({ botConfigId, pattern, originalText: originalText || null, source: "report" }).returning();
+    return created;
+  }
+
+  async deleteReportedScamPatterns(botConfigId: number, patterns: string[]): Promise<number> {
+    if (!patterns.length) return 0;
+    const result = await db.delete(reportedScamPatterns).where(
+      and(eq(reportedScamPatterns.botConfigId, botConfigId), inArray(reportedScamPatterns.pattern, patterns))
+    );
+    return result.rowCount ?? 0;
+  }
+
+  async getScamAllowlist(botConfigId: number): Promise<ScamAllowlistEntry[]> {
+    return db.select().from(scamAllowlist).where(eq(scamAllowlist.botConfigId, botConfigId)).orderBy(desc(scamAllowlist.createdAt));
+  }
+
+  async createScamAllowlistEntry(botConfigId: number, originalText: string, normalizedText: string, bigrams: string[], sourceActivityLogId: number | null): Promise<ScamAllowlistEntry> {
+    const [created] = await db.insert(scamAllowlist).values({
+      botConfigId,
+      originalText: originalText.slice(0, 2000),
+      normalizedText: normalizedText.slice(0, 2000),
+      bigrams,
+      sourceActivityLogId,
+    }).returning();
     return created;
   }
 

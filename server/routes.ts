@@ -332,6 +332,72 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/bots/:botId/scam-flagged/:logId/false-positive", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const logId = parseInt(req.params.logId as string);
+      if (isNaN(logId)) return res.status(400).json({ error: "Invalid log id" });
+
+      const log = await storage.getActivityLogById(botId, logId);
+      if (!log) return res.status(404).json({ error: "Flagged item not found" });
+
+      const meta = (log.metadata || {}) as Record<string, unknown>;
+      const isAutoDeletedScam =
+        log.isReport === true &&
+        log.botResponse === "(silently deleted)" &&
+        meta.autoDetected === true;
+      if (!isAutoDeletedScam) {
+        return res.status(400).json({ error: "This activity log is not an auto-deleted scam message" });
+      }
+      if (meta.falsePositive === true || meta.falsePositive === "true") {
+        return res.status(409).json({ error: "Already marked as a false positive" });
+      }
+
+      const text = (log.userMessage || "").trim();
+      if (!text) return res.status(400).json({ error: "Original message text is not available" });
+
+      const { normalizeUnicode } = await import("./telegram/normalization");
+      const { extractKeyPhrases, clearLearnedPatternsCache, clearScamAllowlistCache } = await import("./telegram/scam-detection");
+
+      const normalized = normalizeUnicode(text);
+      const bigrams = extractKeyPhrases(normalized);
+
+      const removedPatterns = await storage.deleteReportedScamPatterns(botId, bigrams);
+      await storage.createScamAllowlistEntry(botId, text, normalized, bigrams, log.id);
+      await storage.markActivityLogFalsePositive(botId, log.id);
+
+      clearLearnedPatternsCache(botId);
+      clearScamAllowlistCache(botId);
+
+      let unbanned = false;
+      let unbanError: string | null = null;
+      if (log.telegramUserId && log.groupId) {
+        try {
+          const group = await storage.getGroupById(botId, log.groupId);
+          const { getActiveBotInstance } = await import("./telegram/instance-registry");
+          const instance = getActiveBotInstance(botId);
+          if (group && instance) {
+            await instance.bot.unbanChatMember(group.telegramChatId, Number(log.telegramUserId), { only_if_banned: true });
+            unbanned = true;
+          }
+        } catch (e: any) {
+          unbanError = e?.message || String(e);
+        }
+      }
+
+      res.json({
+        success: true,
+        removedPatterns,
+        bigramsConsidered: bigrams.length,
+        unbanAttempted: !!(log.telegramUserId && log.groupId),
+        unbanned,
+        unbanError,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/bots/:botId/intelligence/overview", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);

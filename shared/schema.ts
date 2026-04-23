@@ -115,6 +115,20 @@ export const reportedScamPatterns = pgTable("reported_scam_patterns", {
   index("idx_reported_scam_patterns_bot_config_id").on(table.botConfigId),
 ]);
 
+export const scamAllowlist = pgTable("scam_allowlist", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
+  originalText: text("original_text").notNull(),
+  normalizedText: text("normalized_text").notNull(),
+  bigrams: text("bigrams").array().notNull().default(sql`ARRAY[]::text[]`),
+  sourceActivityLogId: integer("source_activity_log_id"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  index("idx_scam_allowlist_bot_config_id").on(table.botConfigId),
+]);
+
+export type ScamAllowlistEntry = typeof scamAllowlist.$inferSelect;
+
 export const botMemories = pgTable("bot_memories", {
   id: serial("id").primaryKey(),
   botConfigId: integer("bot_config_id").notNull().references(() => botConfigs.id, { onDelete: "cascade" }),
