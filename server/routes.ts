@@ -185,6 +185,12 @@ export async function registerRoutes(
       const userId = getUserId(req);
       const parsed = insertKnowledgeBaseSchema.omit({ userId: true, botConfigId: true }).parse(req.body);
 
+      const kbLimit = getLimitsForBot(botId).maxKbEntries;
+      const existingKb = await storage.getKnowledgeEntries(botId);
+      if (existingKb.length >= kbLimit) {
+        return res.status(403).json({ error: `Knowledge base is full (${kbLimit} entries). Delete an entry before adding a new one.` });
+      }
+
       if (parsed.sourceUrl && parsed.sourceUrl.trim()) {
         try {
           const scrapedContent = await scrapeUrl(parsed.sourceUrl);
@@ -671,8 +677,8 @@ export async function registerRoutes(
     }
   });
 
-  const agentRateLimit = createApiRateLimiter(60 * 1000, 30);
-  const agentTrustRateLimit = createApiRateLimiter(60 * 1000, 60);
+  const agentRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.agentApiRateLimitPerMin);
+  const agentTrustRateLimit = createApiRateLimiter(60 * 1000, _defaultLimits.agentApiTrustedRateLimitPerMin);
 
   const { registerOpenServRoutes } = await import("./agent/openserv");
   registerOpenServRoutes(app);

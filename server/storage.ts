@@ -194,6 +194,12 @@ export class DatabaseStorage implements IStorage {
       const [updated] = await db.update(groups).set(data).where(eq(groups.id, existing.id)).returning();
       return updated;
     }
+    const { getLimitsForBot } = await import("./limits");
+    const cap = getLimitsForBot(botConfigId).maxGroupsPerBot;
+    const current = await db.select().from(groups).where(eq(groups.botConfigId, botConfigId));
+    if (current.length >= cap) {
+      throw new Error(`Group cap reached for this bot (${cap}). Remove an existing group before joining a new one.`);
+    }
     const [created] = await db.insert(groups).values({ ...data, userId, botConfigId }).returning();
     return created;
   }

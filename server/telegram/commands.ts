@@ -668,7 +668,10 @@ ${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}${
       max_completion_tokens: 1000,
     }, { signal: controller.signal as any });
 
-    return response.choices[0]?.message?.content?.trim() || "";
+    const { getLimitsForBot } = await import("../limits");
+    const cap = getLimitsForBot(botConfigId).maxBotResponseChars;
+    const text = response.choices[0]?.message?.content?.trim() || "";
+    return text.length > cap ? text.slice(0, cap) : text;
   } finally {
     clearTimeout(timeout);
   }
