@@ -12,7 +12,7 @@ import crypto from "crypto";
 
 const serverStartTime = Date.now();
 
-import { getLimitsForUser, getDefaultLimits } from "./limits";
+import { getLimitsForUser, getLimitsForBot, getDefaultLimits } from "./limits";
 
 function getUserId(req: any): string {
   return req.session?.userId;

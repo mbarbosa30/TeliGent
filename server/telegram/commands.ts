@@ -420,7 +420,7 @@ Reply with ONLY "RESPOND" or "SKIP".`;
       const timeout = setTimeout(() => controller.abort(), 5000);
 
       try {
-        const allowedTriage = await tryConsumeAiBudget(botConfigId);
+        const allowedTriage = await tryConsumeAiBudget(config.id);
         if (!allowedTriage) {
           return false;
         }

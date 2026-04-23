@@ -1,4 +1,4 @@
-import type { AuthUser } from "@shared/models/auth";
+import type { User } from "@shared/models/auth";
 
 export type Limits = {
   maxBots: number;
@@ -49,7 +49,7 @@ export function getDefaultLimits(): Limits {
  * everyone — this is the seam where subscription tiers will plug in. Keeping
  * the user param now means call sites don't need to change later.
  */
-export function getLimitsForUser(_user?: AuthUser | null | undefined): Limits {
+export function getLimitsForUser(_user?: User | null | undefined): Limits {
   return { ...DEFAULT_LIMITS };
 }
 
