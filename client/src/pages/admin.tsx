@@ -303,27 +303,10 @@ function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="bots" className="mt-4 space-y-4">
-            <HelixaWalletHeader />
-            {botsLoading ? (
-              <div className="space-y-2">
-                {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
-              </div>
-            ) : filteredBots.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No bots found.</p>
-            ) : (
-              <div className="space-y-1">
-                <div className="grid grid-cols-[1.2fr_1fr_auto_1.4fr_auto] gap-4 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
-                  <span>Bot Name</span>
-                  <span>Owner</span>
-                  <span>Status</span>
-                  <span>Helixa</span>
-                  <span>Created</span>
-                </div>
-                {filteredBots.map((b) => (
-                  <BotRow key={b.id} bot={b} />
-                ))}
-              </div>
-            )}
+            <BotsHelixaPanel
+              bots={filteredBots}
+              loading={botsLoading}
+            />
           </TabsContent>
 
           <TabsContent value="activity" className="mt-4">
@@ -674,11 +657,48 @@ function ActivityList({ logs, loading }: { logs: AdminActivityLog[]; loading: bo
   );
 }
 
-function HelixaWalletHeader() {
-  const { data, isLoading } = useQuery<HelixaWalletStatus>({
+function BotsHelixaPanel({ bots, loading }: { bots: AdminBot[]; loading: boolean }) {
+  // Wallet query lives at the panel level so it runs once per admin page
+  // visit, not once per bot row. Pass the result down into the header and
+  // each row, so all rendering uses the same wallet snapshot.
+  const walletQuery = useQuery<HelixaWalletStatus>({
     queryKey: ["/api/admin/helixa/wallet"],
     refetchInterval: 60000,
   });
+  return (
+    <div className="space-y-4">
+      <HelixaWalletHeader data={walletQuery.data} isLoading={walletQuery.isLoading} />
+      {loading ? (
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
+        </div>
+      ) : bots.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">No bots found.</p>
+      ) : (
+        <div className="space-y-1">
+          <div className="grid grid-cols-[1.2fr_1fr_auto_1.4fr_auto] gap-4 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
+            <span>Bot Name</span>
+            <span>Owner</span>
+            <span>Status</span>
+            <span>Helixa</span>
+            <span>Created</span>
+          </div>
+          {bots.map((b) => (
+            <BotRow key={b.id} bot={b} wallet={walletQuery.data} walletErrored={walletQuery.isError} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HelixaWalletHeader({
+  data,
+  isLoading,
+}: {
+  data: HelixaWalletStatus | undefined;
+  isLoading: boolean;
+}) {
   if (isLoading) {
     return <Skeleton className="h-16 w-full" />;
   }
@@ -748,9 +768,16 @@ interface MintResponse {
   explorerUrl: string | null;
 }
 
-function BotRow({ bot }: { bot: AdminBot }) {
+function BotRow({
+  bot,
+  wallet,
+  walletErrored,
+}: {
+  bot: AdminBot;
+  wallet: HelixaWalletStatus | undefined;
+  walletErrored: boolean;
+}) {
   const { toast } = useToast();
-  const wallet = useQuery<HelixaWalletStatus>({ queryKey: ["/api/admin/helixa/wallet"] });
   const mintMutation = useMutation<MintResponse, Error, void>({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/admin/bots/${bot.id}/helixa/mint`);
@@ -791,8 +818,13 @@ function BotRow({ bot }: { bot: AdminBot }) {
 
   const minted = !!bot.helixaAgentId;
   // Server allows mint when wallet has >= 1 USDC (status "healthy" or "low").
-  // Only block the UI when wallet is depleted or unconfigured.
-  const walletReady = wallet.data?.status === "healthy" || wallet.data?.status === "low";
+  // Block the button when we KNOW the wallet is depleted or unconfigured,
+  // but fail-open when the wallet query errored or hasn't returned yet —
+  // the server is the source of truth and will return a useful error if
+  // the mint truly cannot proceed.
+  const knownBlocked =
+    !!wallet && (wallet.status === "depleted" || wallet.status === "unconfigured");
+  const walletReady = !knownBlocked || walletErrored;
   const canMint = !minted && walletReady && !mintMutation.isPending;
   const canRemint = minted && walletReady && !forceRemintMutation.isPending;
 
@@ -904,13 +936,9 @@ function BotRow({ bot }: { bot: AdminBot }) {
                 "Mint on Helixa"
               )}
             </Button>
-            {!walletReady && wallet.data && (
-              <span className="text-xs text-muted-foreground">
-                {wallet.data.status === "low"
-                  ? "Wallet low"
-                  : wallet.data.status === "depleted"
-                  ? "Wallet depleted"
-                  : "Wallet not configured"}
+            {!walletReady && wallet && (
+              <span className="text-xs text-muted-foreground" data-testid={`text-helixa-wallet-block-${bot.id}`}>
+                {wallet.status === "depleted" ? "Wallet depleted" : "Wallet not configured"}
               </span>
             )}
           </div>
