@@ -1182,7 +1182,7 @@ export async function registerRoutes(
       const agentId: string | null = row.helixa_agent_id || null;
       if (!agentId) {
         return res.json({
-          configured: false,
+          minted: false,
           agentId: null,
           credScore: null,
           credTier: null,
@@ -1209,7 +1209,7 @@ export async function registerRoutes(
         );
       }
       res.json({
-        configured: true,
+        minted: true,
         agentId,
         credScore,
         credTier,

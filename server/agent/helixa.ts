@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const BASE_URL = "https://api.helixa.xyz/api/v2";
 const REQUEST_TIMEOUT_MS = 5000;
-const MAX_RETRIES = 2;
+const MAX_RETRIES = 1;
 const STATS_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const networkStatsRawSchema = z
@@ -99,8 +99,11 @@ function log(msg: string, extra?: Record<string, unknown>) {
 
 async function helixaFetch(path: string): Promise<unknown | null> {
   const url = `${BASE_URL}${path}`;
-  let lastErr: unknown = null;
+  // Per spec: a single retry on 5xx only. Do not retry on thrown
+  // errors (timeout, network, abort) — fail fast and let the caller
+  // fall back to cached data.
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const startedAt = Date.now();
     const ctrl = new AbortController();
     const timeoutId = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -110,39 +113,37 @@ async function helixaFetch(path: string): Promise<unknown | null> {
         signal: ctrl.signal,
       });
       clearTimeout(timeoutId);
+      const elapsed = Date.now() - startedAt;
       if (res.status === 404) {
-        log(`fetch ${path} -> 404 not_found`);
+        log(`fetch path=${path} status=404 elapsed_ms=${elapsed} attempt=${attempt + 1}`);
         return null;
       }
       if (res.status >= 500 && attempt < MAX_RETRIES) {
-        const backoff = 250 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
-        log(`fetch ${path} -> ${res.status} retrying in ${backoff}ms`);
+        const backoff = 300 + Math.floor(Math.random() * 200);
+        log(
+          `fetch path=${path} status=${res.status} elapsed_ms=${elapsed} attempt=${attempt + 1} retry_in_ms=${backoff}`,
+        );
         await new Promise((r) => setTimeout(r, backoff));
         continue;
       }
       if (!res.ok) {
-        log(`fetch ${path} -> ${res.status} giving_up`);
+        log(
+          `fetch path=${path} status=${res.status} elapsed_ms=${elapsed} attempt=${attempt + 1} giving_up=true`,
+        );
         return null;
       }
       const json = await res.json();
+      log(`fetch path=${path} status=${res.status} elapsed_ms=${elapsed} attempt=${attempt + 1}`);
       return json;
     } catch (err: unknown) {
       clearTimeout(timeoutId);
-      lastErr = err;
+      const elapsed = Date.now() - startedAt;
       const msg = err instanceof Error ? err.message : String(err);
-      if (attempt < MAX_RETRIES) {
-        const backoff = 250 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
-        log(`fetch ${path} error="${msg}" retrying in ${backoff}ms`);
-        await new Promise((r) => setTimeout(r, backoff));
-        continue;
-      }
-      log(`fetch ${path} error="${msg}" giving_up`);
+      log(
+        `fetch path=${path} status=error elapsed_ms=${elapsed} attempt=${attempt + 1} error="${msg}" giving_up=true`,
+      );
       return null;
     }
-  }
-  if (lastErr) {
-    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
-    log(`fetch ${path} exhausted retries error="${msg}"`);
   }
   return null;
 }
@@ -220,6 +221,48 @@ export async function getAgentProfile(agentId: string): Promise<HelixaAgentProfi
   const parsed = agentProfileSchema.safeParse(json);
   if (!parsed.success) {
     log("profile parse_failed", { agentId, issues: parsed.error.issues.length });
+    return null;
+  }
+  return parsed.data;
+}
+
+const searchResultSchema = z
+  .object({
+    results: z.array(z.unknown()).optional(),
+    agents: z.array(z.unknown()).optional(),
+    total: z.number().optional(),
+    count: z.number().optional(),
+  })
+  .passthrough();
+
+export type HelixaSearchParams = {
+  q?: string;
+  minCred?: number;
+  tier?: "JUNK" | "MARGINAL" | "QUALIFIED" | "PRIME" | "PREFERRED";
+  verified?: boolean;
+  capability?: string;
+  limit?: number;
+};
+
+export type HelixaSearchResult = z.infer<typeof searchResultSchema>;
+
+export async function searchAgents(params: HelixaSearchParams): Promise<HelixaSearchResult | null> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (typeof params.minCred === "number") qs.set("minCred", String(params.minCred));
+  if (params.tier) qs.set("tier", params.tier);
+  if (typeof params.verified === "boolean") qs.set("verified", String(params.verified));
+  if (params.capability) qs.set("capability", params.capability);
+  if (typeof params.limit === "number") {
+    const lim = Math.max(1, Math.min(50, Math.floor(params.limit)));
+    qs.set("limit", String(lim));
+  }
+  const path = qs.toString() ? `/search?${qs.toString()}` : `/search`;
+  const json = await helixaFetch(path);
+  if (!json) return null;
+  const parsed = searchResultSchema.safeParse(json);
+  if (!parsed.success) {
+    log("search parse_failed", { issues: parsed.error.issues.length });
     return null;
   }
   return parsed.data;
