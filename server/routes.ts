@@ -4,6 +4,8 @@ import { createHash } from "crypto";
 import { storage } from "./storage";
 import { db } from "./db";
 import { insertKnowledgeBaseSchema, insertBotConfigSchema } from "@shared/schema";
+import type { User } from "@shared/models/auth";
+import { z } from "zod";
 import { startBotEngine, getWebhookStatus } from "./telegram";
 import { generateAIResponse } from "./telegram/commands";
 import { isAuthenticated, isAdminAuthenticated, requireVerifiedEmail } from "./auth";
@@ -38,10 +40,11 @@ function asString(p: unknown, name = "param"): string {
   throw new BadParamError(name);
 }
 
-async function loadUser(req: Request) {
+async function loadUser(req: Request): Promise<User | null> {
   const userId = getUserId(req);
   if (!userId) return null;
-  return storage.getUserById(userId);
+  const user = await storage.getUserById(userId);
+  return user ?? null;
 }
 
 function createApiRateLimiter(windowMs: number, maxRequests: number, opts?: { keyFn?: (req: Request) => string; maxFn?: (req: Request) => number }) {
@@ -1309,23 +1312,28 @@ export async function registerRoutes(
         // verifications fire only when the owner has filled in the
         // corresponding handle on their account profile (additive columns
         // x_handle / github_handle on users, see ensureBillingSchema).
-        const ownerId = (owner as any)?.id ?? (owner as any)?.userId ?? null;
+        const ownerId: string | null = owner?.id ?? null;
         let xHandle: string | null = null;
         let githubHandle: string | null = null;
         if (ownerId) {
           try {
             const { pool } = await import("./db");
-            const { rows } = await pool.query(
+            const handleRowSchema = z.object({
+              x_handle: z.string().nullable().optional(),
+              github_handle: z.string().nullable().optional(),
+            });
+            const { rows } = await pool.query<{ x_handle: string | null; github_handle: string | null }>(
               `SELECT x_handle, github_handle FROM users WHERE id = $1`,
               [ownerId],
             );
-            const r = rows[0];
-            if (r) {
-              xHandle = (r.x_handle ?? null) as string | null;
-              githubHandle = (r.github_handle ?? null) as string | null;
+            const parsed = handleRowSchema.safeParse(rows[0]);
+            if (parsed.success) {
+              xHandle = parsed.data.x_handle ?? null;
+              githubHandle = parsed.data.github_handle ?? null;
             }
-          } catch (e: any) {
-            console.error(`[helixa-mint] handle lookup failed: ${e?.message}`);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error(`[helixa-mint] handle lookup failed: ${msg}`);
           }
         }
         fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
@@ -1442,20 +1450,25 @@ export async function registerRoutes(
       let githubHandle: string | null = null;
       try {
         const { pool } = await import("./db");
-        const { rows } = await pool.query(
+        const handleRowSchema = z.object({
+          x_handle: z.string().nullable().optional(),
+          github_handle: z.string().nullable().optional(),
+        });
+        const { rows } = await pool.query<{ x_handle: string | null; github_handle: string | null }>(
           `SELECT u.x_handle, u.github_handle
              FROM bot_configs b
              JOIN users u ON u.id = b.user_id
             WHERE b.id = $1`,
           [botId],
         );
-        const r = rows[0];
-        if (r) {
-          xHandle = (r.x_handle ?? null) as string | null;
-          githubHandle = (r.github_handle ?? null) as string | null;
+        const parsed = handleRowSchema.safeParse(rows[0]);
+        if (parsed.success) {
+          xHandle = parsed.data.x_handle ?? null;
+          githubHandle = parsed.data.github_handle ?? null;
         }
-      } catch (e: any) {
-        console.error(`[helixa-mint] admin force-remint handle lookup failed: ${e?.message}`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[helixa-mint] admin force-remint handle lookup failed: ${msg}`);
       }
       fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
       res.json({

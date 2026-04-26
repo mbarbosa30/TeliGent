@@ -109,12 +109,16 @@ export function parseX402Body(body: unknown): X402Instruction | null {
     return null;
   }
 
-  // Strict chain check: if the 402 instruction names a chain at all, it MUST
-  // be Base mainnet. We refuse to pay on any other chain even if a token
-  // address happens to look right elsewhere.
-  if (d.chainId !== undefined && d.chainId !== BASE_CHAIN_ID) {
-    log(`reject_chain_id chainId=${d.chainId} expected=${BASE_CHAIN_ID}`);
-    return null;
+  // STRICT chain check: the 402 instruction MUST explicitly identify Base.
+  // We do not silently default — if no chain identifier is present at all,
+  // the quote is ambiguous and we refuse rather than transfer USDC blindly.
+  const chainSignals: string[] = [];
+  if (d.chainId !== undefined) {
+    if (d.chainId !== BASE_CHAIN_ID) {
+      log(`reject_chain_id chainId=${d.chainId} expected=${BASE_CHAIN_ID}`);
+      return null;
+    }
+    chainSignals.push(`chainId=${d.chainId}`);
   }
   if (d.chain !== undefined) {
     const c = d.chain.toLowerCase();
@@ -122,6 +126,7 @@ export function parseX402Body(body: unknown): X402Instruction | null {
       log(`reject_chain chain=${d.chain}`);
       return null;
     }
+    chainSignals.push(`chain=${d.chain}`);
   }
   if (d.network !== undefined) {
     // Only Base-flavored network strings are accepted. Generic "mainnet" is
@@ -131,18 +136,27 @@ export function parseX402Body(body: unknown): X402Instruction | null {
       log(`reject_network network=${d.network}`);
       return null;
     }
+    chainSignals.push(`network=${d.network}`);
+  }
+  if (chainSignals.length === 0) {
+    log("reject_missing_chain_identifier");
+    return null;
   }
 
-  // Strict token check: must be canonical Base USDC. We do NOT honor the
-  // server's asset address verbatim because a malformed/compromised 402 could
-  // otherwise direct us to transfer arbitrary tokens.
+  // STRICT token check: an asset/token field MUST be present and MUST resolve
+  // to canonical Base USDC. A missing token field is an ambiguous quote and
+  // we refuse rather than default to USDC silently.
   const tokenRaw = d.asset ?? d.token;
-  if (tokenRaw && isHexAddress(tokenRaw)) {
+  if (!tokenRaw) {
+    log("reject_missing_asset");
+    return null;
+  }
+  if (isHexAddress(tokenRaw)) {
     if (tokenRaw.toLowerCase() !== USDC_BASE.toLowerCase()) {
       log(`reject_token token=${tokenRaw} expected=${USDC_BASE}`);
       return null;
     }
-  } else if (tokenRaw) {
+  } else {
     // If asset is a symbol string, only allow USDC.
     const sym = tokenRaw.toUpperCase();
     if (sym !== "USDC" && sym !== "USD-COIN" && sym !== "USDCB") {

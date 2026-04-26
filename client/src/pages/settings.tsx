@@ -300,22 +300,31 @@ export default function SettingsPage() {
     },
   });
 
-  const helixaMintMutation = useMutation({
+  type HelixaMintResponse = {
+    success: boolean;
+    agentId: string;
+    txHash: string | null;
+    baseTokenId: string | null;
+    profileUrl: string;
+    explorerUrl: string | null;
+  };
+  const helixaMintMutation = useMutation<HelixaMintResponse, Error, void>({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/bots/${selectedBotId}/helixa/register`);
-      return res.json();
+      return (await res.json()) as HelixaMintResponse;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "helixa", "status"] });
       toast({
         title: "Minted on Helixa",
         description: `Agent ID: ${data.agentId}. Onchain identity is live on Base.`,
       });
     },
-    onError: (err: any) => {
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Could not mint on Helixa. Check wallet balance and Pro plan status.";
       toast({
         title: "Helixa mint failed",
-        description: err?.message || "Could not mint on Helixa. Check wallet balance and Pro plan status.",
+        description: msg,
         variant: "destructive",
       });
     },
@@ -1216,7 +1225,7 @@ export default function SettingsPage() {
                     )}
                     {helixaStatus?.walletConfigured && helixaStatus.walletStatus === "low" && (
                       <p className="text-xs text-muted-foreground" data-testid="text-helixa-wallet-low-help">
-                        The platform wallet is low on USDC. Minting is paused until an admin tops it up to a healthy balance.
+                        Heads up: the platform wallet is running low on USDC. Minting still works while the balance stays above 1 USDC; please ask an admin to top it up soon.
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground">
