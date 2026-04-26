@@ -1171,7 +1171,9 @@ export async function registerRoutes(
       const botId = parseInt(req.params.botId as string);
       const { pool } = await import("./db");
       const { rows } = await pool.query(
-        `SELECT helixa_agent_id, helixa_cred_score, helixa_cred_tier, helixa_profile_url, helixa_synced_at
+        `SELECT helixa_agent_id, helixa_cred_score, helixa_cred_tier, helixa_profile_url, helixa_synced_at,
+                helixa_minted_at, helixa_tx_hash, helixa_base_token_id, helixa_link_token_at,
+                helixa_x_verified_at, helixa_github_verified_at
          FROM bot_configs WHERE id = $1`,
         [botId]
       );
@@ -1179,7 +1181,41 @@ export async function registerRoutes(
       if (!row) {
         return res.status(404).json({ error: "Bot not found" });
       }
+      // Surface platform-wallet readiness so the UI can disable the mint
+      // button (and surface the cause) before the user clicks.
+      const { isHelixaWalletConfigured } = await import("./agent/helixa-siwa");
+      const { getHelixaWalletBalances, HELIXA_BASESCAN_TX_BASE } = await import("./agent/helixa-mint");
+      const walletConfigured = isHelixaWalletConfigured();
+      let walletStatus: "unconfigured" | "low" | "healthy" | "depleted" = walletConfigured
+        ? "healthy"
+        : "unconfigured";
+      let walletUsdc: string | null = null;
+      if (walletConfigured) {
+        try {
+          const bal = await getHelixaWalletBalances();
+          walletStatus = bal.status;
+          walletUsdc = bal.usdcFormatted;
+        } catch {
+          // leave defaults
+        }
+      }
       const agentId: string | null = row.helixa_agent_id || null;
+      const txHash: string | null = row.helixa_tx_hash || null;
+      const baseTokenId: string | null = row.helixa_base_token_id || null;
+      const mintedAt: string | null = row.helixa_minted_at
+        ? new Date(row.helixa_minted_at).toISOString()
+        : null;
+      const linkTokenAt: string | null = row.helixa_link_token_at
+        ? new Date(row.helixa_link_token_at).toISOString()
+        : null;
+      const xVerifiedAt: string | null = row.helixa_x_verified_at
+        ? new Date(row.helixa_x_verified_at).toISOString()
+        : null;
+      const githubVerifiedAt: string | null = row.helixa_github_verified_at
+        ? new Date(row.helixa_github_verified_at).toISOString()
+        : null;
+      const explorerUrl: string | null = txHash ? `${HELIXA_BASESCAN_TX_BASE}${txHash}` : null;
+
       if (!agentId) {
         return res.json({
           minted: false,
@@ -1188,6 +1224,16 @@ export async function registerRoutes(
           credTier: null,
           profileUrl: null,
           syncedAt: null,
+          mintedAt: null,
+          txHash: null,
+          baseTokenId: null,
+          linkTokenAt: null,
+          xVerifiedAt: null,
+          githubVerifiedAt: null,
+          explorerUrl: null,
+          walletConfigured,
+          walletStatus,
+          walletUsdc,
         });
       }
       const { getAgentCred, buildHelixaProfileUrl } = await import("./agent/helixa");
@@ -1226,11 +1272,65 @@ export async function registerRoutes(
         profileUrl,
         syncedAt: syncedAt ? syncedAt.toISOString() : null,
         live: liveRefreshed,
+        mintedAt,
+        txHash,
+        baseTokenId,
+        linkTokenAt,
+        xVerifiedAt,
+        githubVerifiedAt,
+        explorerUrl,
+        walletConfigured,
+        walletStatus,
+        walletUsdc,
       });
     } catch (err: any) {
       res.status(err?.status || 500).json({ error: err.message });
     }
   });
+
+  app.post(
+    "/api/bots/:botId/helixa/register",
+    isAuthenticated,
+    requireVerifiedEmail,
+    apiRateLimit,
+    requireBotOwnership,
+    async (req, res, next) => {
+      try {
+        const owner = await loadUser(req);
+        // Same gate as the Celo register route — Helixa minting is a paid
+        // identity-issuance action and rides on the same ERC-8004 entitlement.
+        requirePermission(owner, "allowErc8004");
+        const botId = parseInt(req.params.botId as string);
+        const { mintHelixaAgent, fireMintSideEffects, HELIXA_BASESCAN_TX_BASE } = await import(
+          "./agent/helixa-mint"
+        );
+        const result = await mintHelixaAgent(botId);
+        // Non-blocking side effects: link $TELI token; X/GitHub verifications
+        // are placeholders for when owner social handles are configured.
+        fireMintSideEffects({ agentId: result.agentId });
+        res.json({
+          success: true,
+          agentId: result.agentId,
+          txHash: result.txHash,
+          baseTokenId: result.baseTokenId,
+          profileUrl: `https://helixa.xyz/agent/${encodeURIComponent(result.agentId)}`,
+          explorerUrl: result.txHash ? `${HELIXA_BASESCAN_TX_BASE}${result.txHash}` : null,
+        });
+      } catch (err: any) {
+        if (err instanceof PaywallError) return next(err);
+        const status = typeof err?.status === "number" ? err.status : 500;
+        const msg = err?.message || "Helixa mint failed";
+        console.error(`[helixa-mint] botId=${req.params.botId} failed: ${msg}`);
+        if (msg.includes("HELIXA_BASE_WALLET_PRIVATE_KEY")) {
+          return res.status(503).json({ error: "Helixa minting is not configured" });
+        }
+        if (msg.includes("insufficient USDC")) {
+          return res.status(503).json({ error: msg });
+        }
+        res.status(status).json({ error: msg });
+      }
+    },
+  );
 
   app.post("/api/admin/bots/:botId/helixa/agent-id", isAdminAuthenticated, async (req, res) => {
     try {
@@ -1281,6 +1381,21 @@ export async function registerRoutes(
         syncedAt: syncedAt ? syncedAt.toISOString() : null,
         live: !!fresh,
       });
+    } catch (err: any) {
+      res.status(err?.status || 500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/bots/:botId/helixa/clear", isAdminAuthenticated, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      if (Number.isNaN(botId)) {
+        return res.status(400).json({ error: "Invalid bot id" });
+      }
+      const { clearHelixaMint } = await import("./agent/helixa-mint");
+      const ok = await clearHelixaMint(botId);
+      if (!ok) return res.status(404).json({ error: "Bot not found" });
+      res.json({ cleared: true });
     } catch (err: any) {
       res.status(err?.status || 500).json({ error: err.message });
     }

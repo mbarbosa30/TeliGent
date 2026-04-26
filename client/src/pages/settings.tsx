@@ -265,11 +265,26 @@ export default function SettingsPage() {
     profileUrl: string | null;
     syncedAt: string | null;
     live?: boolean;
+    mintedAt: string | null;
+    txHash: string | null;
+    baseTokenId: string | null;
+    linkTokenAt: string | null;
+    xVerifiedAt: string | null;
+    githubVerifiedAt: string | null;
+    explorerUrl: string | null;
+    walletConfigured: boolean;
+    walletStatus: "unconfigured" | "low" | "healthy" | "depleted";
+    walletUsdc: string | null;
   }>({
     queryKey: ["/api/bots", selectedBotId, "helixa", "status"],
     enabled: !!selectedBotId,
     staleTime: 30 * 1000,
   });
+
+  // Hoisted to component-top scope so the hook is called unconditionally on
+  // every render. Calling useFeatureAllowed inside the conditional mint-card
+  // IIFE would violate the rules of hooks if helixaStatus.minted toggles.
+  const helixaErcAllowed = useFeatureAllowed("allowErc8004");
 
   const celoRegisterMutation = useMutation({
     mutationFn: async () => {
@@ -282,6 +297,27 @@ export default function SettingsPage() {
     },
     onError: (err: any) => {
       toast({ title: "Registration failed", description: err.message || "Could not register on Celo. Check wallet balance.", variant: "destructive" });
+    },
+  });
+
+  const helixaMintMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bots/${selectedBotId}/helixa/register`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "helixa", "status"] });
+      toast({
+        title: "Minted on Helixa",
+        description: `Agent ID: ${data.agentId}. Onchain identity is live on Base.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Helixa mint failed",
+        description: err?.message || "Could not mint on Helixa. Check wallet balance and Pro plan status.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -1004,7 +1040,7 @@ export default function SettingsPage() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-600" />
-                      <span className="text-sm font-medium">Linked to Helixa</span>
+                      <span className="text-sm font-medium">Minted on Helixa</span>
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
@@ -1013,6 +1049,17 @@ export default function SettingsPage() {
                           {helixaStatus.agentId}
                         </Badge>
                       </div>
+                      {helixaStatus.baseTokenId && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Token ID (Base)</span>
+                          <span
+                            className="text-xs font-mono"
+                            data-testid="text-helixa-base-token-id"
+                          >
+                            #{helixaStatus.baseTokenId}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Cred Score</span>
                         <span className="text-sm font-mono font-medium" data-testid="text-helixa-cred-score">
@@ -1025,12 +1072,38 @@ export default function SettingsPage() {
                           {helixaStatus.credTier || "—"}
                         </Badge>
                       </div>
+                      {helixaStatus.mintedAt && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Minted</span>
+                          <span
+                            className="text-xs text-muted-foreground"
+                            data-testid="text-helixa-minted-at"
+                          >
+                            {new Date(helixaStatus.mintedAt).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Last sync</span>
                         <span className="text-xs text-muted-foreground" data-testid="text-helixa-synced-at">
                           {helixaStatus.syncedAt ? new Date(helixaStatus.syncedAt).toLocaleString() : "Pending"}
                         </span>
                       </div>
+                      {helixaStatus.explorerUrl && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Mint tx</span>
+                          <a
+                            href={helixaStatus.explorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-mono text-primary hover:underline flex items-center gap-1 truncate max-w-[220px]"
+                            data-testid="link-helixa-tx"
+                          >
+                            {helixaStatus.txHash?.slice(0, 10)}...{helixaStatus.txHash?.slice(-8)}
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                        </div>
+                      )}
                       {helixaStatus.profileUrl && (
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-muted-foreground">Profile</span>
@@ -1046,20 +1119,101 @@ export default function SettingsPage() {
                           </a>
                         </div>
                       )}
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <Badge
+                          variant={helixaStatus.linkTokenAt ? "default" : "outline"}
+                          className="text-[10px]"
+                          data-testid="badge-helixa-link-token"
+                        >
+                          {helixaStatus.linkTokenAt ? "$TELI linked" : "$TELI link pending"}
+                        </Badge>
+                        {helixaStatus.xVerifiedAt && (
+                          <Badge variant="default" className="text-[10px]" data-testid="badge-helixa-x-verified">
+                            X verified
+                          </Badge>
+                        )}
+                        {helixaStatus.githubVerifiedAt && (
+                          <Badge variant="default" className="text-[10px]" data-testid="badge-helixa-github-verified">
+                            GitHub verified
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <div className="pt-2 border-t">
                       <p className="text-xs text-muted-foreground">
-                        Helixa data refreshes automatically in the background and on every visit to this page.
+                        Helixa cred score refreshes automatically in the background and on every visit to this page.
                       </p>
                     </div>
                   </div>
                 ) : (
+                  (() => {
+                    const proAllowed = !helixaErcAllowed.loaded || helixaErcAllowed.allowed;
+                    const walletHealthy = helixaStatus?.walletStatus === "healthy";
+                    const mintDisabled =
+                      helixaMintMutation.isPending ||
+                      !helixaStatus?.walletConfigured ||
+                      !walletHealthy ||
+                      !proAllowed;
+                    return (
                   <div className="space-y-3">
-                    <p className="text-sm font-medium" data-testid="text-helixa-not-minted">
-                      Not minted — available in next release.
+                    <p className="text-sm text-muted-foreground">
+                      Mint this bot on the Helixa registry on Base. Creates a soulbound onchain identity with a public Cred Score and tier. TeliGent pays the $1 USDC mint fee from the platform wallet.
                     </p>
+                    <TierLockedBanner
+                      feature="allowErc8004"
+                      message="Helixa minting is a Pro feature. Upgrade to mint this bot's onchain identity on Base."
+                    />
+                    <div className="flex items-center justify-between p-2 border bg-muted/30">
+                      <span className="text-xs text-muted-foreground">Platform wallet</span>
+                      {!helixaStatus?.walletConfigured ? (
+                        <Badge variant="outline" className="text-[10px]" data-testid="badge-helixa-wallet-status">
+                          Not configured
+                        </Badge>
+                      ) : helixaStatus.walletStatus === "depleted" ? (
+                        <Badge variant="destructive" className="text-[10px]" data-testid="badge-helixa-wallet-status">
+                          Depleted ({helixaStatus.walletUsdc ?? "0"} USDC)
+                        </Badge>
+                      ) : helixaStatus.walletStatus === "low" ? (
+                        <Badge variant="secondary" className="text-[10px]" data-testid="badge-helixa-wallet-status">
+                          Low ({helixaStatus.walletUsdc} USDC)
+                        </Badge>
+                      ) : (
+                        <Badge variant="default" className="text-[10px]" data-testid="badge-helixa-wallet-status">
+                          Ready ({helixaStatus.walletUsdc ?? "?"} USDC)
+                        </Badge>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => helixaMintMutation.mutate()}
+                      disabled={mintDisabled}
+                      data-testid="button-mint-helixa"
+                    >
+                      {helixaMintMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Minting on Helixa...
+                        </>
+                      ) : (
+                        <>
+                          <Link className="h-4 w-4 mr-2" />
+                          Mint on Helixa (Base)
+                        </>
+                      )}
+                    </Button>
+                    {!helixaStatus?.walletConfigured && (
+                      <p className="text-xs text-muted-foreground" data-testid="text-helixa-wallet-help">
+                        Helixa minting is not configured on this server. Ask your admin to set HELIXA_BASE_WALLET_PRIVATE_KEY and fund the wallet with at least 1 USDC and a small amount of ETH for gas on Base.
+                      </p>
+                    )}
+                    {helixaStatus?.walletConfigured && helixaStatus.walletStatus === "low" && (
+                      <p className="text-xs text-muted-foreground" data-testid="text-helixa-wallet-low-help">
+                        The platform wallet is low on USDC. Minting is paused until an admin tops it up to a healthy balance.
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground">
-                      Per-bot minting from the dashboard is coming soon. In the meantime, an admin can attach an existing Helixa agent ID to surface its onchain Cred Score here. Learn more at{" "}
+                      Requires a Pro plan. Learn more at{" "}
                       <a
                         href="https://helixa.xyz"
                         target="_blank"
@@ -1073,6 +1227,8 @@ export default function SettingsPage() {
                       .
                     </p>
                   </div>
+                    );
+                  })()
                 )}
               </CardContent>
             </Card>

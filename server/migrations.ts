@@ -345,6 +345,30 @@ async function ensureHelixaColumns(client: any) {
     await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_synced_at TIMESTAMP`);
     log("Added helixa_synced_at to bot_configs");
   }
+  if (!(await columnExists(client, "bot_configs", "helixa_minted_at"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_minted_at TIMESTAMP`);
+    log("Added helixa_minted_at to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "helixa_tx_hash"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_tx_hash TEXT`);
+    log("Added helixa_tx_hash to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "helixa_base_token_id"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_base_token_id TEXT`);
+    log("Added helixa_base_token_id to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "helixa_link_token_at"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_link_token_at TIMESTAMP`);
+    log("Added helixa_link_token_at to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "helixa_x_verified_at"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_x_verified_at TIMESTAMP`);
+    log("Added helixa_x_verified_at to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "helixa_github_verified_at"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_github_verified_at TIMESTAMP`);
+    log("Added helixa_github_verified_at to bot_configs");
+  }
 }
 
 async function ensureBankrColumns(client: any) {

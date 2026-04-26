@@ -253,6 +253,34 @@ app.use((req, res, next) => {
   setInterval(runHelixaSync, HELIXA_SYNC_INTERVAL_HOURS * 60 * 60 * 1000);
   setTimeout(runHelixaSync, 60 * 1000);
 
+  // One-shot Helixa wallet balance check at boot. Logs USDC + ETH so
+  // operators can spot a depleted mint wallet before users hit the
+  // /helixa/register endpoint. Each mint costs ~$1 USDC.
+  setTimeout(async () => {
+    try {
+      const { isHelixaWalletConfigured } = await import("./agent/helixa-siwa");
+      if (!isHelixaWalletConfigured()) {
+        log(
+          "HELIXA_BASE_WALLET_PRIVATE_KEY not set — per-bot Helixa minting disabled",
+          "helixa.wallet",
+        );
+        return;
+      }
+      const { getHelixaWalletBalances } = await import("./agent/helixa-mint");
+      const bal = await getHelixaWalletBalances();
+      const tag = `address=${bal.address} usdc=${bal.usdcFormatted ?? "?"} eth=${bal.ethFormatted ?? "?"} status=${bal.status}`;
+      if (bal.status === "depleted") {
+        log(`DEPLETED ${tag} — mints will fail until refilled`, "helixa.wallet");
+      } else if (bal.status === "low") {
+        log(`LOW ${tag} — top up before more mints`, "helixa.wallet");
+      } else {
+        log(`ok ${tag}`, "helixa.wallet");
+      }
+    } catch (err: any) {
+      log(`balance check error: ${err.message}`, "helixa.wallet");
+    }
+  }, 5 * 1000);
+
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {
