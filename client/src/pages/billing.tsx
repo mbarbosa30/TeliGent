@@ -65,11 +65,19 @@ export default function BillingPage() {
     if (hasPending) {
       const id = setInterval(() => {
         qc.invalidateQueries({ queryKey: ["/api/me/limits"] });
+        qc.invalidateQueries({ queryKey: ["/api/auth/user"] });
       }, 10000);
       return () => clearInterval(id);
     }
     return;
   }, [hasPending]);
+
+  useEffect(() => {
+    if (!limits) return;
+    if (limits.plan !== "free") {
+      qc.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    }
+  }, [limits?.plan, limits?.planPeriodEnd]);
 
   const [showPaidBanner, setShowPaidBanner] = useState(false);
   useEffect(() => {
