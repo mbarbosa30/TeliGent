@@ -418,6 +418,11 @@ function UpgradeDialog(props: {
               <TabsTrigger value="usdc" disabled={!limits.cryptoEnabled} data-testid="tab-rail-usdc">USDC</TabsTrigger>
               <TabsTrigger value="teli" disabled={teliTabDisabled} data-testid="tab-rail-teli">$TELI -{limits.teliDiscountPct}%</TabsTrigger>
             </TabsList>
+            {teliTabDisabled && limits.cryptoEnabled && (
+              <p className="text-xs text-destructive mt-2" data-testid="text-teli-disabled-reason">
+                $TELI checkout is unavailable right now (live $TELI/USD price feed is down). Pay with USDC instead, or try again shortly.
+              </p>
+            )}
 
             <TabsContent value="stripe" className="space-y-3 pt-3">
               <div className="text-sm">You'll pay <span className="font-mono">${usd}</span> by card. Cards renew automatically each {period === "annual" ? "year" : "month"}.</div>

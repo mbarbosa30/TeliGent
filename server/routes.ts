@@ -1666,7 +1666,19 @@ export async function registerRoutes(
 
   app.get("/api/admin/usd-per-teli", isAdminAuthenticated, async (_req, res) => {
     const v = await CryptoBilling.getUsdPerTeli();
-    res.json({ value: v });
+    const live = await CryptoBilling.getTeliPriceQuote();
+    const overrideRaw = await storage.getPlatformSetting("usd_per_teli");
+    const override = overrideRaw ? parseFloat(overrideRaw) : null;
+    res.json({
+      value: v,
+      override: override && Number.isFinite(override) && override > 0 ? override : null,
+      live: {
+        usdPerTeli: live.usdPerTeli,
+        source: live.source,
+        fetchedAt: live.fetchedAt,
+        liveAvailable: live.liveAvailable,
+      },
+    });
   });
 
   app.post("/api/admin/users/:userId/plan", isAdminAuthenticated, async (req, res) => {

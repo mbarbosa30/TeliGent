@@ -373,7 +373,11 @@ export default function AdminPage() {
 function PlansTab({ users, loading }: { users: AdminUser[]; loading: boolean }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: usdPerTeli } = useQuery<{ value: number }>({ queryKey: ["/api/admin/usd-per-teli"] });
+  const { data: usdPerTeli } = useQuery<{
+    value: number;
+    override: number | null;
+    live: { usdPerTeli: number | null; source: string | null; fetchedAt: string | null; liveAvailable: boolean };
+  }>({ queryKey: ["/api/admin/usd-per-teli"], refetchInterval: 30_000 });
   const [usdInput, setUsdInput] = useState("");
 
   const setUsdMutation = useMutation({
@@ -429,7 +433,7 @@ function PlansTab({ users, loading }: { users: AdminUser[]; loading: boolean }) 
               type="number"
               step="0.000001"
               min="0"
-              placeholder={usdPerTeli ? String(usdPerTeli.value) : "live rate"}
+              placeholder={usdPerTeli?.override ? String(usdPerTeli.override) : "live rate"}
               value={usdInput}
               onChange={(e) => setUsdInput(e.target.value)}
               data-testid="input-usd-per-teli"
@@ -456,9 +460,27 @@ function PlansTab({ users, loading }: { users: AdminUser[]; loading: boolean }) 
               Use live
             </Button>
           </div>
-          <p className="text-xs font-mono text-muted-foreground" data-testid="text-current-usd-per-teli">
-            Current rate in use: ${usdPerTeli?.value ?? "—"} per $TELI
-          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
+            <div className="border p-2" data-testid="text-current-usd-per-teli">
+              <div className="uppercase tracking-wider text-[10px] text-muted-foreground">Rate in use</div>
+              <div>${usdPerTeli?.value ?? "—"} / $TELI</div>
+            </div>
+            <div className="border p-2" data-testid="text-admin-override">
+              <div className="uppercase tracking-wider text-[10px] text-muted-foreground">Manual override</div>
+              <div>{usdPerTeli?.override ? `$${usdPerTeli.override}` : "off"}</div>
+            </div>
+            <div className="border p-2" data-testid="text-admin-live-source">
+              <div className="uppercase tracking-wider text-[10px] text-muted-foreground">Live source</div>
+              {usdPerTeli?.live?.liveAvailable ? (
+                <div>
+                  ${usdPerTeli.live.usdPerTeli?.toFixed(6) ?? "—"} via {usdPerTeli.live.source}
+                  {usdPerTeli.live.fetchedAt ? <span className="text-muted-foreground"> · {new Date(usdPerTeli.live.fetchedAt).toLocaleTimeString()}</span> : null}
+                </div>
+              ) : (
+                <div className="text-destructive">Unavailable {usdPerTeli?.live?.fetchedAt ? `since ${new Date(usdPerTeli.live.fetchedAt).toLocaleTimeString()}` : ""}</div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 

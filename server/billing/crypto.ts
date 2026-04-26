@@ -16,7 +16,6 @@ const TELI_DECIMALS = 18;
 const INTENT_TTL_MIN = parseInt(process.env.CRYPTO_INTENT_TTL_MIN || "30", 10);
 const POLL_BLOCK_LOOKBACK = BigInt(process.env.CRYPTO_POLL_BLOCK_LOOKBACK || "1200"); // ~40min on Base 2s blocks
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as const;
-const MANUAL_CLAIM_TOLERANCE_PCT = 0.5;
 
 function getReceiveAddress(): string | null {
   const explicit = process.env.PLATFORM_RECEIVE_ADDRESS;
@@ -425,17 +424,15 @@ export async function claimIntentByTxHash(intent: any, rawTxHash: string): Promi
     return { status: "rejected", reason: "This transaction was mined before the payment request was created." };
   }
 
-  // ±0.5% tolerance for manual recovery. The unique micro-suffix in the
-  // expected amount keeps concurrent intents distinct, and the global tx-hash
-  // uniqueness check below (plus the partial unique index) prevents one
-  // on-chain transfer from being credited to multiple intents — so the
-  // tolerance only affects whether THIS intent matches THIS transaction, not
-  // whether the same transaction can be reused elsewhere. This is necessary
-  // because some custodial wallets deduct a small fee from the sent amount.
+  // Exact atomic-unit match required. Each pending intent is generated with a
+  // unique micro-suffix (see uniqueAmount) precisely so we can bind one
+  // on-chain transfer to one intent without ambiguity. Allowing any tolerance
+  // here would let a user with a pending intent claim a different user's
+  // qualifying transfer if their amounts fell within the tolerance band — for
+  // TELI especially the wei-level suffix is far smaller than any sensible
+  // percentage tolerance. The tx-hash uniqueness index protects against
+  // double-credit but not wrong-credit, so attribution must be exact.
   const expected = BigInt(intent.expectedAmount);
-  const tolerance = (expected * BigInt(Math.round(MANUAL_CLAIM_TOLERANCE_PCT * 100))) / 10000n;
-  const minAccepted = expected > tolerance ? expected - tolerance : 0n;
-  const maxAccepted = expected + tolerance;
 
   const expectedToken = intent.tokenAddress.toLowerCase();
   const expectedTo = (intent.receiveAddress as string).toLowerCase();
@@ -461,12 +458,12 @@ export async function claimIntentByTxHash(intent: any, rawTxHash: string): Promi
   if (totalToReceiver === 0n) {
     return { status: "rejected", reason: "That transaction did not transfer the expected token to our receive address." };
   }
-  if (totalToReceiver < minAccepted || totalToReceiver > maxAccepted) {
+  if (totalToReceiver !== expected) {
     const sentDisplay = formatUnits(totalToReceiver, intent.tokenDecimals);
     const expectedDisplay = formatUnits(expected, intent.tokenDecimals);
     return {
       status: "rejected",
-      reason: `Amount mismatch: transaction sent ${sentDisplay} ${intent.tokenSymbol}, expected ~${expectedDisplay} ${intent.tokenSymbol} (±${MANUAL_CLAIM_TOLERANCE_PCT}%).`,
+      reason: `Amount mismatch: transaction sent ${sentDisplay} ${intent.tokenSymbol}, but this payment request expected exactly ${expectedDisplay} ${intent.tokenSymbol}. Send a new transfer for the exact amount shown.`,
     };
   }
 
