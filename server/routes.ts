@@ -555,7 +555,70 @@ export async function registerRoutes(
   app.get("/api/admin/bots", isAdminAuthenticated, apiRateLimit, async (req, res) => {
     try {
       const allBots = await storage.adminGetAllBots();
-      res.json(allBots);
+      // Enrich with helixa_* state via raw SQL — those columns are added by
+      // ensureHelixaColumns() and are not part of the Drizzle bot_configs
+      // schema, so adminGetAllBots() cannot return them.
+      const { pool } = await import("./db");
+      const { HELIXA_BASESCAN_TX_BASE } = await import("./agent/helixa-mint");
+      const { rows } = await pool.query<{
+        id: number;
+        helixa_agent_id: string | null;
+        helixa_minted_at: Date | null;
+        helixa_tx_hash: string | null;
+        helixa_base_token_id: string | null;
+        helixa_link_token_at: Date | null;
+        helixa_x_verified_at: Date | null;
+        helixa_github_verified_at: Date | null;
+        helixa_cred_score: number | null;
+        helixa_cred_tier: string | null;
+      }>(
+        `SELECT id, helixa_agent_id, helixa_minted_at, helixa_tx_hash,
+                helixa_base_token_id, helixa_link_token_at,
+                helixa_x_verified_at, helixa_github_verified_at,
+                helixa_cred_score, helixa_cred_tier
+           FROM bot_configs`,
+      );
+      const helixaById = new Map<number, (typeof rows)[number]>();
+      for (const r of rows) helixaById.set(r.id, r);
+      const enriched = allBots.map((b) => {
+        const h = helixaById.get(b.id);
+        const agentId = h?.helixa_agent_id ?? null;
+        const txHash = h?.helixa_tx_hash ?? null;
+        return {
+          ...b,
+          helixaAgentId: agentId,
+          helixaMintedAt: h?.helixa_minted_at ? h.helixa_minted_at.toISOString() : null,
+          helixaTxHash: txHash,
+          helixaBaseTokenId: h?.helixa_base_token_id ?? null,
+          helixaLinkTokenAt: h?.helixa_link_token_at ? h.helixa_link_token_at.toISOString() : null,
+          helixaXVerifiedAt: h?.helixa_x_verified_at ? h.helixa_x_verified_at.toISOString() : null,
+          helixaGithubVerifiedAt: h?.helixa_github_verified_at ? h.helixa_github_verified_at.toISOString() : null,
+          helixaCredScore: h?.helixa_cred_score ?? null,
+          helixaCredTier: h?.helixa_cred_tier ?? null,
+          helixaProfileUrl: agentId ? `https://helixa.xyz/agent/${encodeURIComponent(agentId)}` : null,
+          helixaExplorerUrl: txHash ? `${HELIXA_BASESCAN_TX_BASE}${txHash}` : null,
+        };
+      });
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(err?.status || 500).json({ error: err.message });
+    }
+  });
+
+  // Admin-only Helixa wallet readout for the /admin Bots panel header. Reuses
+  // the same getHelixaWalletBalances helper that the per-bot status route uses
+  // so the UI never needs per-row status calls.
+  app.get("/api/admin/helixa/wallet", isAdminAuthenticated, apiRateLimit, async (_req, res) => {
+    try {
+      const { getHelixaWalletBalances } = await import("./agent/helixa-mint");
+      const bal = await getHelixaWalletBalances();
+      res.json({
+        configured: bal.configured,
+        address: bal.address,
+        usdc: bal.usdcFormatted,
+        eth: bal.ethFormatted,
+        status: bal.status,
+      });
     } catch (err: any) {
       res.status(err?.status || 500).json({ error: err.message });
     }
@@ -1304,47 +1367,13 @@ export async function registerRoutes(
         // identity-issuance action and rides on the same ERC-8004 entitlement.
         requirePermission(owner, "allowErc8004");
         const botId = parseInt(req.params.botId as string);
-        const { mintHelixaAgent, fireMintSideEffects, HELIXA_BASESCAN_TX_BASE } = await import(
+        const { mintHelixaAgent, HELIXA_BASESCAN_TX_BASE } = await import(
           "./agent/helixa-mint"
         );
+        // Side effects (link $TELI, verify X / GitHub) fire inside
+        // mintHelixaAgent on a fresh mint, exactly once per leader. The
+        // already-minted idempotent return path correctly skips them.
         const result = await mintHelixaAgent(botId);
-        // Non-blocking side effects: always link $TELI token; X/GitHub
-        // verifications fire only when the owner has filled in the
-        // corresponding handle on their account profile (additive columns
-        // x_handle / github_handle on users, see ensureBillingSchema).
-        const ownerId: string | null = owner?.id ?? null;
-        let xHandle: string | null = null;
-        let githubHandle: string | null = null;
-        if (ownerId) {
-          try {
-            const { pool } = await import("./db");
-            const handleRowSchema = z.object({
-              x_handle: z.string().nullable().optional(),
-              github_handle: z.string().nullable().optional(),
-            });
-            const { rows } = await pool.query<{ x_handle: string | null; github_handle: string | null }>(
-              `SELECT x_handle, github_handle FROM users WHERE id = $1`,
-              [ownerId],
-            );
-            const parsed = handleRowSchema.safeParse(rows[0]);
-            if (parsed.success) {
-              xHandle = parsed.data.x_handle ?? null;
-              githubHandle = parsed.data.github_handle ?? null;
-            }
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            console.error(`[helixa-mint] handle lookup failed: ${msg}`);
-          }
-        }
-        // Only fire post-mint side effects on a fresh mint. The idempotent
-        // "already minted" path returned the existing record without making
-        // any API call or on-chain payment, and the side effects (link-token,
-        // verify X / GitHub) already ran the first time around. Re-firing
-        // them on every duplicate POST would hammer Helixa's verify endpoints
-        // and inflate $TELI link-token noise.
-        if (!result.alreadyMinted) {
-          fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
-        }
         res.json({
           success: true,
           alreadyMinted: result.alreadyMinted,
@@ -1421,6 +1450,46 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(err?.status || 500).json({ error: err.message });
+    }
+  });
+
+  // Admin one-click mint. Same orchestrator as the user-facing register
+  // route, but skips the user-tier (Pro) and verified-email gates because
+  // admin auth (passphrase) is the higher-trust path. Idempotent: returns
+  // the existing record when helixa_agent_id is already set.
+  app.post("/api/admin/bots/:botId/helixa/mint", isAdminAuthenticated, apiRateLimit, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      if (Number.isNaN(botId)) {
+        return res.status(400).json({ error: "Invalid bot id" });
+      }
+      const { mintHelixaAgent, HELIXA_BASESCAN_TX_BASE } = await import(
+        "./agent/helixa-mint"
+      );
+      // mintHelixaAgent fires link-token / X / GitHub side effects internally
+      // on a fresh mint (exactly once per leader), so this route does not
+      // need to look up handles or call fireMintSideEffects itself.
+      const result = await mintHelixaAgent(botId);
+      res.json({
+        success: true,
+        alreadyMinted: result.alreadyMinted,
+        agentId: result.agentId,
+        txHash: result.txHash,
+        baseTokenId: result.baseTokenId,
+        profileUrl: `https://helixa.xyz/agent/${encodeURIComponent(result.agentId)}`,
+        explorerUrl: result.txHash ? `${HELIXA_BASESCAN_TX_BASE}${result.txHash}` : null,
+      });
+    } catch (err: any) {
+      const msg = err?.message || "Helixa mint failed";
+      console.error(`[helixa-mint] admin mint botId=${req.params.botId} failed: ${msg}`);
+      const status = typeof err?.status === "number" ? err.status : 500;
+      if (msg.includes("HELIXA_BASE_WALLET_PRIVATE_KEY")) {
+        return res.status(503).json({ error: "Helixa minting is not configured" });
+      }
+      if (msg.includes("insufficient USDC")) {
+        return res.status(503).json({ error: msg });
+      }
+      res.status(status).json({ error: msg });
     }
   });
 

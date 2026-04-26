@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Users, Bot, Activity, Shield, MessageSquare, Search,
   Globe, Clock, AlertTriangle, Lock, LogOut, CreditCard, Save,
+  Link as LinkIcon, ExternalLink, Loader2, Wallet,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -48,6 +49,25 @@ interface AdminBot {
   isActive: boolean;
   userEmail?: string;
   createdAt: string;
+  helixaAgentId: string | null;
+  helixaMintedAt: string | null;
+  helixaTxHash: string | null;
+  helixaBaseTokenId: string | null;
+  helixaLinkTokenAt: string | null;
+  helixaXVerifiedAt: string | null;
+  helixaGithubVerifiedAt: string | null;
+  helixaCredScore: number | null;
+  helixaCredTier: string | null;
+  helixaProfileUrl: string | null;
+  helixaExplorerUrl: string | null;
+}
+
+interface HelixaWalletStatus {
+  configured: boolean;
+  address: string | null;
+  usdc: string | null;
+  eth: string | null;
+  status: "unconfigured" | "low" | "healthy" | "depleted";
 }
 
 interface AdminActivityLog {
@@ -282,7 +302,8 @@ function AdminDashboard() {
             )}
           </TabsContent>
 
-          <TabsContent value="bots" className="mt-4">
+          <TabsContent value="bots" className="mt-4 space-y-4">
+            <HelixaWalletHeader />
             {botsLoading ? (
               <div className="space-y-2">
                 {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
@@ -291,32 +312,15 @@ function AdminDashboard() {
               <p className="text-sm text-muted-foreground text-center py-8">No bots found.</p>
             ) : (
               <div className="space-y-1">
-                <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-4 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
+                <div className="grid grid-cols-[1.2fr_1fr_auto_1.4fr_auto] gap-4 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
                   <span>Bot Name</span>
                   <span>Owner</span>
                   <span>Status</span>
+                  <span>Helixa</span>
                   <span>Created</span>
                 </div>
                 {filteredBots.map((b) => (
-                  <div key={b.id} className="grid grid-cols-[1fr_1fr_auto_auto] gap-4 px-3 py-3 border-b border-border/50 items-center" data-testid={`row-bot-${b.id}`}>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="text-sm truncate">{b.botName}</span>
-                    </div>
-                    <span className="text-sm font-mono text-muted-foreground truncate">{b.userEmail || "Unknown"}</span>
-                    <span>
-                      {b.isActive && b.botToken ? (
-                        <Badge variant="default" className="text-xs">Online</Badge>
-                      ) : b.botToken ? (
-                        <Badge variant="secondary" className="text-xs">Offline</Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs">No Token</Badge>
-                      )}
-                    </span>
-                    <span className="text-xs font-mono text-muted-foreground">
-                      {format(new Date(b.createdAt), "MMM d, yyyy")}
-                    </span>
-                  </div>
+                  <BotRow key={b.id} bot={b} />
                 ))}
               </div>
             )}
@@ -666,6 +670,209 @@ function ActivityList({ logs, loading }: { logs: AdminActivityLog[]; loading: bo
           </Card>
         );
       })}
+    </div>
+  );
+}
+
+function HelixaWalletHeader() {
+  const { data, isLoading } = useQuery<HelixaWalletStatus>({
+    queryKey: ["/api/admin/helixa/wallet"],
+    refetchInterval: 60000,
+  });
+  if (isLoading) {
+    return <Skeleton className="h-16 w-full" />;
+  }
+  if (!data) return null;
+  const dotColor =
+    data.status === "healthy"
+      ? "bg-green-500"
+      : data.status === "low"
+      ? "bg-amber-500"
+      : data.status === "depleted"
+      ? "bg-red-500"
+      : "bg-muted-foreground";
+  const label =
+    data.status === "healthy"
+      ? "Ready"
+      : data.status === "low"
+      ? "Low"
+      : data.status === "depleted"
+      ? "Depleted"
+      : "Not configured";
+  return (
+    <Card>
+      <CardContent className="flex items-center justify-between gap-4 p-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <Wallet className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Helixa mint wallet</span>
+              <span className={`inline-block h-2 w-2 rounded-full ${dotColor}`} />
+              <span className="text-xs text-muted-foreground" data-testid="text-helixa-wallet-status">
+                {label}
+              </span>
+            </div>
+            {data.address ? (
+              <p className="text-xs font-mono text-muted-foreground truncate" data-testid="text-helixa-wallet-address">
+                {data.address}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Set HELIXA_BASE_WALLET_PRIVATE_KEY to enable minting.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-right shrink-0">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">USDC</p>
+            <p className="text-sm font-mono" data-testid="text-helixa-wallet-usdc">{data.usdc ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">ETH</p>
+            <p className="text-sm font-mono" data-testid="text-helixa-wallet-eth">{data.eth ?? "—"}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface MintResponse {
+  success: boolean;
+  alreadyMinted: boolean;
+  agentId: string;
+  txHash: string | null;
+  baseTokenId: string | null;
+  profileUrl: string;
+  explorerUrl: string | null;
+}
+
+function BotRow({ bot }: { bot: AdminBot }) {
+  const { toast } = useToast();
+  const wallet = useQuery<HelixaWalletStatus>({ queryKey: ["/api/admin/helixa/wallet"] });
+  const mintMutation = useMutation<MintResponse, Error, void>({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/bots/${bot.id}/helixa/mint`);
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/bots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/helixa/wallet"] });
+      toast({
+        title: data.alreadyMinted ? "Already minted" : "Mint complete",
+        description: `Agent ID ${data.agentId}`,
+      });
+    },
+    onError: (err) => {
+      toast({ title: "Mint failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const minted = !!bot.helixaAgentId;
+  const walletReady = wallet.data?.status === "healthy";
+  const canMint = !minted && walletReady && !mintMutation.isPending;
+
+  return (
+    <div
+      className="grid grid-cols-[1.2fr_1fr_auto_1.4fr_auto] gap-4 px-3 py-3 border-b border-border/50 items-center"
+      data-testid={`row-bot-${bot.id}`}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="text-sm truncate">{bot.botName}</span>
+      </div>
+      <span className="text-sm font-mono text-muted-foreground truncate">{bot.userEmail || "Unknown"}</span>
+      <span>
+        {bot.isActive && bot.botToken ? (
+          <Badge variant="default" className="text-xs">Online</Badge>
+        ) : bot.botToken ? (
+          <Badge variant="secondary" className="text-xs">Offline</Badge>
+        ) : (
+          <Badge variant="outline" className="text-xs">No Token</Badge>
+        )}
+      </span>
+      <div className="min-w-0">
+        {minted ? (
+          <div className="flex flex-col gap-1 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <Badge variant="outline" className="text-xs shrink-0">
+                Minted
+              </Badge>
+              <span
+                className="text-xs font-mono truncate text-muted-foreground"
+                data-testid={`text-helixa-agent-${bot.id}`}
+                title={bot.helixaAgentId ?? ""}
+              >
+                {bot.helixaAgentId}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {bot.helixaProfileUrl && (
+                <a
+                  href={bot.helixaProfileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                  data-testid={`link-helixa-profile-${bot.id}`}
+                >
+                  <LinkIcon className="h-3 w-3" /> profile
+                </a>
+              )}
+              {bot.helixaExplorerUrl && (
+                <a
+                  href={bot.helixaExplorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                  data-testid={`link-helixa-tx-${bot.id}`}
+                >
+                  <ExternalLink className="h-3 w-3" /> tx
+                </a>
+              )}
+              {bot.helixaLinkTokenAt && (
+                <Badge variant="secondary" className="text-[10px]">$TELI linked</Badge>
+              )}
+              {bot.helixaXVerifiedAt && (
+                <Badge variant="secondary" className="text-[10px]">X verified</Badge>
+              )}
+              {bot.helixaGithubVerifiedAt && (
+                <Badge variant="secondary" className="text-[10px]">GitHub verified</Badge>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!canMint}
+              onClick={() => mintMutation.mutate()}
+              data-testid={`button-mint-helixa-${bot.id}`}
+            >
+              {mintMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" /> Minting
+                </>
+              ) : (
+                "Mint on Helixa"
+              )}
+            </Button>
+            {!walletReady && wallet.data && (
+              <span className="text-xs text-muted-foreground">
+                {wallet.data.status === "low"
+                  ? "Wallet low"
+                  : wallet.data.status === "depleted"
+                  ? "Wallet depleted"
+                  : "Wallet not configured"}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      <span className="text-xs font-mono text-muted-foreground">
+        {format(new Date(bot.createdAt), "MMM d, yyyy")}
+      </span>
     </div>
   );
 }
