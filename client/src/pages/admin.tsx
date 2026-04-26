@@ -9,6 +9,17 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Users, Bot, Activity, Shield, MessageSquare, Search,
   Globe, Clock, AlertTriangle, Lock, LogOut, CreditCard, Save,
   Link as LinkIcon, ExternalLink, Loader2, Wallet,
@@ -921,21 +932,80 @@ function BotRow({
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!canMint}
-              onClick={() => mintMutation.mutate()}
-              data-testid={`button-mint-helixa-${bot.id}`}
-            >
-              {mintMutation.isPending ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin mr-1" /> Minting
-                </>
-              ) : (
-                "Mint on Helixa"
-              )}
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!canMint}
+                  data-testid={`button-mint-helixa-${bot.id}`}
+                >
+                  {mintMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" /> Minting
+                    </>
+                  ) : (
+                    "Mint on Helixa"
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent data-testid={`dialog-mint-helixa-${bot.id}`}>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Mint Helixa identity?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will spend 1 USDC from the platform wallet and create a permanent on-chain identity on Base. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="space-y-2 rounded-md border p-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Bot</span>
+                    <span className="font-mono text-right truncate" data-testid={`text-mint-confirm-bot-${bot.id}`}>
+                      {bot.botName}
+                    </span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Owner</span>
+                    <span className="font-mono text-right truncate" data-testid={`text-mint-confirm-owner-${bot.id}`}>
+                      {bot.userEmail || "Unknown"}
+                    </span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Cost</span>
+                    <span className="font-mono text-right">~1 USDC</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Wallet USDC</span>
+                    <span className="font-mono text-right" data-testid={`text-mint-confirm-usdc-${bot.id}`}>
+                      {wallet?.usdc ?? "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Wallet status</span>
+                    <span className="font-mono text-right capitalize" data-testid={`text-mint-confirm-status-${bot.id}`}>
+                      {wallet?.status ?? "unknown"}
+                    </span>
+                  </div>
+                </div>
+                {wallet && wallet.status !== "healthy" && (
+                  <p
+                    className="text-xs text-amber-600 dark:text-amber-500"
+                    data-testid={`text-mint-confirm-warning-${bot.id}`}
+                  >
+                    Wallet is not healthy — confirmation is disabled until balance is topped up.
+                  </p>
+                )}
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid={`button-mint-cancel-${bot.id}`}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={wallet?.status !== "healthy" || mintMutation.isPending}
+                    onClick={() => mintMutation.mutate()}
+                    data-testid={`button-mint-confirm-${bot.id}`}
+                  >
+                    Spend 1 USDC & mint
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             {!walletReady && wallet && (
               <span className="text-xs text-muted-foreground" data-testid={`text-helixa-wallet-block-${bot.id}`}>
                 {wallet.status === "depleted" ? "Wallet depleted" : "Wallet not configured"}
