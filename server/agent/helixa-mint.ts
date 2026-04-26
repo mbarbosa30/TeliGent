@@ -150,29 +150,44 @@ async function helixaPost(
   }
 }
 
-function extractAgentId(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const obj = body as Record<string, unknown>;
-  const raw = obj.agentId ?? obj.id;
-  if (raw === undefined || raw === null) return null;
-  const s = typeof raw === "number" ? String(raw) : String(raw).trim();
+// Parse the /mint response with Zod up-front. The schema is permissive
+// (passthrough + everything optional) because Helixa may add fields, but
+// running through Zod first ensures we get type-checked access to the known
+// fields and a single, structured failure log when the shape is unexpected.
+function parseMintResponse(body: unknown):
+  | { ok: true; data: z.infer<typeof mintResponseSchema> }
+  | { ok: false } {
+  const parsed = mintResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    log(`mint_response_zod_failed issues=${parsed.error.issues.length}`);
+    return { ok: false };
+  }
+  return { ok: true, data: parsed.data };
+}
+
+function asString(v: string | number | undefined | null): string | null {
+  if (v === undefined || v === null) return null;
+  const s = typeof v === "number" ? String(v) : v.trim();
   return s.length > 0 ? s : null;
+}
+
+function extractAgentId(body: unknown): string | null {
+  const r = parseMintResponse(body);
+  if (!r.ok) return null;
+  return asString(r.data.agentId) ?? asString(r.data.id);
 }
 
 function extractTokenId(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const obj = body as Record<string, unknown>;
-  const raw = obj.tokenId ?? obj.id;
-  if (raw === undefined || raw === null) return null;
-  const s = typeof raw === "number" ? String(raw) : String(raw).trim();
-  return s.length > 0 ? s : null;
+  const r = parseMintResponse(body);
+  if (!r.ok) return null;
+  return asString(r.data.tokenId) ?? asString(r.data.id);
 }
 
 function extractTxHash(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const obj = body as Record<string, unknown>;
-  const raw = obj.txHash ?? obj.transactionHash ?? obj.tx;
-  if (typeof raw !== "string") return null;
+  const r = parseMintResponse(body);
+  if (!r.ok) return null;
+  const raw = r.data.txHash ?? r.data.transactionHash ?? r.data.tx;
+  if (!raw) return null;
   return /^0x[a-fA-F0-9]{64}$/.test(raw) ? raw : null;
 }
 

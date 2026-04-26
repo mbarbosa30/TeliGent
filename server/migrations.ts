@@ -653,6 +653,11 @@ async function ensureBillingSchema(client: any) {
     ["teli_paid", "BOOLEAN NOT NULL DEFAULT false"],
     ["stripe_customer_id", "VARCHAR"],
     ["stripe_subscription_id", "VARCHAR"],
+    // Optional social handles surfaced to Helixa's free /verify/x and
+    // /verify/github endpoints right after a successful per-bot mint. Both
+    // are nullable; verification only fires when present.
+    ["x_handle", "VARCHAR(64)"],
+    ["github_handle", "VARCHAR(64)"],
   ];
   for (const [name, def] of userCols) {
     if (!(await columnExists(client, "users", name))) {

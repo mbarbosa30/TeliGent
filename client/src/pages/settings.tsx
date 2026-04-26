@@ -1148,11 +1148,18 @@ export default function SettingsPage() {
                 ) : (
                   (() => {
                     const proAllowed = !helixaErcAllowed.loaded || helixaErcAllowed.allowed;
-                    const walletHealthy = helixaStatus?.walletStatus === "healthy";
+                    // Mint is allowed at "healthy" AND "low" (>=1 USDC). Only
+                    // "depleted" (<1 USDC) and "unconfigured" hard-block on
+                    // the client. Server-side will refuse and return 503 if
+                    // the wallet drops below 1 USDC by the time the request
+                    // arrives. "Low" is a soft warning only.
+                    const walletAllowsMint =
+                      helixaStatus?.walletStatus === "healthy" ||
+                      helixaStatus?.walletStatus === "low";
                     const mintDisabled =
                       helixaMintMutation.isPending ||
                       !helixaStatus?.walletConfigured ||
-                      !walletHealthy ||
+                      !walletAllowsMint ||
                       !proAllowed;
                     return (
                   <div className="space-y-3">

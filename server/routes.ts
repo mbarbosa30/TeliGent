@@ -1305,9 +1305,30 @@ export async function registerRoutes(
           "./agent/helixa-mint"
         );
         const result = await mintHelixaAgent(botId);
-        // Non-blocking side effects: link $TELI token; X/GitHub verifications
-        // are placeholders for when owner social handles are configured.
-        fireMintSideEffects({ agentId: result.agentId });
+        // Non-blocking side effects: always link $TELI token; X/GitHub
+        // verifications fire only when the owner has filled in the
+        // corresponding handle on their account profile (additive columns
+        // x_handle / github_handle on users, see ensureBillingSchema).
+        const ownerId = (owner as any)?.id ?? (owner as any)?.userId ?? null;
+        let xHandle: string | null = null;
+        let githubHandle: string | null = null;
+        if (ownerId) {
+          try {
+            const { pool } = await import("./db");
+            const { rows } = await pool.query(
+              `SELECT x_handle, github_handle FROM users WHERE id = $1`,
+              [ownerId],
+            );
+            const r = rows[0];
+            if (r) {
+              xHandle = (r.x_handle ?? null) as string | null;
+              githubHandle = (r.github_handle ?? null) as string | null;
+            }
+          } catch (e: any) {
+            console.error(`[helixa-mint] handle lookup failed: ${e?.message}`);
+          }
+        }
+        fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
         res.json({
           success: true,
           agentId: result.agentId,
@@ -1398,6 +1419,63 @@ export async function registerRoutes(
       res.json({ cleared: true });
     } catch (err: any) {
       res.status(err?.status || 500).json({ error: err.message });
+    }
+  });
+
+  // Admin force re-mint: clears all helixa_* state AND immediately re-mints
+  // in one transactional path. mintHelixaAgent({ force: true }) does the
+  // clear inside the same BEGIN/SELECT FOR UPDATE/COMMIT block as the new
+  // mint, so the bot is never left in an empty / partial state in between.
+  app.post("/api/admin/bots/:botId/helixa/force-remint", isAdminAuthenticated, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      if (Number.isNaN(botId)) {
+        return res.status(400).json({ error: "Invalid bot id" });
+      }
+      const { mintHelixaAgent, fireMintSideEffects, HELIXA_BASESCAN_TX_BASE } = await import(
+        "./agent/helixa-mint"
+      );
+      const result = await mintHelixaAgent(botId, { force: true });
+      // Look up bot owner social handles so the post-mint side effects can
+      // re-fire X / GitHub verifications on the new agent id.
+      let xHandle: string | null = null;
+      let githubHandle: string | null = null;
+      try {
+        const { pool } = await import("./db");
+        const { rows } = await pool.query(
+          `SELECT u.x_handle, u.github_handle
+             FROM bot_configs b
+             JOIN users u ON u.id = b.user_id
+            WHERE b.id = $1`,
+          [botId],
+        );
+        const r = rows[0];
+        if (r) {
+          xHandle = (r.x_handle ?? null) as string | null;
+          githubHandle = (r.github_handle ?? null) as string | null;
+        }
+      } catch (e: any) {
+        console.error(`[helixa-mint] admin force-remint handle lookup failed: ${e?.message}`);
+      }
+      fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
+      res.json({
+        forced: true,
+        agentId: result.agentId,
+        txHash: result.txHash,
+        baseTokenId: result.baseTokenId,
+        explorerUrl: result.txHash ? `${HELIXA_BASESCAN_TX_BASE}${result.txHash}` : null,
+      });
+    } catch (err: any) {
+      const msg = err?.message || "Helixa force re-mint failed";
+      console.error(`[helixa-mint] admin force-remint botId=${req.params.botId} failed: ${msg}`);
+      const status = typeof err?.status === "number" ? err.status : 500;
+      if (msg.includes("HELIXA_BASE_WALLET_PRIVATE_KEY")) {
+        return res.status(503).json({ error: "Helixa minting is not configured" });
+      }
+      if (msg.includes("insufficient USDC")) {
+        return res.status(503).json({ error: msg });
+      }
+      res.status(status).json({ error: msg });
     }
   });
 
