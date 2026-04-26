@@ -364,6 +364,28 @@ function UpgradeDialog(props: {
   const contextLabel = deepLinkFeature ? FEATURE_LABELS[deepLinkFeature] : deepLinkQuota ? QUOTA_LABELS[deepLinkQuota] : null;
   const usd = period === "annual" ? limits.pricing[plan].annualUsd : limits.pricing[plan].monthlyUsd;
 
+  const teliQuoteEnabled = open && limits.cryptoEnabled;
+  const { data: teliQuote } = useQuery<QuoteResponse>({
+    queryKey: ["/api/billing/crypto/quote", { plan, period, rail: "teli" }],
+    queryFn: async () => {
+      const params = new URLSearchParams({ plan, billingPeriod: period, rail: "teli" });
+      const res = await fetch(`/api/billing/crypto/quote?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed to load quote");
+      return res.json();
+    },
+    enabled: teliQuoteEnabled,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const teliLiveAvailable = teliQuote ? teliQuote.liveAvailable && teliQuote.source !== "fallback" : true;
+  const teliTabDisabled = !limits.cryptoEnabled || !teliLiveAvailable;
+
+  useEffect(() => {
+    if (rail === "teli" && teliTabDisabled) {
+      setRail(limits.cryptoEnabled ? "usdc" : "stripe");
+    }
+  }, [rail, teliTabDisabled, limits.cryptoEnabled, setRail]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -394,7 +416,7 @@ function UpgradeDialog(props: {
             <TabsList className="grid grid-cols-3 w-full">
               <TabsTrigger value="stripe" disabled={!limits.stripeEnabled} data-testid="tab-rail-stripe">Card</TabsTrigger>
               <TabsTrigger value="usdc" disabled={!limits.cryptoEnabled} data-testid="tab-rail-usdc">USDC</TabsTrigger>
-              <TabsTrigger value="teli" disabled={!limits.cryptoEnabled} data-testid="tab-rail-teli">$TELI -{limits.teliDiscountPct}%</TabsTrigger>
+              <TabsTrigger value="teli" disabled={teliTabDisabled} data-testid="tab-rail-teli">$TELI -{limits.teliDiscountPct}%</TabsTrigger>
             </TabsList>
 
             <TabsContent value="stripe" className="space-y-3 pt-3">
