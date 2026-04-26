@@ -110,8 +110,15 @@ async function getCachedLive(force = false): Promise<CachedLive | null> {
   inflight = (async () => {
     try {
       const live = await fetchLive();
-      if (live) cached = live;
-      return live ?? cached;
+      if (live) {
+        cached = live;
+        return live;
+      }
+      // Live fetch failed. Only return previously cached value if it is still
+      // within TTL — beyond TTL we surface "no live source available" so the UI
+      // can disable TELI checkout instead of quoting indefinitely-stale rates.
+      if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached;
+      return null;
     } finally {
       inflight = null;
     }
