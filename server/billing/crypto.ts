@@ -421,7 +421,10 @@ export async function claimIntentByTxHash(intent: any, rawTxHash: string): Promi
     // because the receipt verifies the on-chain effect.
   }
   const intentCreatedTs = new Date(intent.createdAt).getTime();
-  if (blockTs > 0 && blockTs < intentCreatedTs - 60_000) {
+  // Strict post-intent timestamp: the on-chain transfer must have been mined
+  // at or after the payment request was created. This prevents a user from
+  // claiming an unrelated historical transfer of the same amount.
+  if (blockTs > 0 && blockTs < intentCreatedTs) {
     return { status: "rejected", reason: "This transaction was mined before the payment request was created." };
   }
 
