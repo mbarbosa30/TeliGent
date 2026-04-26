@@ -171,6 +171,9 @@ async function createIndexes(client: any) {
     { name: "idx_activity_logs_bot_config_created", sql: "CREATE INDEX IF NOT EXISTS idx_activity_logs_bot_config_created ON activity_logs (bot_config_id, created_at)" },
     { name: "idx_activity_logs_telegram_user", sql: "CREATE INDEX IF NOT EXISTS idx_activity_logs_telegram_user ON activity_logs (bot_config_id, telegram_user_id)" },
     { name: "idx_reported_scam_patterns_bot_config_id", sql: "CREATE INDEX IF NOT EXISTS idx_reported_scam_patterns_bot_config_id ON reported_scam_patterns (bot_config_id)" },
+    // Replay protection: a single on-chain tx hash can only ever back ONE matched
+    // crypto intent. Partial index keeps pending/expired rows free of constraint.
+    { name: "idx_plan_payment_intents_matched_tx_unique", sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_payment_intents_matched_tx_unique ON plan_payment_intents (tx_hash) WHERE status = 'matched' AND tx_hash IS NOT NULL" },
   ];
 
   let created = 0;

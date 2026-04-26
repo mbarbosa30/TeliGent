@@ -388,6 +388,19 @@ function PlansTab({ users, loading }: { users: AdminUser[]; loading: boolean }) 
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
+  const clearUsdMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/admin/usd-per-teli", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      setUsdInput("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/usd-per-teli"] });
+      toast({ title: "Override cleared", description: "Now using the live $TELI/USD rate." });
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
   const overrideMutation = useMutation({
     mutationFn: async (vars: { userId: string; plan: string; days: number; teliPaid: boolean }) => {
       const res = await apiRequest("POST", `/api/admin/users/${vars.userId}/plan`, vars);
@@ -407,13 +420,16 @@ function PlansTab({ users, loading }: { users: AdminUser[]; loading: boolean }) 
           <CardTitle className="text-sm flex items-center gap-2"><CreditCard className="h-4 w-4" /> Crypto pricing</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">Sets how many USD one $TELI is worth when generating crypto invoices. Used as the fallback when no live price feed is wired up.</p>
+          <p className="text-xs text-muted-foreground">
+            Manual override for the $TELI/USD rate. Leave blank to use the live rate (DexScreener primary, Bankr fallback, refreshed every 5 minutes).
+            Setting any positive number here forces every new $TELI invoice to use that rate instead of the live source.
+          </p>
           <div className="flex items-center gap-2 max-w-sm">
             <Input
               type="number"
               step="0.000001"
               min="0"
-              placeholder={usdPerTeli ? String(usdPerTeli.value) : "0.10"}
+              placeholder={usdPerTeli ? String(usdPerTeli.value) : "live rate"}
               value={usdInput}
               onChange={(e) => setUsdInput(e.target.value)}
               data-testid="input-usd-per-teli"
@@ -428,10 +444,21 @@ function PlansTab({ users, loading }: { users: AdminUser[]; loading: boolean }) 
               disabled={setUsdMutation.isPending}
               data-testid="button-save-usd-per-teli"
             >
-              <Save className="h-3.5 w-3.5 mr-1" /> Save
+              <Save className="h-3.5 w-3.5 mr-1" /> Save override
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => clearUsdMutation.mutate()}
+              disabled={clearUsdMutation.isPending}
+              data-testid="button-clear-usd-per-teli"
+            >
+              Use live
             </Button>
           </div>
-          <p className="text-xs font-mono text-muted-foreground">Current: ${usdPerTeli?.value ?? "—"} per $TELI</p>
+          <p className="text-xs font-mono text-muted-foreground" data-testid="text-current-usd-per-teli">
+            Current rate in use: ${usdPerTeli?.value ?? "—"} per $TELI
+          </p>
         </CardContent>
       </Card>
 

@@ -1,10 +1,12 @@
 import crypto from "crypto";
-import { createPublicClient, http, parseAbiItem, getAddress, isAddress, formatUnits } from "viem";
+import { createPublicClient, http, parseAbiItem, getAddress, isAddress, formatUnits, decodeEventLog } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { storage } from "../storage";
-import { TELI_DISCOUNT_PCT, type PlanTier, getEffectivePlan } from "../limits";
+import { TELI_DISCOUNT_PCT, type PlanTier } from "../limits";
+import { getEffectivePlan } from "../limits";
 import { getPriceUsd } from "./stripe";
+import { getTeliPrice, type TeliPriceQuote } from "./teli-price";
 import { log } from "../index";
 
 const USDC_BASE = (process.env.USDC_BASE_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`;
@@ -41,21 +43,24 @@ const baseClient = createPublicClient({
   transport: http(process.env.BASE_RPC_URL || "https://mainnet.base.org"),
 });
 
+/**
+ * Backwards-compatible legacy export used by /api/admin/usd-per-teli.
+ * Returns just the numeric rate from the live oracle (or override).
+ */
 export async function getUsdPerTeli(): Promise<number> {
-  const stored = await storage.getPlatformSetting("usd_per_teli");
-  if (stored) {
-    const n = parseFloat(stored);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  const fallback = parseFloat(process.env.USD_PER_TELI || "0.10");
-  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0.10;
+  const quote = await getTeliPrice();
+  return quote.usdPerTeli;
+}
+
+export async function getTeliPriceQuote(): Promise<TeliPriceQuote> {
+  return getTeliPrice();
 }
 
 /**
  * Compute the target token amount as a precise integer (atomic units, e.g. 6dp for USDC).
  * Adds a per-intent micro-suffix so we can match incoming transfers by exact amount.
  */
-function uniqueAmount(baseAtomic: bigint, suffix: bigint, decimals: number): bigint {
+function uniqueAmount(baseAtomic: bigint, suffix: bigint, _decimals: number): bigint {
   // Use last 6 atomic units as a unique suffix (1..999999) so the collision
   // surface is large enough to make accidental same-amount matches against
   // other concurrent intents extremely unlikely. We also reject historical
@@ -71,6 +76,64 @@ export type CryptoIntentInput = {
   billingPeriod: "monthly" | "annual";
   rail: "usdc" | "teli";
 };
+
+export type CryptoQuote = {
+  rail: "usdc" | "teli";
+  plan: PlanTier;
+  billingPeriod: "monthly" | "annual";
+  usd: number;
+  discountedUsd: number;
+  tokenAmount: string;
+  tokenSymbol: string;
+  tokenAddress: string;
+  tokenDecimals: number;
+  usdPerTeli: number | null;
+  source: TeliPriceQuote["source"] | null;
+  fetchedAt: string | null;
+  liveAvailable: boolean;
+};
+
+export async function getCryptoQuote(input: { plan: PlanTier; billingPeriod: "monthly" | "annual"; rail: "usdc" | "teli" }): Promise<CryptoQuote> {
+  const usd = getPriceUsd(input.plan, input.billingPeriod);
+  if (usd <= 0) throw new Error(`Crypto checkout not available for ${input.plan}.`);
+  const discounted = input.rail === "teli" ? usd * (1 - TELI_DISCOUNT_PCT / 100) : usd;
+
+  if (input.rail === "usdc") {
+    return {
+      rail: "usdc",
+      plan: input.plan,
+      billingPeriod: input.billingPeriod,
+      usd,
+      discountedUsd: discounted,
+      tokenAmount: discounted.toFixed(2),
+      tokenSymbol: "USDC",
+      tokenAddress: USDC_BASE,
+      tokenDecimals: USDC_DECIMALS,
+      usdPerTeli: null,
+      source: null,
+      fetchedAt: null,
+      liveAvailable: true,
+    };
+  }
+
+  const priceQuote = await getTeliPrice();
+  const teliFloat = discounted / priceQuote.usdPerTeli;
+  return {
+    rail: "teli",
+    plan: input.plan,
+    billingPeriod: input.billingPeriod,
+    usd,
+    discountedUsd: discounted,
+    tokenAmount: teliFloat.toFixed(2),
+    tokenSymbol: "TELI",
+    tokenAddress: TELI_BASE,
+    tokenDecimals: TELI_DECIMALS,
+    usdPerTeli: priceQuote.usdPerTeli,
+    source: priceQuote.source,
+    fetchedAt: priceQuote.fetchedAt,
+    liveAvailable: priceQuote.liveAvailable || priceQuote.manualOverride,
+  };
+}
 
 export async function createCryptoIntent(input: CryptoIntentInput) {
   const receive = getReceiveAddress();
@@ -97,8 +160,11 @@ export async function createCryptoIntent(input: CryptoIntentInput) {
     tokenDecimals = USDC_DECIMALS;
     baseAtomic = BigInt(Math.round(discounted * 10 ** USDC_DECIMALS));
   } else {
-    const usdPerTeli = await getUsdPerTeli();
-    const teliFloat = discounted / usdPerTeli;
+    const priceQuote = await getTeliPrice();
+    if (!priceQuote.liveAvailable && !priceQuote.manualOverride) {
+      throw new Error("Live $TELI/USD rate is unavailable right now. Please retry in a moment or pay with USDC.");
+    }
+    const teliFloat = discounted / priceQuote.usdPerTeli;
     tokenAddress = TELI_BASE;
     tokenSymbol = "TELI";
     tokenDecimals = TELI_DECIMALS;
@@ -137,16 +203,33 @@ export function formatIntentForDisplay(intent: any) {
   };
 }
 
+export async function listPendingIntentsForUser(userId: string) {
+  const all = await storage.listPendingPlanPaymentIntents();
+  return all.filter((i) => i.userId === userId).map(formatIntentForDisplay);
+}
+
+async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const jitter = 100 + Math.floor(Math.random() * 400);
+    log(`crypto poller: ${label} failed, retrying in ${jitter}ms: ${msg}`, "billing");
+    await new Promise((r) => setTimeout(r, jitter));
+    return fn();
+  }
+}
+
 /**
  * Scan recent Base blocks for ERC-20 Transfer events to the platform receive
  * address. Match each pending intent by token + exact amount + within window.
  * Activates the matching plan period and updates the user.
  */
-export async function pollCryptoIntents(): Promise<{ matched: number; expired: number }> {
+export async function pollCryptoIntents(): Promise<{ matched: number; expired: number; pending: number; errors: number }> {
   const receive = getReceiveAddress();
-  if (!receive) return { matched: 0, expired: 0 };
+  if (!receive) return { matched: 0, expired: 0, pending: 0, errors: 0 };
   const pending = await storage.listPendingPlanPaymentIntents();
-  if (!pending.length) return { matched: 0, expired: 0 };
+  if (!pending.length) return { matched: 0, expired: 0, pending: 0, errors: 0 };
 
   const now = Date.now();
   const stillPending = [] as typeof pending;
@@ -159,80 +242,101 @@ export async function pollCryptoIntents(): Promise<{ matched: number; expired: n
       stillPending.push(p);
     }
   }
-  if (!stillPending.length) return { matched: 0, expired };
+  if (!stillPending.length) return { matched: 0, expired, pending: 0, errors: 0 };
 
   const tokens = Array.from(new Set(stillPending.map((p) => p.tokenAddress.toLowerCase())));
   let head: bigint;
   try {
-    head = await baseClient.getBlockNumber();
-  } catch (err: any) {
-    log(`crypto poller: getBlockNumber failed: ${err.message}`, "billing");
-    return { matched: 0, expired };
+    head = await withRetry(() => baseClient.getBlockNumber(), "getBlockNumber");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`crypto poller: getBlockNumber failed after retry: ${msg}`, "billing");
+    return { matched: 0, expired, pending: stillPending.length, errors: 1 };
   }
-  const fromBlock = head > POLL_BLOCK_LOOKBACK ? head - POLL_BLOCK_LOOKBACK : 0n;
-  const padded = `0x${receive.slice(2).toLowerCase().padStart(64, "0")}` as `0x${string}`;
-
-  const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
   let matched = 0;
+  let errors = 0;
+
   for (const tokenAddr of tokens) {
+    let logs;
+    let lookback = POLL_BLOCK_LOOKBACK;
     try {
-      const logs = await baseClient.getLogs({
-        address: tokenAddr as `0x${string}`,
-        event: transferEvent,
-        args: { to: receive as `0x${string}` },
-        fromBlock,
-        toBlock: head,
-      });
-      // Cache block timestamps so we don't refetch the same block repeatedly.
-      const blockTsCache = new Map<bigint, number>();
-      const getBlockTs = async (bn: bigint): Promise<number> => {
-        const cached = blockTsCache.get(bn);
-        if (cached !== undefined) return cached;
-        try {
-          const blk = await baseClient.getBlock({ blockNumber: bn });
-          const ts = Number(blk.timestamp) * 1000;
-          blockTsCache.set(bn, ts);
-          return ts;
-        } catch {
-          return 0;
-        }
-      };
-      for (const lg of logs) {
-        const value = lg.args.value;
-        if (value === undefined) continue;
-        const txHash = lg.transactionHash;
-        const blockNumber = lg.blockNumber;
-        for (const intent of stillPending) {
-          if (intent.tokenAddress.toLowerCase() !== tokenAddr) continue;
-          if (intent.status !== "pending") continue;
-          const expected = BigInt(intent.expectedAmount);
-          if (value !== expected) continue;
-          // Replay/collision defense: only credit transfers that landed on
-          // chain at or after the intent was created. Without this, a
-          // historical Transfer with the same exact amount could falsely
-          // activate a freshly created intent.
-          if (blockNumber != null) {
-            const blockTs = await getBlockTs(blockNumber);
-            const intentCreatedTs = new Date(intent.createdAt).getTime();
-            if (blockTs > 0 && blockTs < intentCreatedTs) continue;
-          }
-          {
-            // markPlanPaymentIntent does an atomic WHERE status='pending' update;
-            // if it returns undefined, another poll already claimed this intent.
-            const claimed = await activateIntent(intent, txHash || null);
-            if (claimed) {
-              intent.status = "matched";
-              matched += 1;
-            }
-            break;
-          }
-        }
+      logs = await withRetry(async () => {
+        const fromBlock = head > lookback ? head - lookback : 0n;
+        return baseClient.getLogs({
+          address: tokenAddr as `0x${string}`,
+          event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
+          args: { to: receive as `0x${string}` },
+          fromBlock,
+          toBlock: head,
+        });
+      }, `getLogs ${tokenAddr}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log(`crypto poller: getLogs ${tokenAddr} failed after retry, doubling lookback for next pass: ${msg}`, "billing");
+      // Doubling the lookback on the *next* full cycle would require persistent
+      // state, so we instead re-attempt with a wider window inline. Capped at
+      // 4x to avoid pathological full-history scans.
+      try {
+        lookback = POLL_BLOCK_LOOKBACK * 4n;
+        const fromBlock = head > lookback ? head - lookback : 0n;
+        logs = await baseClient.getLogs({
+          address: tokenAddr as `0x${string}`,
+          event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
+          args: { to: receive as `0x${string}` },
+          fromBlock,
+          toBlock: head,
+        });
+      } catch (err2) {
+        const msg2 = err2 instanceof Error ? err2.message : String(err2);
+        log(`crypto poller: getLogs ${tokenAddr} wider retry also failed: ${msg2}`, "billing");
+        errors += 1;
+        continue;
       }
-    } catch (err: any) {
-      log(`crypto poller: getLogs ${tokenAddr} failed: ${err.message}`, "billing");
+    }
+
+    // Cache block timestamps so we don't refetch the same block repeatedly.
+    const blockTsCache = new Map<bigint, number>();
+    const getBlockTs = async (bn: bigint): Promise<number> => {
+      const cached = blockTsCache.get(bn);
+      if (cached !== undefined) return cached;
+      try {
+        const blk = await baseClient.getBlock({ blockNumber: bn });
+        const ts = Number(blk.timestamp) * 1000;
+        blockTsCache.set(bn, ts);
+        return ts;
+      } catch {
+        return 0;
+      }
+    };
+
+    for (const lg of logs) {
+      const value = lg.args.value;
+      if (value === undefined) continue;
+      const txHash = lg.transactionHash;
+      const blockNumber = lg.blockNumber;
+      for (const intent of stillPending) {
+        if (intent.tokenAddress.toLowerCase() !== tokenAddr) continue;
+        if (intent.status !== "pending") continue;
+        const expected = BigInt(intent.expectedAmount);
+        if (value !== expected) continue;
+        if (blockNumber != null) {
+          const blockTs = await getBlockTs(blockNumber);
+          const intentCreatedTs = new Date(intent.createdAt).getTime();
+          if (blockTs > 0 && blockTs < intentCreatedTs) continue;
+        }
+        const claimed = await activateIntent(intent, txHash || null);
+        if (claimed) {
+          intent.status = "matched";
+          matched += 1;
+        }
+        break;
+      }
     }
   }
-  return { matched, expired };
+
+  const stillPendingCount = stillPending.filter((i) => i.status === "pending").length;
+  log(`crypto poller cycle: matched=${matched} expired=${expired} pending=${stillPendingCount} errors=${errors}`, "billing");
+  return { matched, expired, pending: stillPendingCount, errors };
 }
 
 async function activateIntent(intent: any, txHash: string | null): Promise<boolean> {
@@ -250,7 +354,7 @@ async function activateIntent(intent: any, txHash: string | null): Promise<boole
     startsAt,
     endsAt,
     intentId: intent.id,
-    reason: "crypto_payment",
+    reason: txHash ? "crypto_payment" : "crypto_payment_manual_claim",
   });
   await storage.updateUserPlan(intent.userId, {
     plan: intent.plan,
@@ -263,10 +367,141 @@ async function activateIntent(intent: any, txHash: string | null): Promise<boole
   return true;
 }
 
+function normalizeTxHash(input: string): `0x${string}` | null {
+  const trimmed = input.trim().toLowerCase();
+  const withPrefix = trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+  if (!/^0x[0-9a-f]{64}$/.test(withPrefix)) return null;
+  return withPrefix as `0x${string}`;
+}
+
+export type ManualClaimResult =
+  | { status: "matched"; intentId: number; txHash: string }
+  | { status: "already_matched"; intentId: number; txHash: string | null }
+  | { status: "rejected"; reason: string };
+
+/**
+ * Manual recovery path: user pasted a transaction hash. Fetch the receipt,
+ * verify it transferred the expected token + amount (within tolerance) to
+ * the receive address, and that the block was mined after the intent was
+ * created. Activates the plan if everything checks out.
+ */
+export async function claimIntentByTxHash(intent: any, rawTxHash: string): Promise<ManualClaimResult> {
+  if (intent.status === "matched") {
+    return { status: "already_matched", intentId: intent.id, txHash: intent.txHash ?? null };
+  }
+  if (intent.status !== "pending") {
+    return { status: "rejected", reason: `Intent is ${intent.status} and cannot be claimed.` };
+  }
+  if (new Date(intent.expiresAt).getTime() < Date.now()) {
+    return { status: "rejected", reason: "This payment request has expired. Please generate a new one." };
+  }
+
+  const txHash = normalizeTxHash(rawTxHash);
+  if (!txHash) return { status: "rejected", reason: "That doesn't look like a valid Base transaction hash." };
+
+  let receipt;
+  try {
+    receipt = await baseClient.getTransactionReceipt({ hash: txHash });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`Manual claim: receipt lookup failed for ${txHash}: ${msg}`, "billing");
+    return { status: "rejected", reason: "We couldn't find that transaction on Base yet. Wait ~30s and try again." };
+  }
+  if (!receipt || receipt.status !== "success") {
+    return { status: "rejected", reason: "That transaction did not succeed on Base." };
+  }
+
+  let blockTs = 0;
+  try {
+    const blk = await baseClient.getBlock({ blockNumber: receipt.blockNumber });
+    blockTs = Number(blk.timestamp) * 1000;
+  } catch {
+    // Non-fatal; we still allow the claim if we cannot fetch timestamp,
+    // because the receipt verifies the on-chain effect.
+  }
+  const intentCreatedTs = new Date(intent.createdAt).getTime();
+  if (blockTs > 0 && blockTs < intentCreatedTs - 60_000) {
+    return { status: "rejected", reason: "This transaction was mined before the payment request was created." };
+  }
+
+  // Exact-amount match only. Each pending intent is generated with a unique
+  // micro-suffix (see uniqueAmount) precisely so we can bind one on-chain
+  // transfer to one intent without ambiguity. Allowing any tolerance here
+  // would let one user claim another user's qualifying transfer if their
+  // intent amounts happened to fall within the tolerance band.
+  const expected = BigInt(intent.expectedAmount);
+
+  const expectedToken = intent.tokenAddress.toLowerCase();
+  const expectedTo = (intent.receiveAddress as string).toLowerCase();
+
+  let totalToReceiver = 0n;
+  for (const lg of receipt.logs) {
+    if (lg.address.toLowerCase() !== expectedToken) continue;
+    if (lg.topics[0] !== TRANSFER_TOPIC) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: [parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)")],
+        data: lg.data,
+        topics: lg.topics,
+      });
+      const args = decoded.args as { to: string; value: bigint };
+      if (args.to.toLowerCase() !== expectedTo) continue;
+      totalToReceiver += args.value;
+    } catch {
+      continue;
+    }
+  }
+
+  if (totalToReceiver === 0n) {
+    return { status: "rejected", reason: "That transaction did not transfer the expected token to our receive address." };
+  }
+  if (totalToReceiver !== expected) {
+    const sentDisplay = formatUnits(totalToReceiver, intent.tokenDecimals);
+    const expectedDisplay = formatUnits(expected, intent.tokenDecimals);
+    return {
+      status: "rejected",
+      reason: `Amount mismatch: transaction sent ${sentDisplay} ${intent.tokenSymbol}, but this payment request expected exactly ${expectedDisplay} ${intent.tokenSymbol}. Send a new transfer for the exact amount shown.`,
+    };
+  }
+
+  // Replay protection: a single on-chain transfer can only be credited once
+  // across the whole platform. Without this, two pending intents with the same
+  // expected amount (or any user with a tx in their wallet history that happens
+  // to fall within the ±0.5% tolerance window for somebody else's intent)
+  // could be credited multiple times.
+  const existing = await storage.findMatchedIntentByTxHash(txHash);
+  if (existing) {
+    if (existing.id === intent.id) {
+      return { status: "already_matched", intentId: intent.id, txHash: existing.txHash ?? txHash };
+    }
+    log(`Manual claim: tx ${txHash} already credited to intent ${existing.id}, rejected for intent ${intent.id}`, "billing");
+    return { status: "rejected", reason: "This transaction has already been credited to another payment request." };
+  }
+
+  const claimed = await activateIntent(intent, txHash);
+  if (!claimed) {
+    // Two failure modes here:
+    //   (a) someone else already activated THIS intent (e.g. background poller
+    //       beat us to it) — the row is already matched.
+    //   (b) the partial unique index on tx_hash WHERE status='matched' fired
+    //       because a different intent already credited this same tx hash
+    //       (concurrent claim race or replay attempt).
+    const fresh = await storage.getPlanPaymentIntent(intent.id);
+    if (fresh?.status === "matched") {
+      return { status: "already_matched", intentId: intent.id, txHash: fresh.txHash ?? txHash };
+    }
+    const otherMatched = await storage.findMatchedIntentByTxHash(txHash);
+    if (otherMatched && otherMatched.id !== intent.id) {
+      log(`Manual claim race: tx ${txHash} already credited to intent ${otherMatched.id}, rejected for intent ${intent.id}`, "billing");
+      return { status: "rejected", reason: "This transaction has already been credited to another payment request." };
+    }
+    return { status: "rejected", reason: "Could not activate plan. Please contact support." };
+  }
+  return { status: "matched", intentId: intent.id, txHash };
+}
+
 export function getUserActivePlan(user: { plan: string | null; planPeriodEnd: Date | null } | null | undefined): PlanTier {
   if (!user) return "free";
-  // getEffectivePlan accepts the minimal {plan, planPeriodEnd} shape directly,
-  // so no cast is needed.
   return getEffectivePlan({
     plan: user.plan ?? "free",
     planPeriodEnd: user.planPeriodEnd ?? null,

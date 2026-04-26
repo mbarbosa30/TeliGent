@@ -72,6 +72,7 @@ export interface IStorage {
   getPlanPaymentIntent(id: number): Promise<PlanPaymentIntent | undefined>;
   listPendingPlanPaymentIntents(): Promise<PlanPaymentIntent[]>;
   markPlanPaymentIntent(id: number, status: "matched" | "expired" | "pending", txHash?: string | null): Promise<PlanPaymentIntent | undefined>;
+  findMatchedIntentByTxHash(txHash: string): Promise<PlanPaymentIntent | undefined>;
   createPlanPeriod(data: InsertPlanPeriod): Promise<PlanPeriod>;
   listPlanPeriodsForUser(userId: string, limit?: number): Promise<PlanPeriod[]>;
   getAiUsageForDay(botConfigId: number, usageDate: string): Promise<number>;
@@ -430,13 +431,35 @@ export class DatabaseStorage implements IStorage {
     }
     // Atomic claim: only transition out of "pending" once. This prevents the crypto
     // poller from double-crediting the same intent when overlapping ticks both see
-    // a matching transfer.
+    // a matching transfer. The partial unique index on tx_hash (where status='matched')
+    // additionally ensures that one on-chain tx can only ever back one matched intent
+    // — concurrent claim races lose the unique violation here and we return undefined.
+    try {
+      const [row] = await db
+        .update(planPaymentIntents)
+        .set(update)
+        .where(and(eq(planPaymentIntents.id, id), eq(planPaymentIntents.status, "pending")))
+        .returning();
+      return row;
+    } catch (err: any) {
+      if (err?.code === "23505") return undefined;
+      throw err;
+    }
+  }
+
+  async findMatchedIntentByTxHash(txHash: string): Promise<PlanPaymentIntent | undefined> {
+    const normalized = txHash.trim().toLowerCase();
+    if (!normalized) return undefined;
     const [row] = await db
-      .update(planPaymentIntents)
-      .set(update)
-      .where(and(eq(planPaymentIntents.id, id), eq(planPaymentIntents.status, "pending")))
-      .returning();
+      .select()
+      .from(planPaymentIntents)
+      .where(and(eq(planPaymentIntents.status, "matched"), eq(planPaymentIntents.txHash, normalized)))
+      .limit(1);
     return row;
+  }
+
+  async deletePlatformSetting(key: string): Promise<void> {
+    await db.delete(platformSettings).where(eq(platformSettings.key, key));
   }
 
   async createPlanPeriod(data: InsertPlanPeriod): Promise<PlanPeriod> {

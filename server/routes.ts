@@ -1604,9 +1604,52 @@ export async function registerRoutes(
     const user = await loadUser(req);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const id = parseInt(asString(req.params.id));
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid intent id" });
     const intent = await storage.getPlanPaymentIntent(id);
     if (!intent || intent.userId !== user.id) return res.status(404).json({ error: "Not found" });
     res.json(CryptoBilling.formatIntentForDisplay(intent));
+  });
+
+  app.get("/api/billing/crypto/quote", isAuthenticated, apiRateLimit, async (req, res) => {
+    try {
+      const user = await loadUser(req);
+      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      if (!CryptoBilling.isCryptoEnabled()) return res.status(503).json({ error: "Crypto checkout is not configured." });
+      const planRaw = asString(req.query.plan ?? "pro");
+      const plan = (planRaw === "business" ? "business" : "pro") as PlanTier;
+      const billingPeriod = (asString(req.query.billingPeriod ?? "monthly") === "annual" ? "annual" : "monthly") as "monthly" | "annual";
+      const rail = (asString(req.query.rail ?? "usdc") === "teli" ? "teli" : "usdc") as "usdc" | "teli";
+      const quote = await CryptoBilling.getCryptoQuote({ plan, billingPeriod, rail });
+      res.json(quote);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/billing/crypto/pending", isAuthenticated, apiRateLimit, async (req, res) => {
+    const user = await loadUser(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const pending = await CryptoBilling.listPendingIntentsForUser(user.id);
+    res.json({ pending });
+  });
+
+  app.post("/api/billing/crypto/intent/:id/claim", isAuthenticated, requireVerifiedEmail, apiRateLimit, async (req, res) => {
+    try {
+      const user = await loadUser(req);
+      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      const id = parseInt(asString(req.params.id));
+      if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid intent id" });
+      const intent = await storage.getPlanPaymentIntent(id);
+      if (!intent || intent.userId !== user.id) return res.status(404).json({ error: "Not found" });
+      const txHash = typeof req.body?.txHash === "string" ? req.body.txHash : "";
+      if (!txHash.trim()) return res.status(400).json({ error: "txHash is required" });
+      const result = await CryptoBilling.claimIntentByTxHash(intent, txHash);
+      if (result.status === "rejected") return res.status(400).json({ error: result.reason });
+      const fresh = await storage.getPlanPaymentIntent(id);
+      res.json({ result, intent: fresh ? CryptoBilling.formatIntentForDisplay(fresh) : null });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.post("/api/admin/usd-per-teli", isAdminAuthenticated, async (req, res) => {
@@ -1614,6 +1657,11 @@ export async function registerRoutes(
     if (!Number.isFinite(v) || v <= 0) return res.status(400).json({ error: "value must be > 0" });
     await storage.setPlatformSetting("usd_per_teli", v.toString());
     res.json({ success: true, value: v });
+  });
+
+  app.delete("/api/admin/usd-per-teli", isAdminAuthenticated, async (_req, res) => {
+    await storage.deletePlatformSetting("usd_per_teli");
+    res.json({ success: true, cleared: true });
   });
 
   app.get("/api/admin/usd-per-teli", isAdminAuthenticated, async (_req, res) => {
