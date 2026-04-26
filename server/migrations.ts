@@ -324,6 +324,29 @@ async function ensureCeloColumns(client: any) {
   }
 }
 
+async function ensureHelixaColumns(client: any) {
+  if (!(await columnExists(client, "bot_configs", "helixa_agent_id"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_agent_id TEXT`);
+    log("Added helixa_agent_id to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "helixa_cred_score"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_cred_score INTEGER`);
+    log("Added helixa_cred_score to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "helixa_cred_tier"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_cred_tier TEXT`);
+    log("Added helixa_cred_tier to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "helixa_profile_url"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_profile_url TEXT`);
+    log("Added helixa_profile_url to bot_configs");
+  }
+  if (!(await columnExists(client, "bot_configs", "helixa_synced_at"))) {
+    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_synced_at TIMESTAMP`);
+    log("Added helixa_synced_at to bot_configs");
+  }
+}
+
 async function ensureBankrColumns(client: any) {
   if (!(await columnExists(client, "bot_configs", "bankr_enabled"))) {
     await client.query(`ALTER TABLE bot_configs ADD COLUMN bankr_enabled BOOLEAN NOT NULL DEFAULT false`);

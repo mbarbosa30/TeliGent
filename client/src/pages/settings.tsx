@@ -257,6 +257,20 @@ export default function SettingsPage() {
     enabled: !!selectedBotId,
   });
 
+  const { data: helixaStatus } = useQuery<{
+    configured: boolean;
+    agentId: string | null;
+    credScore: number | null;
+    credTier: string | null;
+    profileUrl: string | null;
+    syncedAt: string | null;
+    live?: boolean;
+  }>({
+    queryKey: ["/api/bots", selectedBotId, "helixa", "status"],
+    enabled: !!selectedBotId,
+    staleTime: 30 * 1000,
+  });
+
   const celoRegisterMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/bots/${selectedBotId}/erc8004/register`);
@@ -970,6 +984,83 @@ export default function SettingsPage() {
                         </>
                       )}
                     </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Link className="h-5 w-5" />
+                  <CardTitle className="text-base">Helixa Identity (Base)</CardTitle>
+                </div>
+                <CardDescription>
+                  Onchain Cred Score and tier from the Helixa registry on Base (ERC-8004 0x8004A1...e539a432).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {helixaStatus?.configured ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span className="text-sm font-medium">Linked to Helixa</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Agent ID</span>
+                        <Badge variant="default" className="font-mono" data-testid="badge-helixa-agent-id">
+                          {helixaStatus.agentId}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Cred Score</span>
+                        <span className="text-sm font-mono font-medium" data-testid="text-helixa-cred-score">
+                          {helixaStatus.credScore !== null ? helixaStatus.credScore : "—"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Tier</span>
+                        <Badge variant="outline" className="font-mono" data-testid="badge-helixa-tier">
+                          {helixaStatus.credTier || "—"}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Last sync</span>
+                        <span className="text-xs text-muted-foreground" data-testid="text-helixa-synced-at">
+                          {helixaStatus.syncedAt ? new Date(helixaStatus.syncedAt).toLocaleString() : "Pending"}
+                        </span>
+                      </div>
+                      {helixaStatus.profileUrl && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Profile</span>
+                          <a
+                            href={helixaStatus.profileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
+                            data-testid="link-helixa-profile"
+                          >
+                            View on helixa.xyz
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                    <div className="pt-2 border-t">
+                      <p className="text-xs text-muted-foreground">
+                        Helixa data refreshes automatically in the background and on every visit to this page.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      This bot is not linked to a Helixa agent yet. Per-bot minting from the dashboard is coming soon. In the meantime, an admin can attach an existing Helixa agent ID to surface its onchain Cred Score here.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Helixa agents are minted on Base and cross-registered on the canonical ERC-8004 registry, so a Cred Score is portable across any 8004-compatible app.
+                    </p>
                   </div>
                 )}
               </CardContent>

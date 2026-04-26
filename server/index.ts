@@ -195,6 +195,64 @@ app.use((req, res, next) => {
   setInterval(runRewardsScheduler, SCHEDULER_INTERVAL_MIN * 60 * 1000);
   setTimeout(runRewardsScheduler, 30 * 1000);
 
+  const HELIXA_SYNC_INTERVAL_HOURS = Math.max(
+    1,
+    parseInt(process.env.HELIXA_SYNC_INTERVAL_HOURS || "6", 10) || 6,
+  );
+  let helixaSyncRunning = false;
+  const runHelixaSync = async () => {
+    if (helixaSyncRunning) {
+      log("Helixa sync skipped: previous run still active", "helixa.sync");
+      return;
+    }
+    helixaSyncRunning = true;
+    let refreshed = 0;
+    let skipped = 0;
+    let failed = 0;
+    try {
+      const { pool } = await import("./db");
+      const { getAgentCred, buildHelixaProfileUrl } = await import("./agent/helixa");
+      const { rows } = await pool.query(
+        `SELECT id, helixa_agent_id FROM bot_configs
+         WHERE helixa_agent_id IS NOT NULL AND helixa_agent_id <> ''`,
+      );
+      for (const row of rows) {
+        const botId: number = row.id;
+        const agentId: string = row.helixa_agent_id;
+        try {
+          const fresh = await getAgentCred(agentId);
+          if (!fresh) {
+            skipped++;
+            continue;
+          }
+          const profileUrl = buildHelixaProfileUrl(agentId);
+          await pool.query(
+            `UPDATE bot_configs
+             SET helixa_cred_score = $1, helixa_cred_tier = $2,
+                 helixa_profile_url = $3, helixa_synced_at = $4
+             WHERE id = $5`,
+            [fresh.score, fresh.tier, profileUrl, new Date(), botId],
+          );
+          refreshed++;
+        } catch (err: any) {
+          failed++;
+          log(`Helixa sync bot ${botId} error: ${err.message}`, "helixa.sync");
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      log(
+        `[helixa.sync] refreshed=${refreshed} skipped=${skipped} failed=${failed} total=${rows.length}`,
+        "helixa.sync",
+      );
+    } catch (err: any) {
+      log(`Helixa sync error: ${err.message}`, "helixa.sync");
+    } finally {
+      helixaSyncRunning = false;
+    }
+  };
+  setInterval(runHelixaSync, HELIXA_SYNC_INTERVAL_HOURS * 60 * 60 * 1000);
+  setTimeout(runHelixaSync, 60 * 1000);
+
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {

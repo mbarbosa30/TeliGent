@@ -1153,6 +1153,129 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/helixa/network-stats", agentRateLimit, async (_req, res) => {
+    try {
+      const { getNetworkStats } = await import("./agent/helixa");
+      const stats = await getNetworkStats();
+      if (!stats) {
+        return res.status(503).json({ error: "Helixa network is unreachable" });
+      }
+      res.json(stats);
+    } catch (err: any) {
+      res.status(err?.status || 500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bots/:botId/helixa/status", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const { pool } = await import("./db");
+      const { rows } = await pool.query(
+        `SELECT helixa_agent_id, helixa_cred_score, helixa_cred_tier, helixa_profile_url, helixa_synced_at
+         FROM bot_configs WHERE id = $1`,
+        [botId]
+      );
+      const row = rows[0];
+      if (!row) {
+        return res.status(404).json({ error: "Bot not found" });
+      }
+      const agentId: string | null = row.helixa_agent_id || null;
+      if (!agentId) {
+        return res.json({
+          configured: false,
+          agentId: null,
+          credScore: null,
+          credTier: null,
+          profileUrl: null,
+          syncedAt: null,
+        });
+      }
+      const { getAgentCred, buildHelixaProfileUrl } = await import("./agent/helixa");
+      const fresh = await getAgentCred(agentId);
+      let credScore: number | null = row.helixa_cred_score;
+      let credTier: string | null = row.helixa_cred_tier;
+      let syncedAt: Date | null = row.helixa_synced_at;
+      const profileUrl: string = row.helixa_profile_url || buildHelixaProfileUrl(agentId);
+
+      if (fresh) {
+        credScore = fresh.score;
+        credTier = fresh.tier;
+        syncedAt = new Date();
+        await pool.query(
+          `UPDATE bot_configs
+           SET helixa_cred_score = $1, helixa_cred_tier = $2, helixa_profile_url = $3, helixa_synced_at = $4
+           WHERE id = $5`,
+          [credScore, credTier, profileUrl, syncedAt, botId]
+        );
+      }
+      res.json({
+        configured: true,
+        agentId,
+        credScore,
+        credTier,
+        profileUrl,
+        syncedAt: syncedAt ? syncedAt.toISOString() : null,
+        live: !!fresh,
+      });
+    } catch (err: any) {
+      res.status(err?.status || 500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/bots/:botId/helixa/agent-id", isAdminAuthenticated, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      if (Number.isNaN(botId)) {
+        return res.status(400).json({ error: "Invalid bot id" });
+      }
+      const raw = req.body?.agentId;
+      const agentId: string | null = raw === null || raw === undefined || raw === ""
+        ? null
+        : String(raw).trim();
+      if (agentId !== null && !/^[A-Za-z0-9._-]{1,128}$/.test(agentId)) {
+        return res.status(400).json({ error: "agentId must be 1-128 chars [A-Za-z0-9._-]" });
+      }
+      const { pool } = await import("./db");
+      const { buildHelixaProfileUrl, getAgentCred } = await import("./agent/helixa");
+      if (agentId === null) {
+        const result = await pool.query(
+          `UPDATE bot_configs
+           SET helixa_agent_id = NULL, helixa_cred_score = NULL, helixa_cred_tier = NULL,
+               helixa_profile_url = NULL, helixa_synced_at = NULL
+           WHERE id = $1`,
+          [botId]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ error: "Bot not found" });
+        return res.json({ cleared: true, agentId: null });
+      }
+      const profileUrl = buildHelixaProfileUrl(agentId);
+      const fresh = await getAgentCred(agentId);
+      const score = fresh?.score ?? null;
+      const tier = fresh?.tier ?? null;
+      // Only stamp helixa_synced_at when the live fetch actually succeeded — a
+      // failed fetch should not be claimed as a successful sync.
+      const syncedAt = fresh ? new Date() : null;
+      const result = await pool.query(
+        `UPDATE bot_configs
+         SET helixa_agent_id = $1, helixa_cred_score = $2, helixa_cred_tier = $3,
+             helixa_profile_url = $4, helixa_synced_at = $5
+         WHERE id = $6`,
+        [agentId, score, tier, profileUrl, syncedAt, botId]
+      );
+      if (result.rowCount === 0) return res.status(404).json({ error: "Bot not found" });
+      res.json({
+        agentId,
+        credScore: score,
+        credTier: tier,
+        profileUrl,
+        syncedAt: syncedAt ? syncedAt.toISOString() : null,
+        live: !!fresh,
+      });
+    } catch (err: any) {
+      res.status(err?.status || 500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/admin/erc8004/clear", isAdminAuthenticated, async (req, res) => {
     try {
       const botIds = req.body?.botIds;
