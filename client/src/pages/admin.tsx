@@ -759,9 +759,10 @@ function BotRow({ bot }: { bot: AdminBot }) {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/bots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/helixa/wallet"] });
+      const txShort = data.txHash ? `${data.txHash.slice(0, 10)}…` : "n/a";
       toast({
         title: data.alreadyMinted ? "Already minted" : "Mint complete",
-        description: `Agent ID ${data.agentId}`,
+        description: `Agent ${data.agentId} | tx ${txShort}`,
       });
     },
     onError: (err) => {
@@ -769,9 +770,31 @@ function BotRow({ bot }: { bot: AdminBot }) {
     },
   });
 
+  const forceRemintMutation = useMutation<MintResponse, Error, void>({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/bots/${bot.id}/helixa/force-remint`);
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/bots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/helixa/wallet"] });
+      const txShort = data.txHash ? `${data.txHash.slice(0, 10)}…` : "n/a";
+      toast({
+        title: "Force re-mint complete",
+        description: `Agent ${data.agentId} | tx ${txShort}`,
+      });
+    },
+    onError: (err) => {
+      toast({ title: "Force re-mint failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const minted = !!bot.helixaAgentId;
-  const walletReady = wallet.data?.status === "healthy";
+  // Server allows mint when wallet has >= 1 USDC (status "healthy" or "low").
+  // Only block the UI when wallet is depleted or unconfigured.
+  const walletReady = wallet.data?.status === "healthy" || wallet.data?.status === "low";
   const canMint = !minted && walletReady && !mintMutation.isPending;
+  const canRemint = minted && walletReady && !forceRemintMutation.isPending;
 
   return (
     <div
@@ -799,26 +822,29 @@ function BotRow({ bot }: { bot: AdminBot }) {
               <Badge variant="outline" className="text-xs shrink-0">
                 Minted
               </Badge>
-              <span
-                className="text-xs font-mono truncate text-muted-foreground"
-                data-testid={`text-helixa-agent-${bot.id}`}
-                title={bot.helixaAgentId ?? ""}
-              >
-                {bot.helixaAgentId}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {bot.helixaProfileUrl && (
+              {bot.helixaProfileUrl ? (
                 <a
                   href={bot.helixaProfileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                  data-testid={`link-helixa-profile-${bot.id}`}
+                  className="text-xs font-mono truncate text-foreground hover:underline inline-flex items-center gap-1 min-w-0"
+                  data-testid={`link-helixa-agent-${bot.id}`}
+                  title={bot.helixaAgentId ?? ""}
                 >
-                  <LinkIcon className="h-3 w-3" /> profile
+                  <LinkIcon className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{bot.helixaAgentId}</span>
                 </a>
+              ) : (
+                <span
+                  className="text-xs font-mono truncate text-muted-foreground"
+                  data-testid={`text-helixa-agent-${bot.id}`}
+                  title={bot.helixaAgentId ?? ""}
+                >
+                  {bot.helixaAgentId}
+                </span>
               )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
               {bot.helixaExplorerUrl && (
                 <a
                   href={bot.helixaExplorerUrl}
@@ -839,6 +865,26 @@ function BotRow({ bot }: { bot: AdminBot }) {
               {bot.helixaGithubVerifiedAt && (
                 <Badge variant="secondary" className="text-[10px]">GitHub verified</Badge>
               )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-[10px]"
+                disabled={!canRemint}
+                onClick={() => {
+                  if (window.confirm(`Force re-mint ${bot.botName}? This will clear the existing Helixa identity and spend ~1 USDC to mint a new one.`)) {
+                    forceRemintMutation.mutate();
+                  }
+                }}
+                data-testid={`button-force-remint-helixa-${bot.id}`}
+              >
+                {forceRemintMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" /> Re-minting
+                  </>
+                ) : (
+                  "Force re-mint"
+                )}
+              </Button>
             </div>
           </div>
         ) : (

@@ -429,7 +429,7 @@ async function mintHelixaAgentInner(
   try {
     await client.query("BEGIN");
     const { rows: lockRows } = await client.query(
-      `SELECT bot_name, personality, website_url, user_id,
+      `SELECT bot_name, personality, website_url,
               helixa_agent_id, helixa_minted_at, helixa_tx_hash, helixa_base_token_id, helixa_profile_url
        FROM bot_configs WHERE id = $1 FOR UPDATE`,
       [botId],
@@ -492,33 +492,6 @@ async function mintHelixaAgentInner(
     log(
       `mint committed botId=${botId} agentId=${agentId} tokenId=${baseTokenId ?? "?"} tx=${mintTx ?? "?"}`,
     );
-    // Fire side effects HERE (inside the leader's inner execution) so they
-    // run exactly once per fresh mint. Followers blocked on mintInflight
-    // will receive the same HelixaMintResult but will not re-fire link
-    // token / verify calls. Side effects are fire-and-forget — failures are
-    // logged inside fireMintSideEffects and do not roll back the mint.
-    const ownerUserId: string | null = row.user_id ?? null;
-    let xHandle: string | null = null;
-    let githubHandle: string | null = null;
-    if (ownerUserId) {
-      try {
-        const { rows: handleRows } = await pool.query<{
-          x_handle: string | null;
-          github_handle: string | null;
-        }>(
-          `SELECT x_handle, github_handle FROM users WHERE id = $1`,
-          [ownerUserId],
-        );
-        if (handleRows[0]) {
-          xHandle = handleRows[0].x_handle ?? null;
-          githubHandle = handleRows[0].github_handle ?? null;
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        log(`handle lookup failed for botId=${botId}: ${msg}`);
-      }
-    }
-    fireMintSideEffects({ agentId, xHandle, githubHandle });
     return { agentId, txHash: mintTx, baseTokenId, alreadyMinted: false };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});

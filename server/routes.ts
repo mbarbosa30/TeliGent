@@ -1367,13 +1367,47 @@ export async function registerRoutes(
         // identity-issuance action and rides on the same ERC-8004 entitlement.
         requirePermission(owner, "allowErc8004");
         const botId = parseInt(req.params.botId as string);
-        const { mintHelixaAgent, HELIXA_BASESCAN_TX_BASE } = await import(
+        const { mintHelixaAgent, fireMintSideEffects, HELIXA_BASESCAN_TX_BASE } = await import(
           "./agent/helixa-mint"
         );
-        // Side effects (link $TELI, verify X / GitHub) fire inside
-        // mintHelixaAgent on a fresh mint, exactly once per leader. The
-        // already-minted idempotent return path correctly skips them.
         const result = await mintHelixaAgent(botId);
+        // Non-blocking side effects: always link $TELI token; X/GitHub
+        // verifications fire only when the owner has filled in the
+        // corresponding handle on their account profile (additive columns
+        // x_handle / github_handle on users, see ensureBillingSchema).
+        const ownerId: string | null = owner?.id ?? null;
+        let xHandle: string | null = null;
+        let githubHandle: string | null = null;
+        if (ownerId) {
+          try {
+            const { pool } = await import("./db");
+            const handleRowSchema = z.object({
+              x_handle: z.string().nullable().optional(),
+              github_handle: z.string().nullable().optional(),
+            });
+            const { rows } = await pool.query<{ x_handle: string | null; github_handle: string | null }>(
+              `SELECT x_handle, github_handle FROM users WHERE id = $1`,
+              [ownerId],
+            );
+            const parsed = handleRowSchema.safeParse(rows[0]);
+            if (parsed.success) {
+              xHandle = parsed.data.x_handle ?? null;
+              githubHandle = parsed.data.github_handle ?? null;
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error(`[helixa-mint] handle lookup failed: ${msg}`);
+          }
+        }
+        // Only fire post-mint side effects on a fresh mint. The idempotent
+        // "already minted" path returned the existing record without making
+        // any API call or on-chain payment, and the side effects (link-token,
+        // verify X / GitHub) already ran the first time around. Re-firing
+        // them on every duplicate POST would hammer Helixa's verify endpoints
+        // and inflate $TELI link-token noise.
+        if (!result.alreadyMinted) {
+          fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
+        }
         res.json({
           success: true,
           alreadyMinted: result.alreadyMinted,
@@ -1463,13 +1497,42 @@ export async function registerRoutes(
       if (Number.isNaN(botId)) {
         return res.status(400).json({ error: "Invalid bot id" });
       }
-      const { mintHelixaAgent, HELIXA_BASESCAN_TX_BASE } = await import(
+      const { mintHelixaAgent, fireMintSideEffects, HELIXA_BASESCAN_TX_BASE } = await import(
         "./agent/helixa-mint"
       );
-      // mintHelixaAgent fires link-token / X / GitHub side effects internally
-      // on a fresh mint (exactly once per leader), so this route does not
-      // need to look up handles or call fireMintSideEffects itself.
       const result = await mintHelixaAgent(botId);
+      // Look up bot owner social handles so the post-mint side effects can
+      // fire X / GitHub verifications when the owner has set a handle.
+      let xHandle: string | null = null;
+      let githubHandle: string | null = null;
+      try {
+        const { pool } = await import("./db");
+        const handleRowSchema = z.object({
+          x_handle: z.string().nullable().optional(),
+          github_handle: z.string().nullable().optional(),
+        });
+        const { rows } = await pool.query<{ x_handle: string | null; github_handle: string | null }>(
+          `SELECT u.x_handle, u.github_handle
+             FROM bot_configs b
+             JOIN users u ON u.id = b.user_id
+            WHERE b.id = $1`,
+          [botId],
+        );
+        const parsed = handleRowSchema.safeParse(rows[0]);
+        if (parsed.success) {
+          xHandle = parsed.data.x_handle ?? null;
+          githubHandle = parsed.data.github_handle ?? null;
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[helixa-mint] admin mint handle lookup failed: ${msg}`);
+      }
+      // Same idempotency guard as the user-facing route: only fire side
+      // effects on a fresh mint so duplicate admin clicks don't re-hammer
+      // Helixa's link-token / verify endpoints.
+      if (!result.alreadyMinted) {
+        fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
+      }
       res.json({
         success: true,
         alreadyMinted: result.alreadyMinted,
