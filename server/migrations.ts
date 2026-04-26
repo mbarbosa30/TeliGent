@@ -18,6 +18,7 @@ export async function runMigrations() {
     await ensureWidgetTables(client);
     await ensureAgentServiceLogsTable(client);
     await ensureCeloColumns(client);
+    await ensureHelixaColumns(client);
     await ensureBankrColumns(client);
     await ensureRewardsColumns(client);
     await ensureRewardsTables(client);
