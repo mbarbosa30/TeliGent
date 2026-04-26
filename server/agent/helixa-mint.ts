@@ -49,6 +49,11 @@ export type HelixaMintResult = {
   agentId: string;
   txHash: string | null;
   baseTokenId: string | null;
+  // True when the bot was already minted and we returned the existing record
+  // without making any API calls or on-chain payments. Callers should NOT
+  // re-fire post-mint side effects (linkTeliTokenForAgent / verify*) on this
+  // path, because they already ran the first time the bot was minted.
+  alreadyMinted: boolean;
 };
 
 // --- Bot config -> mint payload ----------------------------------------------
@@ -440,11 +445,14 @@ async function mintHelixaAgentInner(
 
     if (row.helixa_agent_id && !opts?.force) {
       await client.query("ROLLBACK");
-      // Idempotent return — caller treats this as already-minted.
+      // Idempotent return — caller treats this as already-minted and MUST
+      // skip side effects (linkTeliTokenForAgent / verify*) to avoid hitting
+      // those endpoints repeatedly on every duplicate register POST.
       return {
         agentId: String(row.helixa_agent_id),
         txHash: row.helixa_tx_hash || null,
         baseTokenId: row.helixa_base_token_id || null,
+        alreadyMinted: true,
       };
     }
     if (row.helixa_agent_id && opts?.force) {
@@ -485,7 +493,7 @@ async function mintHelixaAgentInner(
     log(
       `mint committed botId=${botId} agentId=${agentId} tokenId=${baseTokenId ?? "?"} tx=${mintTx ?? "?"}`,
     );
-    return { agentId, txHash: mintTx, baseTokenId };
+    return { agentId, txHash: mintTx, baseTokenId, alreadyMinted: false };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;

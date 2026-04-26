@@ -1336,9 +1336,18 @@ export async function registerRoutes(
             console.error(`[helixa-mint] handle lookup failed: ${msg}`);
           }
         }
-        fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
+        // Only fire post-mint side effects on a fresh mint. The idempotent
+        // "already minted" path returned the existing record without making
+        // any API call or on-chain payment, and the side effects (link-token,
+        // verify X / GitHub) already ran the first time around. Re-firing
+        // them on every duplicate POST would hammer Helixa's verify endpoints
+        // and inflate $TELI link-token noise.
+        if (!result.alreadyMinted) {
+          fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
+        }
         res.json({
           success: true,
+          alreadyMinted: result.alreadyMinted,
           agentId: result.agentId,
           txHash: result.txHash,
           baseTokenId: result.baseTokenId,
@@ -1470,9 +1479,18 @@ export async function registerRoutes(
         const msg = e instanceof Error ? e.message : String(e);
         console.error(`[helixa-mint] admin force-remint handle lookup failed: ${msg}`);
       }
-      fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
+      // Defensive guard for symmetry with the user-facing register route. In
+      // practice force-remint always runs a fresh mint (alreadyMinted=false),
+      // because { force: true } takes the clear-then-mint branch above the
+      // idempotent return. We still skip side effects on the unlikely
+      // alreadyMinted=true path so duplicate admin clicks don't re-fire
+      // verify/link calls if the contract changes in future.
+      if (!result.alreadyMinted) {
+        fireMintSideEffects({ agentId: result.agentId, xHandle, githubHandle });
+      }
       res.json({
         forced: true,
+        alreadyMinted: result.alreadyMinted,
         agentId: result.agentId,
         txHash: result.txHash,
         baseTokenId: result.baseTokenId,
