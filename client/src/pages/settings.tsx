@@ -258,7 +258,7 @@ export default function SettingsPage() {
   });
 
   const { data: helixaStatus } = useQuery<{
-    configured: boolean;
+    minted: boolean;
     agentId: string | null;
     credScore: number | null;
     credTier: string | null;
@@ -1000,7 +1000,7 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {helixaStatus?.configured ? (
+                {helixaStatus?.minted ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-600" />
@@ -1055,11 +1055,22 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      This bot is not linked to a Helixa agent yet. Per-bot minting from the dashboard is coming soon. In the meantime, an admin can attach an existing Helixa agent ID to surface its onchain Cred Score here.
+                    <p className="text-sm font-medium" data-testid="text-helixa-not-minted">
+                      Not minted — available in next release.
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Helixa agents are minted on Base and cross-registered on the canonical ERC-8004 registry, so a Cred Score is portable across any 8004-compatible app.
+                      Per-bot minting from the dashboard is coming soon. In the meantime, an admin can attach an existing Helixa agent ID to surface its onchain Cred Score here. Learn more at{" "}
+                      <a
+                        href="https://helixa.xyz"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline inline-flex items-center gap-1"
+                        data-testid="link-helixa-home"
+                      >
+                        helixa.xyz
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                      .
                     </p>
                   </div>
                 )}
