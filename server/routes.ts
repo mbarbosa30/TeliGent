@@ -1191,22 +1191,32 @@ export async function registerRoutes(
         });
       }
       const { getAgentCred, buildHelixaProfileUrl } = await import("./agent/helixa");
-      const fresh = await getAgentCred(agentId);
       let credScore: number | null = row.helixa_cred_score;
       let credTier: string | null = row.helixa_cred_tier;
       let syncedAt: Date | null = row.helixa_synced_at;
       const profileUrl: string = row.helixa_profile_url || buildHelixaProfileUrl(agentId);
 
-      if (fresh) {
-        credScore = fresh.score;
-        credTier = fresh.tier;
-        syncedAt = new Date();
-        await pool.query(
-          `UPDATE bot_configs
-           SET helixa_cred_score = $1, helixa_cred_tier = $2, helixa_profile_url = $3, helixa_synced_at = $4
-           WHERE id = $5`,
-          [credScore, credTier, profileUrl, syncedAt, botId]
-        );
+      // Serve cached fields by default. Only hit the Helixa API if our
+      // cache is stale (>5 minutes old) or empty. This keeps the route
+      // fast and resilient when Helixa is degraded — the 6h background
+      // sync also keeps these fields warm.
+      const STATUS_STALE_MS = 5 * 60 * 1000;
+      const isStale = !syncedAt || Date.now() - new Date(syncedAt).getTime() > STATUS_STALE_MS;
+      let liveRefreshed = false;
+      if (isStale) {
+        const fresh = await getAgentCred(agentId);
+        if (fresh) {
+          credScore = fresh.score;
+          credTier = fresh.tier;
+          syncedAt = new Date();
+          liveRefreshed = true;
+          await pool.query(
+            `UPDATE bot_configs
+             SET helixa_cred_score = $1, helixa_cred_tier = $2, helixa_profile_url = $3, helixa_synced_at = $4
+             WHERE id = $5`,
+            [credScore, credTier, profileUrl, syncedAt, botId]
+          );
+        }
       }
       res.json({
         minted: true,
@@ -1215,7 +1225,7 @@ export async function registerRoutes(
         credTier,
         profileUrl,
         syncedAt: syncedAt ? syncedAt.toISOString() : null,
-        live: !!fresh,
+        live: liveRefreshed,
       });
     } catch (err: any) {
       res.status(err?.status || 500).json({ error: err.message });
