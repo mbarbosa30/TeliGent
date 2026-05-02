@@ -76,8 +76,11 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
   if (groupsForBot.length === 0) return { generated: false, posted: false, reason: "no groups" };
 
   const patterns = await storage.getCollectivePatterns(config.id);
+  const PATTERN_COLD_MS = 30 * 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
   const open = patterns
     .filter(p => p.kind === "question" || p.kind === "pitfall" || p.kind === "topic")
+    .filter(p => !p.lastSeenAt || nowMs - new Date(p.lastSeenAt).getTime() < PATTERN_COLD_MS)
     .sort((a, b) => (b.mentionCount * 2 + b.uniqueUsers * 3) - (a.mentionCount * 2 + a.uniqueUsers * 3))
     .slice(0, 10);
 

@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, pool } from "./db";
 import { botConfigs, knowledgeBase, groups, activityLogs, users, reportedScamPatterns, scamAllowlist, botMemories, widgetConversations, widgetMessages, agentServiceLogs, userMemories, collectivePatterns, dataCorrelations, wisdomSnapshots, calibrationLogs, memberWallets, contributionScores, rewardDistributions, rewardPayouts, proactivePrompts, referrals, feedbackItems, planPaymentIntents, planPeriods, platformSettings, aiUsageDaily } from "@shared/schema";
 import type { BotConfig, InsertBotConfig, KnowledgeBaseEntry, InsertKnowledgeBaseEntry, Group, InsertGroup, ActivityLog, InsertActivityLog, User, ReportedScamPattern, ScamAllowlistEntry, BotMemory, InsertBotMemory, WidgetConversation, WidgetMessage, AgentServiceLog, InsertAgentServiceLog, UserMemory, InsertUserMemory, CollectivePattern, InsertCollectivePattern, DataCorrelation, WisdomSnapshot, MemberWallet, ContributionScore, InsertContributionScore, RewardDistribution, InsertRewardDistribution, RewardPayout, InsertRewardPayout, ProactivePrompt, InsertProactivePrompt, Referral, InsertReferral, FeedbackItem, InsertFeedbackItem, PlanPaymentIntent, InsertPlanPaymentIntent, PlanPeriod, InsertPlanPeriod, PlatformSetting } from "@shared/schema";
 import { eq, desc, and, sql, count, inArray } from "drizzle-orm";
@@ -51,6 +51,11 @@ export interface IStorage {
   getBotMemories(botConfigId: number): Promise<BotMemory[]>;
   createBotMemory(botConfigId: number, data: Omit<InsertBotMemory, "botConfigId">): Promise<BotMemory>;
   deleteBotMemory(botConfigId: number, id: number): Promise<void>;
+  pinKnowledgeEntry(botConfigId: number, id: number, pinned: boolean): Promise<KnowledgeBaseEntry | undefined>;
+  renewKnowledgeEntry(botConfigId: number, id: number, days: number): Promise<KnowledgeBaseEntry | undefined>;
+  supersedeMatchingLearnedEntries(botConfigId: number, title: string): Promise<number>;
+  sweepExpiredKnowledge(): Promise<number>;
+  sweepExpiredBotMemories(): Promise<number>;
   countBotMemories(botConfigId: number): Promise<number>;
 
   getBotByWidgetKey(widgetKey: string): Promise<BotConfig | undefined>;
@@ -340,6 +345,56 @@ export class DatabaseStorage implements IStorage {
   async createBotMemory(botConfigId: number, data: Omit<InsertBotMemory, "botConfigId">): Promise<BotMemory> {
     const [created] = await db.insert(botMemories).values({ ...data, botConfigId }).returning();
     return created;
+  }
+
+  async pinKnowledgeEntry(botConfigId: number, id: number, pinned: boolean): Promise<KnowledgeBaseEntry | undefined> {
+    const [updated] = await db.update(knowledgeBase)
+      .set({ pinned, isActive: pinned ? true : undefined })
+      .where(and(eq(knowledgeBase.id, id), eq(knowledgeBase.botConfigId, botConfigId)))
+      .returning();
+    return updated;
+  }
+
+  async renewKnowledgeEntry(botConfigId: number, id: number, days: number): Promise<KnowledgeBaseEntry | undefined> {
+    const ms = Math.max(1, days) * 24 * 60 * 60 * 1000;
+    const newExpiry = new Date(Date.now() + ms);
+    const [updated] = await db.update(knowledgeBase)
+      .set({ expiresAt: newExpiry, isActive: true })
+      .where(and(eq(knowledgeBase.id, id), eq(knowledgeBase.botConfigId, botConfigId)))
+      .returning();
+    return updated;
+  }
+
+  async supersedeMatchingLearnedEntries(botConfigId: number, title: string): Promise<number> {
+    const cleaned = title.trim().toLowerCase();
+    if (!cleaned) return 0;
+    const { rowCount } = await pool.query(
+      `UPDATE knowledge_base SET is_active = false
+       WHERE bot_config_id = $1
+         AND pinned = false
+         AND is_official = false
+         AND lower(title) = $2`,
+      [botConfigId, cleaned],
+    );
+    return rowCount ?? 0;
+  }
+
+  async sweepExpiredKnowledge(): Promise<number> {
+    const { rowCount } = await pool.query(
+      `UPDATE knowledge_base SET is_active = false
+       WHERE is_active = true
+         AND pinned = false
+         AND expires_at IS NOT NULL
+         AND expires_at < NOW()`,
+    );
+    return rowCount ?? 0;
+  }
+
+  async sweepExpiredBotMemories(): Promise<number> {
+    const { rowCount } = await pool.query(
+      `DELETE FROM bot_memories WHERE expires_at IS NOT NULL AND expires_at < NOW()`,
+    );
+    return rowCount ?? 0;
   }
 
   async deleteBotMemory(botConfigId: number, id: number): Promise<void> {

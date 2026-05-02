@@ -28,6 +28,8 @@ export async function runMigrations() {
     await ensureWidgetAllowedOriginsColumn(client);
     await ensureAiUsageDailyTable(client);
     await ensureBillingSchema(client);
+    await ensureKnowledgeTemporalColumns(client);
+    await ensureBotMemoryExpiryColumn(client);
 
     const hasBotConfigIdOnKB = await columnExists(client, "knowledge_base", "bot_config_id");
     const hasBotConfigIdOnGroups = await columnExists(client, "groups", "bot_config_id");
@@ -368,6 +370,41 @@ async function ensureHelixaColumns(client: any) {
   if (!(await columnExists(client, "bot_configs", "helixa_github_verified_at"))) {
     await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_github_verified_at TIMESTAMP`);
     log("Added helixa_github_verified_at to bot_configs");
+  }
+}
+
+async function ensureKnowledgeTemporalColumns(client: any) {
+  if (!(await columnExists(client, "knowledge_base", "event_date"))) {
+    await client.query(`ALTER TABLE knowledge_base ADD COLUMN event_date DATE`);
+    log("Added event_date to knowledge_base");
+  }
+  if (!(await columnExists(client, "knowledge_base", "expires_at"))) {
+    await client.query(`ALTER TABLE knowledge_base ADD COLUMN expires_at TIMESTAMP`);
+    log("Added expires_at to knowledge_base");
+  }
+  if (!(await columnExists(client, "knowledge_base", "time_sensitive"))) {
+    await client.query(`ALTER TABLE knowledge_base ADD COLUMN time_sensitive BOOLEAN NOT NULL DEFAULT false`);
+    log("Added time_sensitive to knowledge_base");
+  }
+  if (!(await columnExists(client, "knowledge_base", "pinned"))) {
+    await client.query(`ALTER TABLE knowledge_base ADD COLUMN pinned BOOLEAN NOT NULL DEFAULT false`);
+    log("Added pinned to knowledge_base");
+  }
+  if (!(await columnExists(client, "knowledge_base", "is_official"))) {
+    await client.query(`ALTER TABLE knowledge_base ADD COLUMN is_official BOOLEAN NOT NULL DEFAULT false`);
+    log("Added is_official to knowledge_base");
+  }
+  try {
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_knowledge_base_expires ON knowledge_base (bot_config_id, expires_at) WHERE expires_at IS NOT NULL`);
+  } catch (err: any) {
+    log(`knowledge_base expires index: ${err.message}`);
+  }
+}
+
+async function ensureBotMemoryExpiryColumn(client: any) {
+  if (!(await columnExists(client, "bot_memories", "expires_at"))) {
+    await client.query(`ALTER TABLE bot_memories ADD COLUMN expires_at TIMESTAMP`);
+    log("Added expires_at to bot_memories");
   }
 }
 

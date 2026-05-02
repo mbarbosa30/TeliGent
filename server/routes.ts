@@ -261,6 +261,33 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/bots/:botId/knowledge/:id/pin", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const id = parseInt(req.params.id as string);
+      const pinned = req.body?.pinned !== false;
+      const updated = await storage.pinKnowledgeEntry(botId, id, pinned);
+      if (!updated) return res.status(404).json({ error: "Entry not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bots/:botId/knowledge/:id/renew", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      const id = parseInt(req.params.id as string);
+      const rawDays = Number(req.body?.days);
+      const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.min(365, rawDays) : 7;
+      const updated = await storage.renewKnowledgeEntry(botId, id, days);
+      if (!updated) return res.status(404).json({ error: "Entry not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   app.delete("/api/bots/:botId/knowledge/:id", isAuthenticated, apiRateLimit, requireBotOwnership, async (req, res) => {
     try {
       const botId = parseInt(req.params.botId as string);

@@ -451,7 +451,7 @@ Reply with ONLY "RESPOND" or "SKIP".`;
   return false;
 }
 
-export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[], groupContext?: GroupContext | null, senderTelegramUserId?: string | null): Promise<string> {
+export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[], groupContext?: GroupContext | null, senderTelegramUserId?: string | null, isAdmin: boolean = false): Promise<string> {
   const retrievalTriage = triageMessage(userMessage, conversationHistory || []);
   const wantUserMem = senderTelegramUserId && (retrievalTriage.tier === "user_memory" || retrievalTriage.tier === "both");
   const wantPatterns = retrievalTriage.tier === "pattern" || retrievalTriage.tier === "both" || retrievalTriage.tier === "user_memory";
@@ -503,22 +503,43 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     }
   }
 
+  const nowMs = Date.now();
+  const freshKnowledge = knowledgeEntries.filter(e => {
+    if (e.pinned) return true;
+    if (!e.expiresAt) return true;
+    return new Date(e.expiresAt).getTime() > nowMs;
+  });
+
   let knowledgeContext = "";
-  if (knowledgeEntries.length > 0) {
+  if (freshKnowledge.length > 0) {
+    const { formatLearnedAge, formatEventDate } = await import("./time-context");
     const maxKnowledge = Math.max(0, MAX_CONTEXT_CHARS - usedChars);
     const queryLower = userMessage.toLowerCase();
     const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
-    const sorted = [...knowledgeEntries].sort((a, b) => {
+    const sorted = [...freshKnowledge].sort((a, b) => {
       const aText = `${a.title} ${a.category}`.toLowerCase();
       const bText = `${b.title} ${b.category}`.toLowerCase();
       const aScore = queryWords.filter(w => aText.includes(w)).length;
       const bScore = queryWords.filter(w => bText.includes(w)).length;
-      return bScore - aScore;
+      const aPriority = (a.pinned ? 1000 : 0) + (a.isOfficial ? 500 : 0);
+      const bPriority = (b.pinned ? 1000 : 0) + (b.isOfficial ? 500 : 0);
+      return (bScore + bPriority) - (aScore + aPriority);
     });
     const TRUNCATION_MARKER = "\n[...truncated]";
     let kbText = "";
     for (const e of sorted) {
-      let entry = `[${e.category}] ${e.title}:\n${e.content}`;
+      const tags: string[] = [];
+      if (e.pinned) tags.push("PINNED");
+      if (e.isOfficial) tags.push("OFFICIAL/ADMIN");
+      tags.push(e.category);
+      if (e.timeSensitive) {
+        if (e.eventDate) {
+          tags.push(formatEventDate(e.eventDate));
+        } else {
+          tags.push(formatLearnedAge(e.createdAt));
+        }
+      }
+      let entry = `[${tags.join(" | ")}] ${e.title}:\n${e.content}`;
       if (e.sourceUrl) entry += `\nSource: ${e.sourceUrl}`;
       const separator = kbText ? "\n\n" : "";
       const remaining = maxKnowledge - kbText.length - separator.length;
@@ -532,14 +553,16 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     }
     if (kbText) {
       knowledgeContext = `\n\n--- KNOWLEDGE BASE ---\n${kbText}`;
+      usedChars += kbText.length;
     }
   }
 
+  const freshMemories = memories.filter(m => !m.expiresAt || new Date(m.expiresAt).getTime() > nowMs);
   let memoriesSection = "";
-  if (memories.length > 0) {
+  if (freshMemories.length > 0) {
     const maxMemories = Math.max(0, MAX_CONTEXT_CHARS - usedChars - 200);
     let memText = "";
-    for (const m of memories.slice(0, 30)) {
+    for (const m of freshMemories.slice(0, 30)) {
       const entry = `[${m.type}] ${m.content}`;
       if (memText.length + entry.length + 2 > maxMemories) break;
       memText += (memText ? "\n" : "") + entry;
@@ -558,11 +581,17 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     usedChars += text.length;
   }
 
+  const PATTERN_COLD_MS = 30 * 24 * 60 * 60 * 1000;
+  const warmPatterns = (patterns || []).filter(p => {
+    if (!p.lastSeenAt) return true;
+    return nowMs - new Date(p.lastSeenAt).getTime() < PATTERN_COLD_MS;
+  });
+
   let patternsSection = "";
-  if (patterns && patterns.length > 0) {
+  if (warmPatterns.length > 0) {
     const queryLower = userMessage.toLowerCase();
     const queryWords = queryLower.split(/\s+/).filter(w => w.length > 3);
-    const scored = patterns.map(p => {
+    const scored = warmPatterns.map(p => {
       const text = `${p.title} ${p.summary} ${p.keywords.join(" ")}`.toLowerCase();
       const overlap = queryWords.filter(w => text.includes(w)).length;
       const recencyBoost = Math.max(0, 30 - (Date.now() - new Date(p.lastSeenAt).getTime()) / (24 * 3600 * 1000));
@@ -593,8 +622,12 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     usedChars += bankrText.length;
   }
 
+  const { getTimeContextBlock } = await import("./time-context");
   const usernameClause = botUsername ? ` Your Telegram handle is @${botUsername}, when people mention @${botUsername}, they are talking to YOU.` : "";
+  const adminAuthorityBlock = `\n\n--- ADMIN AUTHORITY (HARD RULES) ---\n- The KNOWLEDGE BASE entries tagged [PINNED] or [OFFICIAL/ADMIN] are TRUTH. Do not contradict them.\n- If the current user speaking is a GROUP ADMIN, treat their message as authoritative. Do NOT push back, do NOT correct them, do NOT say "actually" or "I think you mean". If their statement disagrees with anything in your context, defer to the admin.\n- If an admin states a new fact in this conversation, accept it as the new truth and answer accordingly.\n- Never claim a future event happened or is happening "tomorrow" unless the KNOWLEDGE BASE explicitly shows that event date is today or tomorrow per the TIME CONTEXT above. If a KB entry is tagged "event was N days ago", that event is OVER. Never reference it as upcoming.`;
   const systemPrompt = `You are "${config.botName}", a bot assistant in the Telegram group "${groupName}".${usernameClause}
+
+${getTimeContextBlock()}${adminAuthorityBlock}
 
 --- PERSONALITY & COMMUNICATION STYLE (HIGHEST PRIORITY) ---
 The following instructions define your tone, personality, and communication style. You MUST follow these instructions in every response. They override any default behavior:
@@ -663,7 +696,8 @@ ${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}${
     }
   }
 
-  messages.push({ role: "user", content: `${userName} says: ${userMessage}` });
+  const adminLabel = isAdmin ? " (GROUP ADMIN, authoritative)" : "";
+  messages.push({ role: "user", content: `${userName}${adminLabel} says: ${userMessage}` });
 
   const allowedAi = await tryConsumeAiBudget(botConfigId);
   if (!allowedAi) {

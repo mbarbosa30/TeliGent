@@ -586,11 +586,19 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       timestamp: Date.now(),
     });
 
-    maybeLearnFromMessage(botConfigId, userId, messageText, userName).catch(err =>
+    const tgUserId = msg.from?.id?.toString() || "unknown";
+
+    let isAdmin = false;
+    try {
+      const { isUserGroupAdmin } = await import("./admin-cache");
+      isAdmin = await isUserGroupAdmin(bot, botConfigId, chatId, tgUserId);
+    } catch (err: any) {
+      log(`Admin lookup error: ${err.message}`, "telegram");
+    }
+
+    maybeLearnFromMessage(botConfigId, userId, messageText, userName, isAdmin).catch(err =>
       log(`Learning error: ${err.message}`, "telegram")
     );
-
-    const tgUserId = msg.from?.id?.toString() || "unknown";
     const isReport = checkIfReport(messageText, config);
     if (isReport && config.trackReports) {
       await storage.createActivityLog(botConfigId, userId, {
@@ -660,11 +668,11 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       }
 
       const groupContext = await fetchGroupContext(instance, chatId, msg.chat.id);
-      let response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory, groupContext, tgUserId);
+      let response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, conversationHistory, groupContext, tgUserId, isAdmin);
 
       if (!response || !response.trim()) {
         log(`AI returned empty response for ${userName}, retrying once...`, "telegram");
-        response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, undefined, groupContext, tgUserId);
+        response = await generateAIResponse(botConfigId, messageText, userName, config, groupRecord?.name || "Unknown", instance.botUsername, replyContext, replyIsFromBot, undefined, groupContext, tgUserId, isAdmin);
       }
 
       log(`AI response for ${userName}: "${(response || "").substring(0, 60)}..."`, "telegram");
@@ -696,13 +704,13 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
         });
 
         const updatedHistory = getRecentMessages(botConfigId, chatId, 20);
-        maybeCalibrate(botConfigId, tgUserId, userName, messageText, updatedHistory, config.botName, responseLog.id).catch(err =>
+        maybeCalibrate(botConfigId, tgUserId, userName, messageText, updatedHistory, config.botName, responseLog.id, { isAdmin }).catch(err =>
           log(`Calibration error: ${err.message}`, "telegram")
         );
 
         maybeSnapshotWisdom(botConfigId).catch(() => {});
 
-        maybeExtractInsight(botConfigId, messageText, response, userName, conversationHistory, config.botName).catch(err =>
+        maybeExtractInsight(botConfigId, messageText, response, userName, conversationHistory, config.botName, { isAdmin }).catch(err =>
           log(`Insight extraction error: ${err.message}`, "telegram")
         );
       } else if (response && response.trim() === "[[SKIP]]") {

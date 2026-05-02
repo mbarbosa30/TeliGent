@@ -112,6 +112,23 @@ app.use((req, res, next) => {
   runLogCleanup();
   setInterval(runLogCleanup, LOG_CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000);
 
+  const KNOWLEDGE_SWEEP_MIN = 30;
+  const runKnowledgeSweep = async () => {
+    try {
+      const [kb, mem] = await Promise.all([
+        storage.sweepExpiredKnowledge(),
+        storage.sweepExpiredBotMemories(),
+      ]);
+      if (kb > 0 || mem > 0) {
+        log(`Temporal sweep: knowledge_disabled=${kb} memories_deleted=${mem}`, "memory");
+      }
+    } catch (err: any) {
+      log(`Temporal sweep error: ${err.message}`, "memory");
+    }
+  };
+  runKnowledgeSweep();
+  setInterval(runKnowledgeSweep, KNOWLEDGE_SWEEP_MIN * 60 * 1000);
+
   const SCHEDULER_INTERVAL_MIN = parseInt(process.env.REWARDS_SCHEDULER_MIN || "15", 10);
   let schedulerRunning = false;
   const rewardsLocks = new Set<number>();

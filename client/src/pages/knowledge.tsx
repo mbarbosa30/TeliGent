@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,9 +33,15 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useBot } from "@/hooks/use-bot";
-import { Plus, BookOpen, Link as LinkIcon, Trash2, Search, ExternalLink, Pencil, FileText, Bot } from "lucide-react";
+import { Plus, BookOpen, Trash2, Search, ExternalLink, Pencil, FileText, Bot, Pin, PinOff, RefreshCw, ShieldCheck, Clock } from "lucide-react";
 import type { KnowledgeBaseEntry } from "@shared/schema";
 import { format } from "date-fns";
+
+function isExpired(entry: KnowledgeBaseEntry): boolean {
+  if (entry.pinned) return false;
+  if (!entry.expiresAt) return false;
+  return new Date(entry.expiresAt).getTime() < Date.now();
+}
 
 function AddKnowledgeDialog({ botId, editEntry, onClose }: { botId: number; editEntry?: KnowledgeBaseEntry | null; onClose?: () => void }) {
   const [title, setTitle] = useState(editEntry?.title || "");
@@ -160,7 +166,7 @@ function PasteContentDialog({ botId }: { botId: number }) {
         <DialogHeader>
           <DialogTitle>Paste Content</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">Paste a large block of text — like documentation, descriptions, or FAQs — and it will be saved as a knowledge base entry the bot can reference.</p>
+        <p className="text-sm text-muted-foreground">Paste a large block of text and it will be saved as a knowledge base entry the bot can reference.</p>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label htmlFor="paste-title">Title</Label>
@@ -228,6 +234,24 @@ export default function KnowledgeBase() {
     },
   });
 
+  const pinMutation = useMutation({
+    mutationFn: ({ id, pinned }: { id: number; pinned: boolean }) =>
+      apiRequest("POST", `/api/bots/${selectedBotId}/knowledge/${id}/pin`, { pinned }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "knowledge"] });
+      toast({ title: vars.pinned ? "Entry pinned" : "Entry unpinned" });
+    },
+  });
+
+  const renewMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("POST", `/api/bots/${selectedBotId}/knowledge/${id}/renew`, { days: 7 }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId, "knowledge"] });
+      toast({ title: "Renewed for 7 days" });
+    },
+  });
+
   const filtered = entries.filter((e) => {
     const matchSearch = !search || e.title.toLowerCase().includes(search.toLowerCase()) || e.content.toLowerCase().includes(search.toLowerCase());
     const matchCategory = filterCategory === "all" || e.category === filterCategory;
@@ -250,7 +274,7 @@ export default function KnowledgeBase() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Knowledge Base</h1>
-            <p className="text-sm text-muted-foreground mt-1">Content the bot uses to answer questions</p>
+            <p className="text-sm text-muted-foreground mt-1">Content the bot uses to answer questions. Pinned and admin-sourced entries always win over older facts.</p>
           </div>
           <div className="flex gap-2">
             <PasteContentDialog botId={selectedBotId} />
@@ -274,6 +298,8 @@ export default function KnowledgeBase() {
               <SelectItem value="documentation">Documentation</SelectItem>
               <SelectItem value="rules">Rules</SelectItem>
               <SelectItem value="links">Links</SelectItem>
+              <SelectItem value="learned">Auto-learned</SelectItem>
+              <SelectItem value="official">Admin/Official</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -296,68 +322,117 @@ export default function KnowledgeBase() {
           </Card>
         ) : (
           <div className="grid gap-3">
-            {filtered.map((entry) => (
-              <Card key={entry.id} className={!entry.isActive ? "opacity-60" : ""} data-testid={`card-knowledge-${entry.id}`}>
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <h3 className="text-sm font-semibold">{entry.title}</h3>
-                        <Badge variant="secondary" className="text-xs font-mono">{entry.category}</Badge>
-                        {!entry.isActive && <Badge variant="secondary" className="text-xs">Disabled</Badge>}
+            {filtered.map((entry) => {
+              const expired = isExpired(entry);
+              return (
+                <Card key={entry.id} className={!entry.isActive || expired ? "opacity-60" : ""} data-testid={`card-knowledge-${entry.id}`}>
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <h3 className="text-sm font-semibold">{entry.title}</h3>
+                          <Badge variant="secondary" className="text-xs font-mono">{entry.category}</Badge>
+                          {entry.pinned && (
+                            <Badge variant="default" className="text-xs gap-1" data-testid={`badge-pinned-${entry.id}`}>
+                              <Pin className="h-3 w-3" /> Pinned
+                            </Badge>
+                          )}
+                          {entry.isOfficial && (
+                            <Badge variant="default" className="text-xs gap-1" data-testid={`badge-official-${entry.id}`}>
+                              <ShieldCheck className="h-3 w-3" /> Admin/Official
+                            </Badge>
+                          )}
+                          {entry.timeSensitive && !expired && (
+                            <Badge variant="outline" className="text-xs gap-1">
+                              <Clock className="h-3 w-3" /> Time-sensitive
+                            </Badge>
+                          )}
+                          {expired && (
+                            <Badge variant="destructive" className="text-xs" data-testid={`badge-expired-${entry.id}`}>Expired</Badge>
+                          )}
+                          {!entry.isActive && !expired && <Badge variant="secondary" className="text-xs">Disabled</Badge>}
+                        </div>
+                        <p className="text-sm text-muted-foreground line-clamp-2">{entry.content}</p>
+                        <div className="flex items-center gap-3 mt-2 flex-wrap text-xs text-muted-foreground">
+                          {entry.sourceUrl && (
+                            <a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-foreground underline underline-offset-2">
+                              <ExternalLink className="h-3 w-3" />
+                              Source
+                            </a>
+                          )}
+                          <span>Added {format(new Date(entry.createdAt), "MMM d, yyyy")}</span>
+                          {entry.eventDate && (
+                            <span data-testid={`text-event-date-${entry.id}`}>Event: {format(new Date(entry.eventDate), "MMM d, yyyy")}</span>
+                          )}
+                          {entry.expiresAt && (
+                            <span data-testid={`text-expires-${entry.id}`}>
+                              {expired ? "Expired " : "Expires "}{format(new Date(entry.expiresAt), "MMM d, yyyy")}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">{entry.content}</p>
-                      <div className="flex items-center gap-3 mt-2 flex-wrap">
-                        {entry.sourceUrl && (
-                          <a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-foreground underline underline-offset-2">
-                            <ExternalLink className="h-3 w-3" />
-                            Source
-                          </a>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          Added {format(new Date(entry.createdAt), "MMM d, yyyy")}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Switch
-                        checked={entry.isActive}
-                        onCheckedChange={(checked) => toggleMutation.mutate({ id: entry.id, isActive: checked })}
-                        data-testid={`switch-toggle-${entry.id}`}
-                      />
-                      <Button size="icon" variant="ghost" onClick={() => setEditingEntry(entry)} data-testid={`button-edit-${entry.id}`}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" data-testid={`button-delete-${entry.id}`}>
-                            <Trash2 className="h-4 w-4" />
+                      <div className="flex items-center gap-2 shrink-0">
+                        {expired && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => renewMutation.mutate(entry.id)}
+                            disabled={renewMutation.isPending}
+                            data-testid={`button-renew-${entry.id}`}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Renew 7d
                           </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete "{entry.title}" from the knowledge base. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteMutation.mutate(entry.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              data-testid={`button-confirm-delete-${entry.id}`}
-                            >
-                              {deleteMutation.isPending ? "Deleting..." : "Delete"}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                        )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => pinMutation.mutate({ id: entry.id, pinned: !entry.pinned })}
+                          disabled={pinMutation.isPending}
+                          data-testid={`button-pin-${entry.id}`}
+                          title={entry.pinned ? "Unpin" : "Pin to context"}
+                        >
+                          {entry.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+                        </Button>
+                        <Switch
+                          checked={entry.isActive}
+                          onCheckedChange={(checked) => toggleMutation.mutate({ id: entry.id, isActive: checked })}
+                          data-testid={`switch-toggle-${entry.id}`}
+                        />
+                        <Button size="icon" variant="ghost" onClick={() => setEditingEntry(entry)} data-testid={`button-edit-${entry.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="icon" variant="ghost" data-testid={`button-delete-${entry.id}`}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently delete "{entry.title}" from the knowledge base. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteMutation.mutate(entry.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                data-testid={`button-confirm-delete-${entry.id}`}
+                              >
+                                {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
 

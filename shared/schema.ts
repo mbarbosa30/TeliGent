@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, boolean, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, boolean, timestamp, jsonb, index, uniqueIndex, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -71,6 +71,11 @@ export const knowledgeBase = pgTable("knowledge_base", {
   sourceUrl: text("source_url"),
   category: text("category").notNull().default("general"),
   isActive: boolean("is_active").notNull().default(true),
+  eventDate: date("event_date"),
+  expiresAt: timestamp("expires_at"),
+  timeSensitive: boolean("time_sensitive").notNull().default(false),
+  pinned: boolean("pinned").notNull().default(false),
+  isOfficial: boolean("is_official").notNull().default(false),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
   index("idx_knowledge_base_bot_config_id").on(table.botConfigId),
@@ -139,6 +144,7 @@ export const botMemories = pgTable("bot_memories", {
   content: text("content").notNull(),
   source: text("source").notNull().default("auto"),
   confidence: integer("confidence").notNull().default(70),
+  expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => [
   index("idx_bot_memories_bot_config_id").on(table.botConfigId),

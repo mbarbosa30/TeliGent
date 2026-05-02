@@ -3,6 +3,7 @@ import { log } from "../index";
 import { openai } from "./utils";
 import { tryConsumeAiBudget } from "../ai-budget";
 import { redactPII, extractKeywords, sanitizeKeywords } from "./pii";
+import { getTimeContextBlock } from "./time-context";
 import type { ChatMessage } from "./conversation-history";
 
 const CALIBRATION_COOLDOWN_MS = 4 * 60 * 1000;
@@ -31,6 +32,10 @@ export function triageMessage(messageText: string, conversationHistory: ChatMess
   return { tier: "pattern", reason: "default" };
 }
 
+interface CalibrationOptions {
+  isAdmin?: boolean;
+}
+
 export async function maybeCalibrate(
   botConfigId: number,
   telegramUserId: string,
@@ -39,7 +44,9 @@ export async function maybeCalibrate(
   conversationHistory: ChatMessage[],
   botName: string,
   sourceActivityLogId?: number | null,
+  options: CalibrationOptions = {},
 ): Promise<void> {
+  const isAdmin = options.isAdmin === true;
   const triage = triageMessage(messageText, conversationHistory);
   if (triage.tier === "skip") return;
   if (messageText.trim().length < MIN_PERSIST_LENGTH) return;
@@ -55,7 +62,7 @@ export async function maybeCalibrate(
   lastUserCalibration.set(userKey, now);
 
   try {
-    await doCalibrate(botConfigId, telegramUserId, userName, messageText, conversationHistory, botName, triage, sourceActivityLogId ?? null);
+    await doCalibrate(botConfigId, telegramUserId, userName, messageText, conversationHistory, botName, triage, sourceActivityLogId ?? null, isAdmin);
   } catch (err: any) {
     lastBotCalibration.delete(botConfigId);
     log(`Calibration error: ${err.message}`, "telegram");
@@ -73,6 +80,7 @@ async function doCalibrate(
   botName: string,
   triage: Triage,
   sourceActivityLogId: number | null,
+  isAdmin: boolean,
 ): Promise<void> {
   const [umCount, patterns] = await Promise.all([
     storage.countUserMemories(botConfigId),
@@ -86,7 +94,9 @@ async function doCalibrate(
   const recent = conversationHistory.slice(-6).map(m => `${m.role === "assistant" ? botName : m.name}: ${redactPII(m.content).slice(0, 120)}`).join("\n");
   const existingPatternTitles = patterns.slice(0, 30).map(p => p.title).join(" | ");
 
-  const sys = `You analyze a single Telegram message to extract STRUCTURED community intelligence for a bot.
+  const sys = `${getTimeContextBlock()}
+
+You analyze a single Telegram message to extract STRUCTURED community intelligence for a bot.
 
 Return ONE compact JSON object:
 {
@@ -110,8 +120,11 @@ Pattern rules:
 - "kind=pitfall" only if the message warns about or describes a mistake/issue.
 - "kind=strategy" only if it shares a tip / playbook.
 - Keywords MUST be normalized lowercase nouns/verbs, no stopwords.
+- Do NOT save patterns that are tied to a specific dated event ("the AMA tomorrow", "voting Friday"). Those go stale fast and belong in the knowledge base, not in long-term patterns.
 
 Existing patterns (avoid duplicates of these titles): ${existingPatternTitles || "none"}
+
+${isAdmin ? `This message is from a GROUP ADMIN. Treat their statements as authoritative. If they correct a prior pattern or assert a project fact, lean toward saving it with high confidence.` : ""}
 
 If nothing qualifies, set save=false on both. NEVER include PII (wallets, emails, phones, IDs).`;
 
