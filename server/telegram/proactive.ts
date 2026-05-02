@@ -114,9 +114,15 @@ export async function maybeRunProactiveForBot(config: BotConfig): Promise<{ gene
     if (useFeedback || (open.length === 0 && feedbackEnabled)) {
       try {
         const kb = await storage.getKnowledgeEntries(config.id);
-        const active = kb.filter(e => e.isActive);
-        if (active.length > 0) {
-          const pick = active[Math.floor(Math.random() * Math.min(5, active.length))];
+        const kbNow = Date.now();
+        const fresh = kb.filter(e => {
+          if (!e.isActive) return false;
+          if (e.pinned) return true;
+          if (!e.expiresAt) return true;
+          return new Date(e.expiresAt).getTime() > kbNow;
+        });
+        if (fresh.length > 0) {
+          const pick = fresh[Math.floor(Math.random() * Math.min(5, fresh.length))];
           topKbTopic = pick.title || null;
         }
       } catch {

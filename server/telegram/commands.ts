@@ -532,13 +532,10 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
       if (e.pinned) tags.push("PINNED");
       if (e.isOfficial) tags.push("OFFICIAL/ADMIN");
       tags.push(e.category);
-      if (e.timeSensitive) {
-        if (e.eventDate) {
-          tags.push(formatEventDate(e.eventDate));
-        } else {
-          tags.push(formatLearnedAge(e.createdAt));
-        }
+      if (e.eventDate) {
+        tags.push(formatEventDate(e.eventDate));
       }
+      tags.push(formatLearnedAge(e.createdAt));
       let entry = `[${tags.join(" | ")}] ${e.title}:\n${e.content}`;
       if (e.sourceUrl) entry += `\nSource: ${e.sourceUrl}`;
       const separator = kbText ? "\n\n" : "";
