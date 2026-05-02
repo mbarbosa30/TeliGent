@@ -908,26 +908,87 @@ function BotRow({
               {bot.helixaGithubVerifiedAt && (
                 <Badge variant="secondary" className="text-[10px]">GitHub verified</Badge>
               )}
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 px-2 text-[10px]"
-                disabled={!canRemint}
-                onClick={() => {
-                  if (window.confirm(`Force re-mint ${bot.botName}? This will clear the existing Helixa identity and spend ~1 USDC to mint a new one.`)) {
-                    forceRemintMutation.mutate();
-                  }
-                }}
-                data-testid={`button-force-remint-helixa-${bot.id}`}
-              >
-                {forceRemintMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin mr-1" /> Re-minting
-                  </>
-                ) : (
-                  "Force re-mint"
-                )}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[10px]"
+                    disabled={!canRemint}
+                    data-testid={`button-force-remint-helixa-${bot.id}`}
+                  >
+                    {forceRemintMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" /> Re-minting
+                      </>
+                    ) : (
+                      "Force re-mint"
+                    )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent data-testid={`dialog-force-remint-helixa-${bot.id}`}>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Force re-mint Helixa identity?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will clear the existing Helixa identity and spend ~1 USDC from the platform wallet to create a new permanent on-chain identity on Base. This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="space-y-2 rounded-md border p-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-muted-foreground">Bot</span>
+                      <span className="font-mono text-right truncate" data-testid={`text-force-remint-confirm-bot-${bot.id}`}>
+                        {bot.botName}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-muted-foreground">Owner</span>
+                      <span className="font-mono text-right truncate" data-testid={`text-force-remint-confirm-owner-${bot.id}`}>
+                        {bot.userEmail || "Unknown"}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-muted-foreground">Current agent</span>
+                      <span className="font-mono text-right truncate" data-testid={`text-force-remint-confirm-current-agent-${bot.id}`} title={bot.helixaAgentId ?? ""}>
+                        {bot.helixaAgentId ?? "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-muted-foreground">Cost</span>
+                      <span className="font-mono text-right">~1 USDC</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-muted-foreground">Wallet USDC</span>
+                      <span className="font-mono text-right" data-testid={`text-force-remint-confirm-usdc-${bot.id}`}>
+                        {wallet?.usdc ?? "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-muted-foreground">Wallet status</span>
+                      <span className="font-mono text-right capitalize" data-testid={`text-force-remint-confirm-status-${bot.id}`}>
+                        {wallet?.status ?? "unknown"}
+                      </span>
+                    </div>
+                  </div>
+                  {wallet && wallet.status !== "healthy" && (
+                    <p
+                      className="text-xs text-amber-600 dark:text-amber-500"
+                      data-testid={`text-force-remint-confirm-warning-${bot.id}`}
+                    >
+                      Wallet is not healthy — confirmation is disabled until balance is topped up.
+                    </p>
+                  )}
+                  <AlertDialogFooter>
+                    <AlertDialogCancel data-testid={`button-force-remint-cancel-${bot.id}`}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={wallet?.status !== "healthy" || forceRemintMutation.isPending}
+                      onClick={() => forceRemintMutation.mutate()}
+                      data-testid={`button-force-remint-confirm-${bot.id}`}
+                    >
+                      Spend 1 USDC & re-mint
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         ) : (
