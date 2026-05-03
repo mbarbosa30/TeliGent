@@ -7,7 +7,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Activity, MessageSquare, Shield, Search, UserPlus, LogOut, Bot, ChevronLeft, ChevronRight, UserX } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Activity, MessageSquare, Shield, Search, UserPlus, LogOut, Bot, ChevronLeft, ChevronRight, UserX } from "lucide-react";
 import { useBot } from "@/hooks/use-bot";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
