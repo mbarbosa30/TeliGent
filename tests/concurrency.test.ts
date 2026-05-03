@@ -134,15 +134,27 @@ async function raceGroupCap(): Promise<void> {
     const endCount = Number(readId<CountRow>(after.rows).c);
     const delta = endCount - startCount;
 
-    // Real exclusion test: every fulfilled upsert must correspond to
-    // exactly one new active row, and total active rows never exceed
-    // the count of fulfilled upserts (cap enforcement under contention).
-    assert(delta === fulfilled, `active group delta == fulfilled upserts (delta=${delta}, fulfilled=${fulfilled}, rejected=${rejected})`);
-    assert(delta <= 3, `cap never exceeds attempted upserts (delta=${delta})`);
-    // At least one upsert should have succeeded (otherwise the test
-    // setup is wrong, not a real race outcome). The free plan default
-    // cap allows multiple groups per bot.
-    assert(fulfilled >= 1, `at least one upsert succeeded (fulfilled=${fulfilled})`);
+    // Resolve the actual cap for this bot the same way upsertGroup does.
+    const { getLimitsForBotAsync } = await import("../server/limits");
+    const cap = (await getLimitsForBotAsync(botId)).maxGroupsPerBot;
+    const expectedWinners = Math.min(3, cap);
+    const expectedLosers = 3 - expectedWinners;
+
+    // Real exclusion: with 3 concurrent inserts and a finite cap, the
+    // advisory-lock + recount path must serialize attempts so that
+    // exactly `cap` win and the rest fail with the cap-reached error.
+    assert(delta === fulfilled, `delta == fulfilled (delta=${delta}, fulfilled=${fulfilled})`);
+    assert(delta <= cap, `cap is enforced under contention (delta=${delta}, cap=${cap})`);
+    assert(fulfilled === expectedWinners, `exactly ${expectedWinners} winners (got ${fulfilled})`);
+    assert(rejected === expectedLosers, `exactly ${expectedLosers} cap-rejections (got ${rejected})`);
+    // Every rejection must be the cap error, not some unrelated failure
+    // (e.g. constraint violation) that would mask the real race outcome.
+    for (const r of results) {
+      if (r.status === "rejected") {
+        const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
+        assert(reason.includes("Group cap reached"), `rejection is cap-bound (got: ${reason.slice(0, 60)})`);
+      }
+    }
   } finally {
     await db.execute(sql`DELETE FROM groups WHERE bot_config_id = ${botId}`);
     await cleanup(userId, botId);

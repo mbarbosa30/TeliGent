@@ -214,14 +214,21 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
     log(`Rewards for bot ${config.id}: groups=${distributionIds.length} sent=${totalSent} failed=${totalFailed} skipped=${totalSkipped}`, "rewards");
     return { ok: true, distributionId: distributionIds[0], recipients: totalRecipients };
   } catch (err) {
-    // Uncaught exception inside the heavy loop. Best-effort: finalize any
-    // distributions we created to "failed" so the dashboard never shows a
-    // stuck "pending" row, and re-throw so the caller logs the cause.
+    // Uncaught exception inside the heavy loop. Best-effort: for every
+    // distribution we created, re-derive a determinate status from the
+    // persisted counters via finalizeDistributionFromCounters. That way
+    // earlier groups that already finished cleanly keep their
+    // completed/partial status, and only the truly-stuck row (the one we
+    // were mid-loop on) gets downgraded to failed. We never blanket-mark
+    // everything failed, since that would overwrite already-finalized rows.
     const msg = err instanceof Error ? err.message : String(err);
     log(`[rewards.run] crashed bot=${config.id} err=${msg}`, "rewards");
     for (const id of distributionIds) {
       try {
-        await storage.updateRewardDistribution(id, { status: "failed", completedAt: new Date(), notes: `crashed: ${msg.slice(0, 200)}` });
+        const finalized = await storage.finalizeDistributionFromCounters(id);
+        if (!finalized) {
+          await storage.updateRewardDistribution(id, { status: "failed", completedAt: new Date(), notes: `crashed: ${msg.slice(0, 200)}` });
+        }
       } catch {
         // swallow - already in error path
       }
