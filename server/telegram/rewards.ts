@@ -41,15 +41,17 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
   // Atomically claim this period AFTER validation. The conditional UPDATE
   // serializes the row so concurrent cron + manual triggers cannot both
   // win. The dry-run path skips claiming because no payouts are written.
-  // We capture the previous timestamp so we can revert the claim if we
-  // bail out before persisting a single distribution row.
+  // We capture the EXACT stamped timestamp returned by the claim so a
+  // later revert can match it on equality (NOW() differs from any JS
+  // Date we capture client-side).
   const previousLastAt: Date | null = last;
-  const claimedAt = new Date();
+  let claimedAt: Date | null = null;
   if (!opts.dryRun && !opts.force) {
     const claimed = await storage.tryClaimRewardsDistribution(config.id, period.end);
     if (!claimed) {
       return { ok: false, reason: "another distribution already claimed this period" };
     }
+    claimedAt = claimed.claimedAt;
   }
 
   // Everything below this point may throw. Wrap in try/finally so the
@@ -63,7 +65,7 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
   // persisted under this period stamp and the claim is committed).
   let needsClaimRevert = !opts.dryRun && !opts.force;
   const releaseClaim = async (reason: string) => {
-    if (!needsClaimRevert) return;
+    if (!needsClaimRevert || !claimedAt) return;
     needsClaimRevert = false;
     try {
       const reverted = await storage.revertRewardsClaim(config.id, claimedAt, previousLastAt);

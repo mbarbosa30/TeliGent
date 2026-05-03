@@ -96,7 +96,7 @@ export interface IStorage {
   // Returns false if another caller has already stamped a
   // `reward_last_distribution_at` past the current period end (concurrent
   // cron + manual trigger race).
-  tryClaimRewardsDistribution(botConfigId: number, periodEnd: Date): Promise<boolean>;
+  tryClaimRewardsDistribution(botConfigId: number, periodEnd: Date): Promise<{ claimedAt: Date } | null>;
   // Best-effort clear of the in-progress marker. Always called from a
   // `finally`, never relied on for correctness (the period stamp is the
   // real exclusion mechanism).
@@ -626,7 +626,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async tryClaimRewardsDistribution(botConfigId: number, periodEnd: Date): Promise<boolean> {
+  async tryClaimRewardsDistribution(botConfigId: number, periodEnd: Date): Promise<{ claimedAt: Date } | null> {
     // Conditional UPDATE: succeeds only if no prior run has already stamped
     // a `reward_last_distribution_at` at or after `periodEnd`. PostgreSQL
     // serializes the matching row at row-lock granularity, so when two
@@ -640,9 +640,13 @@ export class DatabaseStorage implements IStorage {
           reward_distribution_running_at = NOW()
       WHERE id = ${botConfigId}
         AND (reward_last_distribution_at IS NULL OR reward_last_distribution_at < ${periodEnd})
-      RETURNING id
+      RETURNING reward_last_distribution_at AS claimed_at
     `);
-    return (result.rows?.length ?? 0) > 0;
+    const row = result.rows?.[0] as Record<string, unknown> | undefined;
+    if (!row) return null;
+    const raw = row.claimed_at;
+    const claimedAt = raw instanceof Date ? raw : new Date(String(raw));
+    return { claimedAt };
   }
 
   async clearRewardsRunning(botConfigId: number): Promise<void> {
@@ -657,13 +661,18 @@ export class DatabaseStorage implements IStorage {
   // timestamp past what we stamped, we leave it alone. We pass NULL when
   // the prior value was null so retries are not blocked by a stale stamp.
   async revertRewardsClaim(botConfigId: number, claimedAt: Date, previousLastAt: Date | null): Promise<boolean> {
+    // Equality match against the EXACT timestamp returned by
+    // tryClaimRewardsDistribution. We compare with millisecond
+    // truncation on both sides because Postgres TIMESTAMP holds
+    // microsecond precision while JS Date is millisecond-only, so a
+    // raw round-trip would never match. If a concurrent run advanced
+    // the stamp in the meantime, our revert harmlessly matches 0 rows.
     const result = await db.execute(sql`
       UPDATE bot_configs
       SET reward_last_distribution_at = ${previousLastAt},
           reward_distribution_running_at = NULL
       WHERE id = ${botConfigId}
-        AND reward_last_distribution_at IS NOT NULL
-        AND reward_last_distribution_at <= ${claimedAt}
+        AND date_trunc('milliseconds', reward_last_distribution_at) = date_trunc('milliseconds', ${claimedAt}::timestamptz)
       RETURNING id
     `);
     return (result.rows?.length ?? 0) > 0;

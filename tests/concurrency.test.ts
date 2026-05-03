@@ -95,8 +95,45 @@ async function raceRewardsClaim(): Promise<void> {
       storage.tryClaimRewardsDistribution(botId, periodEnd),
       storage.tryClaimRewardsDistribution(botId, periodEnd),
     ]);
-    const winners = results.filter(Boolean).length;
+    const winners = results.filter((r) => r !== null).length;
     assert(winners === 1, `exactly one rewards claim winner (got ${winners})`);
+    const winner = results.find((r) => r !== null);
+    assert(winner !== undefined && winner.claimedAt instanceof Date, "winner returns concrete claimedAt timestamp");
+  } finally {
+    await cleanup(userId, botId);
+  }
+}
+
+async function raceClaimRevert(): Promise<void> {
+  // Validates that a claim made and then released (no distribution rows
+  // were ever persisted) actually frees the period for a follow-up run.
+  // This is the exact scenario the reviewer flagged: the equality-match
+  // revert MUST hit the row, otherwise we permanently burn a period.
+  console.log("\n[race 4] claim revert frees the period");
+  const userId = await makeUser();
+  const botId = await makeBot(userId);
+  try {
+    // periodEnd represents the end of the just-finished period, so in
+    // real callers it is at or before "now". A future periodEnd would
+    // intentionally allow re-claims (the period is not done yet) which
+    // is not the scenario we want to validate here.
+    const periodEnd = new Date();
+    const first = await storage.tryClaimRewardsDistribution(botId, periodEnd);
+    assert(first !== null, "first claim succeeds");
+    if (!first) return;
+
+    const blocked = await storage.tryClaimRewardsDistribution(botId, periodEnd);
+    assert(blocked === null, "second claim blocked while first holds the period");
+
+    const reverted = await storage.revertRewardsClaim(botId, first.claimedAt, null);
+    assert(reverted === true, "revert matches the exact stamped timestamp");
+
+    const reclaim = await storage.tryClaimRewardsDistribution(botId, periodEnd);
+    assert(reclaim !== null, "after revert, the period is reclaimable");
+
+    // A second revert with a stale timestamp must NOT clobber the new claim.
+    const staleRevert = await storage.revertRewardsClaim(botId, first.claimedAt, null);
+    assert(staleRevert === false, "stale revert is a harmless no-op under contention");
   } finally {
     await cleanup(userId, botId);
   }
@@ -165,6 +202,7 @@ async function main(): Promise<void> {
   try {
     await raceCryptoActivation();
     await raceRewardsClaim();
+    await raceClaimRevert();
     await raceGroupCap();
   } catch (err) {
     console.error("test harness error:", err);
