@@ -252,6 +252,24 @@ export const scamPatterns: ScamPattern[] = [
     },
   },
   {
+    name: "nsfwSpam",
+    description: "Adult/porn/NSFW category spam (often hidden inside inline keyboard buttons of forwarded ads)",
+    reason: "NSFW/adult spam (porn category links)",
+    detect: (normalized, raw) => {
+      // Strong single-keyword hits. The normalizer already collapses
+      // common digit-for-letter substitutions (p0rn, le5bian, sch00l)
+      // back to plain ascii before this runs.
+      const strongTerms = rt(/\b(porn|xxx|nudes?|naked\s*(girl|teen|woman)s?|onlyfans|hentai|milf|lesbian|creampie|hookup|escort|nsfw|sextape|sexcam|sexchat|webcam\s*(girl|sex)|adult\s*(video|chat|site)|cam\s*girl|fuck\s*videos?|18\s*\+|18\+\s*(only|content|chat|video))\b/i, normalized);
+      // "Watch archive / hot girls / leaked tape" call-to-action lines
+      // that appear as button labels in classic porn-channel forwards.
+      const ctaShape = rt(/\b(watch\s*(archive|now|here|videos?|live)|hot\s*(girl|chick|babe|video|woman)s?|leaked\s*(video|tape|nude|content)|teen\s*(girl|cam|video)s?)\b/i, normalized);
+      // Hard-no categories that have no legitimate use in any chat.
+      const illegalShape = rt(/\b(zoo|incest|rape)\s*(porn|video|sex|tube|vid|content|girl|tape|chat)\b/i, normalized) ||
+        rt(/\b(child|kid|underage|loli|cp)\s*(porn|nude|sex)\b/i, normalized);
+      return strongTerms || ctaShape || illegalShape;
+    },
+  },
+  {
     name: "solicitationSpam",
     description: "Generic solicitation with DM requests",
     reason: "Solicitation/adult spam",

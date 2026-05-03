@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 
 import type { BotInstance, GroupContext } from "./types";
 import { sendBotMessage, sendReaction } from "./utils";
-import { detectAndHandleScam } from "./scam-detection";
+import { detectAndHandleScam, buildScanText, extractInlineButtonText } from "./scam-detection";
 import { handleCommand, handleDeleteRequest, checkIfReport, shouldBotRespond, generateAIResponse } from "./commands";
 import { addMessage, getRecentMessages, cleanupOldHistories } from "./conversation-history";
 import { maybeLearnFromMessage } from "./realtime-learning";
@@ -575,11 +575,18 @@ async function fetchGroupContext(instance: BotInstance, chatId: string, numericC
 async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
   try {
     const msgText = msg.text || msg.caption;
-    if (!msgText || !msg.chat) return;
+    // Forwarded ads (porn channels, fake giveaway bots, drainer landing
+    // pages) often leave message.text empty and put their entire payload
+    // inside inline-keyboard button labels + URLs. We must scan those
+    // even when there is no text/caption, otherwise the message slips
+    // through scam detection entirely.
+    const buttonAux = extractInlineButtonText(msg);
+    const hasScanablePayload = !!msgText || buttonAux.totalButtons > 0;
+    if (!hasScanablePayload || !msg.chat) return;
     if (msg.from?.is_bot) return;
 
     if (msg.chat.type === "private") {
-      if (msgText.startsWith("/start")) {
+      if (msgText && msgText.startsWith("/start")) {
         const cfg = await storage.getBotConfig(instance.botConfigId);
         if (cfg) await handlePrivateStart(msg, instance, cfg);
       }
@@ -587,7 +594,8 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
     }
 
     const { bot, userId, botConfigId } = instance;
-    log(`Message from ${msg.from?.first_name || "Unknown"}${msg.forward_date ? " [forwarded]" : ""} in "${msg.chat.title || "?"}" (user: ${userId}, bot: ${botConfigId}): "${msgText.substring(0, 80)}"`, "telegram");
+    const previewText = msgText || (buttonAux.totalButtons > 0 ? `[${buttonAux.totalButtons} inline buttons]` : "");
+    log(`Message from ${msg.from?.first_name || "Unknown"}${msg.forward_date ? " [forwarded]" : ""} in "${msg.chat.title || "?"}" (user: ${userId}, bot: ${botConfigId}): "${previewText.substring(0, 80)}"`, "telegram");
 
     const config = await storage.getBotConfig(botConfigId);
     if (!config || !config.isActive) {
@@ -597,7 +605,12 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
 
     const chatId = msg.chat.id.toString();
     const userName = msg.from?.first_name || msg.from?.username || "Unknown";
-    const messageText = msgText;
+    // `messageText` is the user-facing payload: real text/caption when
+    // present, otherwise an empty string. The scam pipeline gets the
+    // augmented `scamScanText` (text + caption + button labels + URLs),
+    // which is what catches button-only forwarded spam.
+    const messageText = msgText || "";
+    const scamScanText = buildScanText(msg);
 
     const group = await storage.getGroupByChatId(botConfigId, chatId);
     if (!group) {
@@ -616,7 +629,7 @@ async function handleMessage(msg: TelegramBot.Message, instance: BotInstance) {
       if (handled) return;
     }
 
-    const scamDetected = await detectAndHandleScam(bot, msg, messageText, userName, userId, botConfigId, config, groupRecord, instance.botUsername);
+    const scamDetected = await detectAndHandleScam(bot, msg, scamScanText, userName, userId, botConfigId, config, groupRecord, instance.botUsername);
     if (scamDetected) {
       log(`Scam detected from ${userName} — handled`, "telegram");
       return;

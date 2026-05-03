@@ -10,6 +10,64 @@ import { scamPatterns, runAllPatterns, getPatternReason, detectFinancialHypeSign
 
 export const MIN_SCAM_CHECK_LENGTH = 30;
 
+// Pull every piece of human-readable text out of a Telegram message,
+// including inline-keyboard button labels and URLs. Classic porn-channel
+// and crypto-channel ad forwards put almost all of their payload inside
+// inline-keyboard buttons (text + url) and leave message.text empty, so
+// scanning only msg.text/caption misses them entirely.
+export function extractInlineButtonText(msg: TelegramBot.Message): {
+  buttonText: string;
+  buttonUrls: string[];
+  totalButtons: number;
+  externalUrlCount: number;
+} {
+  const rm = msg.reply_markup;
+  if (!rm || !Array.isArray(rm.inline_keyboard)) {
+    return { buttonText: "", buttonUrls: [], totalButtons: 0, externalUrlCount: 0 };
+  }
+  const labels: string[] = [];
+  const urls: string[] = [];
+  let total = 0;
+  for (const row of rm.inline_keyboard) {
+    if (!Array.isArray(row)) continue;
+    for (const btn of row) {
+      total++;
+      if (typeof btn.text === "string" && btn.text.trim()) labels.push(btn.text);
+      if (typeof btn.url === "string" && btn.url.trim()) urls.push(btn.url);
+    }
+  }
+  let externalUrlCount = 0;
+  for (const u of urls) {
+    if (/^https?:\/\//i.test(u) || /^t\.me\//i.test(u) || /^tg:\/\//i.test(u)) externalUrlCount++;
+  }
+  return { buttonText: labels.join(" \n "), buttonUrls: urls, totalButtons: total, externalUrlCount };
+}
+
+// Build the full string we hand to the deterministic scam pipeline.
+// We deliberately concatenate text + caption + button labels + URLs so
+// patterns like nsfwSpam or financial-shill-hype can match against the
+// real payload of a button-only forwarded ad.
+export function buildScanText(msg: TelegramBot.Message): string {
+  const parts: string[] = [];
+  if (typeof msg.text === "string" && msg.text.trim()) parts.push(msg.text);
+  if (typeof msg.caption === "string" && msg.caption.trim()) parts.push(msg.caption);
+  const aux = extractInlineButtonText(msg);
+  if (aux.buttonText) parts.push(aux.buttonText);
+  if (aux.buttonUrls.length > 0) parts.push(aux.buttonUrls.join(" "));
+  return parts.join(" \n ").trim();
+}
+
+// Structural spam signal: a forwarded message with a grid of inline
+// buttons pointing to many external links is, in practice, almost
+// always a spam ad (porn channels, fake giveaways, drainer landing
+// pages). We require all three signals so that legitimate forwarded
+// posts that happen to have a single CTA button are not deleted.
+export function isButtonGridForwardSpam(msg: TelegramBot.Message): boolean {
+  const aux = extractInlineButtonText(msg);
+  const isForwarded = !!msg.forward_date || !!(msg as TelegramBot.Message & { forward_origin?: unknown }).forward_origin;
+  return isForwarded && aux.totalButtons >= 3 && aux.externalUrlCount >= 2;
+}
+
 const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "through", "during", "before", "after", "above", "below", "between", "out", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "just", "and", "but", "or", "if", "while", "that", "this", "these", "those", "i", "me", "my", "we", "our", "you", "your", "he", "him", "his", "she", "her", "it", "its", "they", "them", "their", "what", "which", "who", "whom"]);
 
 export function extractKeyPhrases(normalizedText: string): string[] {
@@ -391,7 +449,10 @@ export async function detectAndHandleScam(
   const learnedPatterns = await getLearnedPatterns(botConfigId);
   const hasLearnedPatternMatch = checkLearnedPatterns(normalized, learnedPatterns, learnedPatternThreshold(sensitivity));
 
+  const buttonGridSpam = isButtonGridForwardSpam(msg);
+
   const hasAnyScamSignal =
+    hit("nsfwSpam") || buttonGridSpam ||
     hit("migrationAirdropScam") || hit("privateMessageSolicitation") || hit("txHashRequest") ||
     hit("unsolicitedServiceOffer") || hit("cryptoServiceKeywords") || hit("flatteryPitch") ||
     hit("dmSolicitation") || hit("scamOffer") || hit("cryptoGiveawayScam") || hit("aggressiveDmSpam") ||
@@ -411,6 +472,12 @@ export async function detectAndHandleScam(
   }
   if (isImpersonator && (hit("migrationAirdropScam") || hit("privateMessageSolicitation") || hit("dmSolicitation"))) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Impersonation + scam (name mimics bot/group)");
+  }
+  if (hit("nsfwSpam")) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("nsfwSpam"));
+  }
+  if (buttonGridSpam) {
+    return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, "Forwarded ad with multiple inline buttons and external links (button-grid spam)");
   }
   if (hit("fakeRefundExitScam")) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("fakeRefundExitScam"));
