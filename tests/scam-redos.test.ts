@@ -113,6 +113,26 @@ async function main() {
     }
   }
 
+  // Known-negative fixtures: ordinary chat must not trip any deterministic
+  // pattern. Catches false positives introduced by future regex tightening.
+  console.log(`\n[scam-redos] known-negative fixtures (must not match anything)`);
+  const negatives = [
+    "hello everyone, hope you're having a great day",
+    "the price went up today, what do you think about the chart",
+    "I love this project and the team has been doing great work",
+    "can someone help me with the docs link please",
+    "gm everyone, ready for the call later today",
+    "thanks for the answer, that solved my issue",
+    "I'm new here, looking forward to learning more",
+    "the website looks good, congrats on the launch",
+  ];
+  for (const msg of negatives) {
+    const r = runAllPatterns(msg.toLowerCase(), msg);
+    const matched: string[] = [];
+    for (const [name, hit] of r.entries()) if (hit) matched.push(name);
+    assert(matched.length === 0, `negative fixture stays clean: "${msg.slice(0, 40)}..." (matched: [${matched.join(", ")}])`);
+  }
+
   console.log(`\n${failures === 0 ? "PASS" : "FAIL"}: ${failures} failure(s)`);
   process.exit(failures === 0 ? 0 : 1);
 }

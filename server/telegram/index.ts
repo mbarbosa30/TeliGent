@@ -94,6 +94,22 @@ export async function getWebhookStatus(botConfigId: number): Promise<any> {
   }
 }
 
+// Test seam: lets tests/webhook-auth.test.ts seed a path -> token mapping
+// without standing up a full bot instance, so it can hit the real registered
+// route rather than re-implementing the auth logic.
+export function _testOnlyAddWebhookMapping(webhookPath: string, token: string): void {
+  webhookPathToToken.set(webhookPath, token);
+}
+export function _testOnlyClearWebhookMapping(webhookPath: string): void {
+  webhookPathToToken.delete(webhookPath);
+}
+export function _testOnlyGetWebhookSecret(token: string): string {
+  return getWebhookSecret(token);
+}
+export function registerWebhookRouteForTest(app: Express): void {
+  registerWebhookRoute(app);
+}
+
 function registerWebhookRoute(app: Express) {
   app.post("/api/telegram-webhook/:hash", (req, res) => {
     const webhookPath = `/api/telegram-webhook/${req.params.hash}`;
