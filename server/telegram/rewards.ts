@@ -41,6 +41,10 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
   // Atomically claim this period AFTER validation. The conditional UPDATE
   // serializes the row so concurrent cron + manual triggers cannot both
   // win. The dry-run path skips claiming because no payouts are written.
+  // We capture the previous timestamp so we can revert the claim if we
+  // bail out before persisting a single distribution row.
+  const previousLastAt: Date | null = last;
+  const claimedAt = new Date();
   if (!opts.dryRun && !opts.force) {
     const claimed = await storage.tryClaimRewardsDistribution(config.id, period.end);
     if (!claimed) {
@@ -53,6 +57,24 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
   // managed to create are finalized to "failed" rather than left pending.
   const distributionIds: number[] = [];
   let totalRecipients = 0, totalSent = 0, totalFailed = 0, totalSkipped = 0;
+  // Tracks whether we should hand the period back to the next run if we
+  // bail out before producing any distribution rows. Set to false the
+  // moment we've created at least one distribution (any work has been
+  // persisted under this period stamp and the claim is committed).
+  let needsClaimRevert = !opts.dryRun && !opts.force;
+  const releaseClaim = async (reason: string) => {
+    if (!needsClaimRevert) return;
+    needsClaimRevert = false;
+    try {
+      const reverted = await storage.revertRewardsClaim(config.id, claimedAt, previousLastAt);
+      if (reverted) {
+        log(`[rewards.run] reverted claim bot=${config.id} reason=${reason}`, "rewards");
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log(`[rewards.run] revert-claim failed bot=${config.id} reason=${reason} err=${msg}`, "rewards");
+    }
+  };
 
   try {
   const byGroup = await computeContributorScoresByGroup(config.id, period.start, period.end);
@@ -128,6 +150,9 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
       notes: poolPerPeriod !== "0" ? `pool=${poolPerPeriod} share=${perWinnerAmount} group=${gid}` : `group=${gid}`,
     });
     distributionIds.push(distribution.id);
+    // First persisted distribution row commits the claim; revert is no
+    // longer correct because real work now lives under this period stamp.
+    needsClaimRevert = false;
 
     let sent = 0, failed = 0, skipped = 0;
     for (let i = 0; i < eligibleCandidates.length; i++) {
@@ -208,7 +233,13 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
     totalSent += sent; totalFailed += failed; totalSkipped += skipped;
   }
 
-    if (totalRecipients === 0) return { ok: false, reason: "no eligible contributors" };
+    if (totalRecipients === 0) {
+      // Claimed the period but found nothing to pay. Hand the period
+      // back so the next run can try again instead of waiting a full
+      // period for the next stamp window.
+      await releaseClaim("no_eligible_contributors");
+      return { ok: false, reason: "no eligible contributors" };
+    }
     if (opts.dryRun) return { ok: true, reason: "dry run", recipients: totalRecipients };
 
     log(`Rewards for bot ${config.id}: groups=${distributionIds.length} sent=${totalSent} failed=${totalFailed} skipped=${totalSkipped}`, "rewards");
@@ -233,6 +264,10 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
         // swallow - already in error path
       }
     }
+    // If we crashed BEFORE persisting any distribution row, hand the
+    // period back so the next run is not blocked by a stamp that
+    // represents zero work.
+    await releaseClaim("crashed_before_first_distribution");
     throw err;
   } finally {
     // Always clear the in-progress marker, even on crash. The period stamp

@@ -101,6 +101,12 @@ export interface IStorage {
   // `finally`, never relied on for correctness (the period stamp is the
   // real exclusion mechanism).
   clearRewardsRunning(botConfigId: number): Promise<void>;
+  // Conditional un-claim of a period when the rewards loop bailed out
+  // before persisting any distribution row. Keeps the period retryable.
+  revertRewardsClaim(botConfigId: number, claimedAt: Date, previousLastAt: Date | null): Promise<boolean>;
+  // Crash-recovery surface: the IDs of pending distributions older than
+  // `olderThanMs`, suitable for finalize sweeps at boot or on a cron.
+  findStalePendingDistributionIds(olderThanMs: number): Promise<number[]>;
   recordPayoutWithProgress(distributionId: number, payout: InsertRewardPayout): Promise<RewardPayout>;
   finalizeDistributionFromCounters(distributionId: number): Promise<{
     status: "completed" | "partial" | "failed" | "skipped";
@@ -552,52 +558,72 @@ export class DatabaseStorage implements IStorage {
     userId: string,
     userUpdate: Partial<Pick<User, "plan" | "planRail" | "planPeriodEnd" | "planCancelAtPeriodEnd" | "teliPaid">>,
   ): Promise<{ ok: true; intent: PlanPaymentIntent } | { ok: false; reason: "already_matched" | "tx_replay" | "user_not_found" }> {
-    return db.transaction(async (tx) => {
-      const setValues: { status: "matched"; matchedAt: Date; txHash?: string } = {
-        status: "matched",
-        matchedAt: new Date(),
-      };
-      if (txHash) setValues.txHash = txHash;
+    // Pre-check tx_hash against the matched-intent partial unique index.
+    // Postgres aborts the whole transaction on the first 23505 error, so
+    // catching the unique violation INSIDE the transaction would leave us
+    // in a "current transaction is aborted" state. Instead we (a) probe
+    // first for a clean tx_replay return, and (b) keep an outer 23505
+    // mapping as a backstop for the inherent TOCTOU window between the
+    // probe and the in-transaction UPDATE.
+    if (txHash) {
+      const existing = await this.findMatchedIntentByTxHash(txHash);
+      if (existing && existing.id !== intentId) {
+        return { ok: false, reason: "tx_replay" as const };
+      }
+    }
+    type ActivationOutcome =
+      | { ok: true; intent: PlanPaymentIntent }
+      | { ok: false; reason: "already_matched" | "user_not_found" };
+    try {
+      const result: ActivationOutcome = await db.transaction(async (tx) => {
+        const setValues: { status: "matched"; matchedAt: Date; txHash?: string } = {
+          status: "matched",
+          matchedAt: new Date(),
+        };
+        if (txHash) setValues.txHash = txHash;
 
-      let updatedIntent: PlanPaymentIntent | undefined;
-      try {
-        const [row] = await tx
+        const [updatedIntent] = await tx
           .update(planPaymentIntents)
           .set(setValues)
           .where(and(eq(planPaymentIntents.id, intentId), eq(planPaymentIntents.status, "pending")))
           .returning();
-        updatedIntent = row;
-      } catch (err: unknown) {
-        const code = (err as { code?: string } | null)?.code;
-        if (code === "23505") {
-          // Partial unique index on tx_hash WHERE status='matched' fired —
-          // another intent already credited this exact tx hash. The whole
-          // transaction is rolled back; the intent stays pending so the
-          // caller can surface a clean "already credited elsewhere" error.
-          return { ok: false, reason: "tx_replay" as const };
+        if (!updatedIntent) {
+          // Intent was already matched/expired by a concurrent caller
+          // (likely the background poller beat us to it). Nothing more to
+          // do — return cleanly so the transaction commits as a no-op.
+          return { ok: false, reason: "already_matched" as const };
         }
-        throw err;
-      }
-      if (!updatedIntent) {
-        // Intent was already matched/expired by a concurrent caller (likely
-        // the background poller beat us to it). Nothing more to do here.
-        return { ok: false, reason: "already_matched" as const };
-      }
 
-      await tx.insert(planPeriods).values(period);
+        await tx.insert(planPeriods).values(period);
 
-      const [u] = await tx
-        .update(users)
-        .set({ ...userUpdate, updatedAt: new Date() })
-        .where(eq(users.id, userId))
-        .returning();
-      if (!u) {
-        // Throw to roll back the intent flip + period insert; caller logs
-        // [billing.activate] and the intent stays retryable.
-        throw new Error(`activateCryptoIntent: user ${userId} not found`);
+        const [u] = await tx
+          .update(users)
+          .set({ ...userUpdate, updatedAt: new Date() })
+          .where(eq(users.id, userId))
+          .returning();
+        if (!u) {
+          // Throw to roll back the intent flip + period insert; caller
+          // logs [billing.activate] and the intent stays retryable.
+          throw new Error(`activateCryptoIntent: user ${userId} not found`);
+        }
+        return { ok: true as const, intent: updatedIntent };
+      });
+      return result;
+    } catch (err: unknown) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "23505") {
+        // Backstop: a concurrent activator slipped past the pre-check and
+        // wrote the same matched tx_hash first. The transaction was
+        // rolled back by Postgres; the intent stays pending and the
+        // caller's [billing.activate] log captures the rollback.
+        return { ok: false, reason: "tx_replay" as const };
       }
-      return { ok: true as const, intent: updatedIntent };
-    });
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("activateCryptoIntent: user ") && msg.endsWith(" not found")) {
+        return { ok: false, reason: "user_not_found" as const };
+      }
+      throw err;
+    }
   }
 
   async tryClaimRewardsDistribution(botConfigId: number, periodEnd: Date): Promise<boolean> {
@@ -621,6 +647,47 @@ export class DatabaseStorage implements IStorage {
 
   async clearRewardsRunning(botConfigId: number): Promise<void> {
     await db.execute(sql`UPDATE bot_configs SET reward_distribution_running_at = NULL WHERE id = ${botConfigId}`);
+  }
+
+  // Conditional revert of a period claim. Used by the rewards loop when
+  // it claimed a period but did NOT create a single distribution row
+  // (e.g. an exception during the score computation, or zero eligible
+  // contributors after claiming). The conditional `WHERE` makes this
+  // safe under contention: if a concurrent run has already advanced the
+  // timestamp past what we stamped, we leave it alone. We pass NULL when
+  // the prior value was null so retries are not blocked by a stale stamp.
+  async revertRewardsClaim(botConfigId: number, claimedAt: Date, previousLastAt: Date | null): Promise<boolean> {
+    const result = await db.execute(sql`
+      UPDATE bot_configs
+      SET reward_last_distribution_at = ${previousLastAt},
+          reward_distribution_running_at = NULL
+      WHERE id = ${botConfigId}
+        AND reward_last_distribution_at IS NOT NULL
+        AND reward_last_distribution_at <= ${claimedAt}
+      RETURNING id
+    `);
+    return (result.rows?.length ?? 0) > 0;
+  }
+
+  // Recovery sweep for crashed rewards distributions. Returns the IDs of
+  // every reward_distributions row currently in `pending` whose
+  // `created_at` is older than `olderThanMs` ago. The startup recovery
+  // path calls this and then runs `finalizeDistributionFromCounters` on
+  // each, so a process kill mid-loop never leaves a permanently-pending
+  // row in the dashboard.
+  async findStalePendingDistributionIds(olderThanMs: number): Promise<number[]> {
+    const cutoff = new Date(Date.now() - Math.max(0, olderThanMs));
+    const result = await db.execute(sql`
+      SELECT id FROM reward_distributions
+      WHERE status = 'pending' AND created_at < ${cutoff}
+    `);
+    const rows = (result.rows ?? []) as ReadonlyArray<Record<string, unknown>>;
+    const ids: number[] = [];
+    for (const r of rows) {
+      const id = Number(r.id);
+      if (Number.isFinite(id)) ids.push(id);
+    }
+    return ids;
   }
 
   // Transactional unit: insert one reward_payouts row AND increment the

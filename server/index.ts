@@ -166,6 +166,40 @@ app.use(csrfMiddleware);
   runLogCleanup();
   setInterval(runLogCleanup, LOG_CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000);
 
+  // Crash-recovery sweep for rewards distributions. Any reward_distributions
+  // row left in `pending` longer than the threshold belonged to a process
+  // that died mid-loop. We re-derive a determinate status from the
+  // persisted counters via finalizeDistributionFromCounters and stamp
+  // completed_at, so the dashboard never shows a permanently-stuck row.
+  // Runs once at boot and then on a slow interval.
+  const REWARDS_RECOVERY_STALE_MIN = parseInt(process.env.REWARDS_RECOVERY_STALE_MIN || "15", 10);
+  const REWARDS_RECOVERY_INTERVAL_MIN = parseInt(process.env.REWARDS_RECOVERY_INTERVAL_MIN || "60", 10);
+  const runRewardsRecovery = async () => {
+    try {
+      const ids = await storage.findStalePendingDistributionIds(REWARDS_RECOVERY_STALE_MIN * 60 * 1000);
+      if (ids.length === 0) return;
+      let recovered = 0;
+      let failed = 0;
+      for (const id of ids) {
+        try {
+          const final = await storage.finalizeDistributionFromCounters(id);
+          if (final) recovered++;
+        } catch (e) {
+          failed++;
+          const msg = e instanceof Error ? e.message : String(e);
+          log(`[rewards.recovery] failed id=${id} err=${msg}`, "rewards");
+        }
+      }
+      log(`[rewards.recovery] swept stale=${ids.length} recovered=${recovered} failed=${failed}`, "rewards");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log(`[rewards.recovery] sweep error: ${msg}`, "rewards");
+    }
+  };
+  // Defer the first sweep so it never races migrations or route setup.
+  setTimeout(runRewardsRecovery, 30 * 1000);
+  setInterval(runRewardsRecovery, REWARDS_RECOVERY_INTERVAL_MIN * 60 * 1000);
+
   const KNOWLEDGE_SWEEP_MIN = 30;
   const runKnowledgeSweep = async () => {
     try {
