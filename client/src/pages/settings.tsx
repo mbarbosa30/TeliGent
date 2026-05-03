@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1293,9 +1293,85 @@ export default function SettingsPage() {
   );
 }
 
+// Human-readable labels for the scam category enum used by the server.
+// Mirrors ScamCategory in server/telegram/scam-detection.ts — update both
+// if new categories are added.
+const SCAM_CATEGORY_LABELS: Record<string, string> = {
+  dm_solicitation: "DM solicitation",
+  tx_hash_phishing: "Tx hash / phishing",
+  airdrop_migration: "Airdrop / migration scam",
+  service_pitch: "Unsolicited service pitch",
+  promo_for_hire: "Promo for hire",
+  pump_call: "Pump call / VIP signals",
+  giveaway_scam: "Fake giveaway",
+  nsfw_spam: "NSFW / adult spam",
+  group_promo: "Group / channel promo",
+  fake_exchange: "Fake exchange listing",
+  exit_scam: "Exit scam / fake refund",
+  wallet_buying: "Wallet buying / selling",
+  impersonation_evasion: "Impersonation / evasion",
+  financial_hype: "Financial hype / shilling",
+  button_grid_spam: "Forwarded button grid",
+  learned_pattern: "Learned pattern",
+  other: "Other",
+};
+
+const CATEGORY_BADGE_CLASSES: Record<string, string> = {
+  dm_solicitation: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800",
+  tx_hash_phishing: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800",
+  airdrop_migration: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800",
+  service_pitch: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800",
+  promo_for_hire: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800",
+  pump_call: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800",
+  giveaway_scam: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-800",
+  nsfw_spam: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800",
+  group_promo: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800",
+  fake_exchange: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800",
+  exit_scam: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800",
+  wallet_buying: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800",
+  impersonation_evasion: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-800",
+  financial_hype: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800",
+  button_grid_spam: "bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-900/20 dark:text-pink-300 dark:border-pink-800",
+  learned_pattern: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-800",
+  other: "bg-muted text-muted-foreground border-border",
+};
+
+function getCategoryLabel(cat: string): string {
+  return SCAM_CATEGORY_LABELS[cat] ?? cat.replace(/_/g, " ");
+}
+
+function getCategoryClasses(cat: string): string {
+  return CATEGORY_BADGE_CLASSES[cat] ?? "bg-muted text-muted-foreground border-border";
+}
+
+// Extract the primary category from a log row's metadata.
+// Deletion rows have metadata.category (string); auto-ban rows have
+// metadata.categories (string[]). Falls back to parsing the reason text.
+function getRowCategory(metadata: Record<string, unknown>): string | null {
+  if (typeof metadata.category === "string" && metadata.category !== "other") return metadata.category;
+  if (Array.isArray(metadata.categories) && metadata.categories.length > 0) return String(metadata.categories[0]);
+  if (typeof metadata.category === "string") return metadata.category;
+  return null;
+}
+
+function CategoryBadge({ category }: { category: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none ${getCategoryClasses(category)}`}
+      data-testid={`badge-category-${category}`}
+    >
+      {getCategoryLabel(category)}
+    </span>
+  );
+}
+
+type FlaggedItem = { id: number; userName: string | null; userMessage: string | null; metadata: Record<string, unknown>; createdAt: string };
+
 function RecentlyFlaggedList({ botId }: { botId: number }) {
   const { toast } = useToast();
-  const { data, isLoading } = useQuery<Array<{ id: number; userName: string | null; userMessage: string | null; metadata: any; createdAt: string }>>({
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+
+  const { data, isLoading } = useQuery<FlaggedItem[]>({
     queryKey: ["/api/bots", botId, "scam-flagged"],
     enabled: !!botId,
   });
@@ -1305,76 +1381,133 @@ function RecentlyFlaggedList({ botId }: { botId: number }) {
       const res = await apiRequest("POST", `/api/bots/${botId}/scam-flagged/${logId}/false-positive`);
       return res.json();
     },
-    onSuccess: (data: { removedPatterns?: number; unbanned?: boolean; unbanAttempted?: boolean }) => {
+    onSuccess: (result: { removedPatterns?: number; unbanned?: boolean; unbanAttempted?: boolean }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bots", botId, "scam-flagged"] });
-      const parts = [`Removed ${data.removedPatterns ?? 0} learned patterns`];
-      if (data.unbanAttempted) parts.push(data.unbanned ? "user unbanned" : "could not unban user");
+      const parts = [`Removed ${result.removedPatterns ?? 0} learned patterns`];
+      if (result.unbanAttempted) parts.push(result.unbanned ? "user unbanned" : "could not unban user");
       parts.push("similar messages will be allowed");
-      toast({ title: "Marked as false positive", description: parts.join(" — ") + "." });
+      toast({ title: "Marked as false positive", description: parts.join(", ") + "." });
     },
     onError: (err: any) => {
       toast({ title: "Could not restore", description: err?.message || "Failed to mark as false positive.", variant: "destructive" });
     },
   });
 
+  // Collect the set of categories present in this data for the filter dropdown.
+  const presentCategories = Array.from(
+    new Set((data ?? []).map((item) => getRowCategory(item.metadata)).filter(Boolean) as string[])
+  ).sort();
+
+  const filtered = categoryFilter === "all"
+    ? (data ?? [])
+    : (data ?? []).filter((item) => {
+        const cat = getRowCategory(item.metadata);
+        return cat === categoryFilter;
+      });
+
   return (
     <div className="space-y-2">
       <Label className="text-sm font-medium">Recently Flagged (last 20)</Label>
       <p className="text-xs text-muted-foreground">Auto-deleted scam messages. Use these to judge whether your sensitivity is too strict or too loose. If the bot was wrong, mark a row as a false positive to remove the learned patterns it created and let similar messages through next time.</p>
+
+      {!isLoading && presentCategories.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground shrink-0">Filter:</span>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="h-7 text-xs w-auto min-w-[160px]" data-testid="select-category-filter">
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" data-testid="filter-option-all">All categories</SelectItem>
+              {presentCategories.map((cat) => (
+                <SelectItem key={cat} value={cat} data-testid={`filter-option-${cat}`}>
+                  {getCategoryLabel(cat)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {categoryFilter !== "all" && (
+            <button
+              type="button"
+              onClick={() => setCategoryFilter("all")}
+              className="text-xs text-muted-foreground underline underline-offset-2"
+              data-testid="button-clear-filter"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : !data || data.length === 0 ? (
         <p className="text-xs text-muted-foreground" data-testid="text-no-flagged">No auto-deleted messages yet.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-xs text-muted-foreground" data-testid="text-no-flagged-filtered">No messages match this filter.</p>
       ) : (
         <div className="border divide-y" data-testid="list-flagged">
-          {data.map((item) => (
-            <div key={item.id} className="p-2 space-y-1" data-testid={`row-flagged-${item.id}`}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium truncate">{item.userName || "Unknown"}</span>
-                <span className="text-xs text-muted-foreground shrink-0">{new Date(item.createdAt).toLocaleString()}</span>
-              </div>
-              {item.metadata?.reason && (
-                <Badge variant="outline" className="text-[10px]">{String(item.metadata.reason).slice(0, 80)}</Badge>
-              )}
-              <p className="text-xs text-muted-foreground line-clamp-2">{item.userMessage || ""}</p>
-              <div className="pt-1">
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-[11px]"
-                      disabled={falsePositiveMutation.isPending}
-                      data-testid={`button-false-positive-${item.id}`}
-                    >
-                      Mark as false positive
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent data-testid={`dialog-false-positive-${item.id}`}>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Mark this message as a false positive?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        The original Telegram message can't be restored, but the bot will:
-                        <br />• Forget the learned patterns it created from this message
-                        <br />• Allow similar messages through in the future
-                        <br />• Unban {item.userName || "the user"} if they were auto-banned in this group
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel data-testid={`button-cancel-false-positive-${item.id}`}>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => falsePositiveMutation.mutate(item.id)}
-                        data-testid={`button-confirm-false-positive-${item.id}`}
+          {filtered.map((item) => {
+            const primaryCat = getRowCategory(item.metadata);
+            const extraCats: string[] = Array.isArray(item.metadata?.categories)
+              ? (item.metadata.categories as string[]).slice(1)
+              : [];
+            const isAutoBan = Array.isArray(item.metadata?.categories);
+            return (
+              <div key={item.id} className="p-2 space-y-1" data-testid={`row-flagged-${item.id}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium truncate">{item.userName || "Unknown"}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{new Date(item.createdAt).toLocaleString()}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  {primaryCat && <CategoryBadge category={primaryCat} />}
+                  {extraCats.map((c) => <CategoryBadge key={c} category={c} />)}
+                  {isAutoBan && (
+                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none bg-destructive/10 text-destructive border-destructive/20" data-testid={`badge-autoban-${item.id}`}>
+                      Auto-ban
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground line-clamp-2">{item.userMessage || ""}</p>
+                <div className="pt-1">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px]"
+                        disabled={falsePositiveMutation.isPending}
+                        data-testid={`button-false-positive-${item.id}`}
                       >
-                        Yes, it was wrong
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                        Mark as false positive
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent data-testid={`dialog-false-positive-${item.id}`}>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Mark this message as a false positive?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          The original Telegram message cannot be restored, but the bot will:
+                          <br />• Forget the learned patterns it created from this message
+                          <br />• Allow similar messages through in the future
+                          <br />• Unban {item.userName || "the user"} if they were auto-banned in this group
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel data-testid={`button-cancel-false-positive-${item.id}`}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => falsePositiveMutation.mutate(item.id)}
+                          data-testid={`button-confirm-false-positive-${item.id}`}
+                        >
+                          Yes, it was wrong
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
