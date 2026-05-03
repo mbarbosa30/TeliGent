@@ -22,6 +22,7 @@ export async function runMigrations() {
     await ensureBankrColumns(client);
     await ensureRewardsColumns(client);
     await ensureRewardsTables(client);
+    await ensureRewardDistributionCounters(client);
     await ensureFeedbackColumnsAndTable(client);
     await ensureScamSensitivityColumn(client);
     await ensureScamAllowlistTable(client);
@@ -586,6 +587,24 @@ async function ensureRewardsTables(client: any) {
     await client.query(`ALTER TABLE bot_configs ADD COLUMN reward_max_per_user_per_period_verified INTEGER NOT NULL DEFAULT 2`);
     await client.query(`ALTER TABLE bot_configs ADD COLUMN reward_require_self_verified BOOLEAN NOT NULL DEFAULT false`);
     log("Added reward verified cap columns to bot_configs");
+  }
+}
+
+// Additive: per-distribution progress counters that are updated in the
+// SAME transaction as each reward_payouts insert. Makes the rewards loop
+// crash-safe: even if the process dies mid-loop, persisted counters let
+// us derive a determinate final status from DB state, not in-memory tallies.
+async function ensureRewardDistributionCounters(client: any) {
+  const cols: Array<[string, string]> = [
+    ["sent_count", "INTEGER NOT NULL DEFAULT 0"],
+    ["failed_count", "INTEGER NOT NULL DEFAULT 0"],
+    ["skipped_count", "INTEGER NOT NULL DEFAULT 0"],
+  ];
+  for (const [name, def] of cols) {
+    if (!(await columnExists(client, "reward_distributions", name))) {
+      await client.query(`ALTER TABLE reward_distributions ADD COLUMN ${name} ${def}`);
+      log(`Added ${name} to reward_distributions`);
+    }
   }
 }
 

@@ -101,6 +101,11 @@ export interface IStorage {
   // `finally`, never relied on for correctness (the period stamp is the
   // real exclusion mechanism).
   clearRewardsRunning(botConfigId: number): Promise<void>;
+  recordPayoutWithProgress(distributionId: number, payout: InsertRewardPayout): Promise<RewardPayout>;
+  finalizeDistributionFromCounters(distributionId: number): Promise<{
+    status: "completed" | "partial" | "failed" | "skipped";
+    sent: number; failed: number; skipped: number;
+  } | null>;
   getAiUsageForDay(botConfigId: number, usageDate: string): Promise<number>;
   getPlatformSetting(key: string): Promise<string | null>;
   setPlatformSetting(key: string, value: string): Promise<void>;
@@ -616,6 +621,70 @@ export class DatabaseStorage implements IStorage {
 
   async clearRewardsRunning(botConfigId: number): Promise<void> {
     await db.execute(sql`UPDATE bot_configs SET reward_distribution_running_at = NULL WHERE id = ${botConfigId}`);
+  }
+
+  // Transactional unit: insert one reward_payouts row AND increment the
+  // matching counter (sent_count|failed_count|skipped_count) on the
+  // parent reward_distributions row in a single tx. If the process is
+  // killed mid-loop, the persisted counters faithfully reflect what
+  // happened, so finalizeDistributionFromCounters can derive a
+  // determinate final status from DB state alone.
+  async recordPayoutWithProgress(
+    distributionId: number,
+    payout: InsertRewardPayout,
+  ): Promise<RewardPayout> {
+    const bucket = payout.status === "sent"
+      ? "sent_count"
+      : payout.status === "skipped"
+        ? "skipped_count"
+        : "failed_count";
+    return await db.transaction(async (tx) => {
+      const [row] = await tx.insert(rewardPayouts).values(payout).returning();
+      // Use raw SQL to bump the counter column we don't reference in the
+      // Drizzle schema (additive-only migration constraint).
+      await tx.execute(sql.raw(
+        `UPDATE reward_distributions SET ${bucket} = ${bucket} + 1 WHERE id = ${distributionId}`,
+      ));
+      return row;
+    });
+  }
+
+  // Crash-safe finalization: re-reads counters from DB and derives the
+  // status. Safe to call repeatedly. Only stamps `completed_at` if it
+  // wasn't already set, so re-runs after a crash stay idempotent.
+  async finalizeDistributionFromCounters(distributionId: number): Promise<{
+    status: "completed" | "partial" | "failed" | "skipped";
+    sent: number; failed: number; skipped: number;
+  } | null> {
+    const result = await db.execute(sql`
+      SELECT total_recipients, sent_count, failed_count, skipped_count
+      FROM reward_distributions WHERE id = ${distributionId}
+    `);
+    const row = result.rows?.[0] as any;
+    if (!row) return null;
+    const total = Number(row.total_recipients) || 0;
+    const sent = Number(row.sent_count) || 0;
+    const failed = Number(row.failed_count) || 0;
+    const skipped = Number(row.skipped_count) || 0;
+    const accounted = sent + failed + skipped;
+    let status: "completed" | "partial" | "failed" | "skipped";
+    if (accounted < total) {
+      // Process died before every recipient was accounted for. Anything
+      // unaccounted is treated as failed so the dashboard never shows a
+      // misleading "completed" or "pending".
+      status = sent > 0 ? "partial" : "failed";
+    } else if (sent === total && total > 0) status = "completed";
+    else if (sent > 0) status = "partial";
+    else if (failed > 0) status = "failed";
+    else status = "skipped";
+    await db.execute(sql`
+      UPDATE reward_distributions
+      SET status = ${status},
+          completed_at = COALESCE(completed_at, NOW()),
+          notes = ${`sent=${sent} failed=${failed} skipped=${skipped} total=${total}`}
+      WHERE id = ${distributionId}
+    `);
+    return { status, sent, failed, skipped };
   }
 
   async findMatchedIntentByTxHash(txHash: string): Promise<PlanPaymentIntent | undefined> {

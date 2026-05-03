@@ -148,12 +148,14 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
 
       if (!wallet?.walletAddress) {
         try {
-          await storage.createRewardPayout({ ...baseRow, status: "skipped", errorMessage: "no wallet on file" });
+          // Atomic: insert payout row + bump skipped_count in one tx so a
+          // crash here cannot leave the counters out of sync with rows.
+          await storage.recordPayoutWithProgress(distribution.id, { ...baseRow, status: "skipped", errorMessage: "no wallet on file" });
           skipped++;
         } catch (err) {
-          // Persist failure: we count this as failed so the distribution row
-          // never shows a misleading "completed" status when a payout row
-          // could not even be recorded.
+          // Row write failed - counter not bumped. Increment in-memory
+          // failed so finalize-from-DB still treats this recipient as
+          // unaccounted (handled by total_recipients > sum check).
           failed++;
           const msg = err instanceof Error ? err.message : String(err);
           log(`Failed to record skipped payout for bot ${config.id} group ${gid} -> ${winner.telegramUserId}: ${msg}`, "rewards");
@@ -161,9 +163,9 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
         continue;
       }
 
-      // Network call lives outside the persistence try/catch so we can
-      // distinguish transfer failures (recorded as "failed") from row-write
-      // failures (counted but not persisted, treated as failed).
+      // Network call lives outside the persistence tx so we can
+      // distinguish transfer failures (persisted as "failed") from
+      // row-write failures (treated as failed via DB-counter delta).
       let txHash: string | null = null;
       let explorerUrl: string | undefined;
       let transferError: string | null = null;
@@ -177,15 +179,15 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
 
       try {
         if (transferError !== null) {
-          await storage.createRewardPayout({ ...baseRow, status: "failed", errorMessage: transferError.slice(0, 500) });
+          await storage.recordPayoutWithProgress(distribution.id, { ...baseRow, status: "failed", errorMessage: transferError.slice(0, 500) });
           failed++;
           log(`Reward transfer failed for bot ${config.id} group ${gid} -> ${winner.telegramUserId}: ${transferError}`, "rewards");
         } else if (txHash) {
-          await storage.createRewardPayout({ ...baseRow, status: "sent", txHash, explorerUrl });
+          await storage.recordPayoutWithProgress(distribution.id, { ...baseRow, status: "sent", txHash, explorerUrl });
           payoutCountByUser.set(winner.telegramUserId, (payoutCountByUser.get(winner.telegramUserId) || 0) + 1);
           sent++;
         } else {
-          await storage.createRewardPayout({ ...baseRow, status: "failed", errorMessage: "transfer returned no tx hash" });
+          await storage.recordPayoutWithProgress(distribution.id, { ...baseRow, status: "failed", errorMessage: "transfer returned no tx hash" });
           failed++;
         }
       } catch (err) {
@@ -195,17 +197,13 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
       }
     }
 
-    // Determinate final state for every distribution row:
-    //   completed -> all eligible recipients paid
-    //   partial   -> some paid, some failed/skipped
-    //   failed    -> none paid and at least one transfer/write error
-    //   skipped   -> none paid, only "no wallet on file" skips
-    let finalStatus: "completed" | "partial" | "failed" | "skipped";
-    if (sent > 0 && failed === 0 && skipped === 0) finalStatus = "completed";
-    else if (sent > 0) finalStatus = "partial";
-    else if (failed > 0) finalStatus = "failed";
-    else finalStatus = "skipped";
-    await storage.updateRewardDistribution(distribution.id, { status: finalStatus, completedAt: new Date(), notes: `group=${gid} sent=${sent} failed=${failed} skipped=${skipped}` });
+    // Final status is derived from the persisted DB counters (NOT just
+    // the in-memory loop tallies). This means a crash during the loop
+    // still produces a determinate status when the process restarts and
+    // recovery sweeps over pending distributions.
+    const final = await storage.finalizeDistributionFromCounters(distribution.id);
+    const finalStatus = final?.status ?? "failed";
+    log(`Distribution ${distribution.id} finalized as ${finalStatus} (sent=${final?.sent ?? sent} failed=${final?.failed ?? failed} skipped=${final?.skipped ?? skipped})`, "rewards");
     totalRecipients += eligibleCandidates.length;
     totalSent += sent; totalFailed += failed; totalSkipped += skipped;
   }
