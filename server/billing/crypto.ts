@@ -341,31 +341,49 @@ export async function pollCryptoIntents(): Promise<{ matched: number; expired: n
 }
 
 async function activateIntent(intent: any, txHash: string | null, source: "poller" | "manual_claim"): Promise<boolean> {
-  const updated = await storage.markPlanPaymentIntent(intent.id, "matched", txHash);
-  if (!updated) return false;
+  // All three writes (intent flip, plan_period insert, user plan update) run
+  // inside a single DB transaction via storage.activateCryptoIntent. If any
+  // write fails the transaction rolls back, the intent stays in "pending",
+  // and we emit a structured `[billing.activate]` log so the next poller
+  // tick or a manual claim can retry without double-crediting the user.
   const periodMs = intent.billingPeriod === "annual" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
   const startsAt = new Date();
   const endsAt = new Date(Date.now() + periodMs);
-  await storage.createPlanPeriod({
-    userId: intent.userId,
-    plan: intent.plan,
-    rail: intent.rail,
-    billingPeriod: intent.billingPeriod,
-    teliPaid: intent.rail === "teli",
-    startsAt,
-    endsAt,
-    intentId: intent.id,
-    reason: source === "manual_claim" ? "crypto_payment_manual_claim" : "crypto_payment",
-  });
-  await storage.updateUserPlan(intent.userId, {
-    plan: intent.plan,
-    planRail: intent.rail,
-    planPeriodEnd: endsAt,
-    teliPaid: intent.rail === "teli",
-    planCancelAtPeriodEnd: false,
-  });
-  log(`Crypto intent ${intent.id} matched: user=${intent.userId} plan=${intent.plan} rail=${intent.rail} tx=${txHash || "?"}`, "billing");
-  return true;
+  try {
+    const result = await storage.activateCryptoIntent(
+      intent.id,
+      txHash,
+      {
+        userId: intent.userId,
+        plan: intent.plan,
+        rail: intent.rail,
+        billingPeriod: intent.billingPeriod,
+        teliPaid: intent.rail === "teli",
+        startsAt,
+        endsAt,
+        intentId: intent.id,
+        reason: source === "manual_claim" ? "crypto_payment_manual_claim" : "crypto_payment",
+      },
+      intent.userId,
+      {
+        plan: intent.plan,
+        planRail: intent.rail,
+        planPeriodEnd: endsAt,
+        teliPaid: intent.rail === "teli",
+        planCancelAtPeriodEnd: false,
+      },
+    );
+    if (!result.ok) {
+      log(`[billing.activate] skipped intent=${intent.id} source=${source} reason=${result.reason}`, "billing");
+      return false;
+    }
+    log(`Crypto intent ${intent.id} matched: user=${intent.userId} plan=${intent.plan} rail=${intent.rail} tx=${txHash || "?"}`, "billing");
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`[billing.activate] failed intent=${intent.id} source=${source} reason=${msg}`, "billing");
+    return false;
+  }
 }
 
 function normalizeTxHash(input: string): `0x${string}` | null {

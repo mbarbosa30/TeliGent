@@ -80,6 +80,27 @@ export interface IStorage {
   findMatchedIntentByTxHash(txHash: string): Promise<PlanPaymentIntent | undefined>;
   createPlanPeriod(data: InsertPlanPeriod): Promise<PlanPeriod>;
   listPlanPeriodsForUser(userId: string, limit?: number): Promise<PlanPeriod[]>;
+  // Atomic crypto-payment activation: flips the intent to "matched", inserts
+  // the plan_period row, and updates the user's plan inside a single
+  // transaction. Returns ok=false (with a reason) if the intent has already
+  // been claimed (concurrent poller race) or if the tx hash collides with
+  // another matched intent (replay protection on the partial unique index).
+  activateCryptoIntent(
+    intentId: number,
+    txHash: string | null,
+    period: InsertPlanPeriod,
+    userId: string,
+    userUpdate: Partial<Pick<User, "plan" | "planRail" | "planPeriodEnd" | "planCancelAtPeriodEnd" | "teliPaid">>,
+  ): Promise<{ ok: true; intent: PlanPaymentIntent } | { ok: false; reason: "already_matched" | "tx_replay" | "user_not_found" }>;
+  // Conditional UPDATE that claims the current rewards period for a bot.
+  // Returns false if another caller has already stamped a
+  // `reward_last_distribution_at` past the current period end (concurrent
+  // cron + manual trigger race).
+  tryClaimRewardsDistribution(botConfigId: number, periodEnd: Date): Promise<boolean>;
+  // Best-effort clear of the in-progress marker. Always called from a
+  // `finally`, never relied on for correctness (the period stamp is the
+  // real exclusion mechanism).
+  clearRewardsRunning(botConfigId: number): Promise<void>;
   getAiUsageForDay(botConfigId: number, usageDate: string): Promise<number>;
   getPlatformSetting(key: string): Promise<string | null>;
   setPlatformSetting(key: string, value: string): Promise<void>;
@@ -213,19 +234,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertGroup(botConfigId: number, userId: string, data: Omit<InsertGroup, "userId" | "botConfigId">): Promise<Group> {
-    const existing = await this.getGroupByChatId(botConfigId, data.telegramChatId);
-    if (existing) {
-      const [updated] = await db.update(groups).set(data).where(eq(groups.id, existing.id)).returning();
-      return updated;
-    }
-    const { getLimitsForBotAsync } = await import("./limits");
-    const cap = (await getLimitsForBotAsync(botConfigId)).maxGroupsPerBot;
-    const current = await db.select().from(groups).where(eq(groups.botConfigId, botConfigId));
-    if (current.length >= cap) {
-      throw new Error(`Group cap reached for this bot (${cap}). Remove an existing group before joining a new one.`);
-    }
-    const [created] = await db.insert(groups).values({ ...data, userId, botConfigId }).returning();
-    return created;
+    // Two concurrent join events can both pass a "current.length < cap" check
+    // and then both INSERT, busting the per-bot group cap. We serialize all
+    // upserts for a given bot via a transaction-scoped advisory lock keyed on
+    // botConfigId, then re-check inside the same transaction. The
+    // `idx_groups_bot_config_chat_unique` partial index also guarantees that
+    // duplicate (botConfigId, telegramChatId) inserts fail loudly rather than
+    // silently double-counting.
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(7104, ${botConfigId})`);
+      const [existing] = await tx
+        .select()
+        .from(groups)
+        .where(and(eq(groups.botConfigId, botConfigId), eq(groups.telegramChatId, data.telegramChatId)))
+        .limit(1);
+      if (existing) {
+        const [updated] = await tx.update(groups).set(data).where(eq(groups.id, existing.id)).returning();
+        return updated;
+      }
+      const { getLimitsForBotAsync } = await import("./limits");
+      const cap = (await getLimitsForBotAsync(botConfigId)).maxGroupsPerBot;
+      const [{ c }] = await tx
+        .select({ c: count() })
+        .from(groups)
+        .where(eq(groups.botConfigId, botConfigId));
+      if (c >= cap) {
+        throw new Error(`Group cap reached for this bot (${cap}). Remove an existing group before joining a new one.`);
+      }
+      const [created] = await tx.insert(groups).values({ ...data, userId, botConfigId }).returning();
+      return created;
+    });
   }
 
   async updateGroup(botConfigId: number, id: number, data: Partial<InsertGroup>): Promise<Group | undefined> {
@@ -500,6 +538,84 @@ export class DatabaseStorage implements IStorage {
       if (err?.code === "23505") return undefined;
       throw err;
     }
+  }
+
+  async activateCryptoIntent(
+    intentId: number,
+    txHash: string | null,
+    period: InsertPlanPeriod,
+    userId: string,
+    userUpdate: Partial<Pick<User, "plan" | "planRail" | "planPeriodEnd" | "planCancelAtPeriodEnd" | "teliPaid">>,
+  ): Promise<{ ok: true; intent: PlanPaymentIntent } | { ok: false; reason: "already_matched" | "tx_replay" | "user_not_found" }> {
+    return db.transaction(async (tx) => {
+      const setValues: { status: "matched"; matchedAt: Date; txHash?: string } = {
+        status: "matched",
+        matchedAt: new Date(),
+      };
+      if (txHash) setValues.txHash = txHash;
+
+      let updatedIntent: PlanPaymentIntent | undefined;
+      try {
+        const [row] = await tx
+          .update(planPaymentIntents)
+          .set(setValues)
+          .where(and(eq(planPaymentIntents.id, intentId), eq(planPaymentIntents.status, "pending")))
+          .returning();
+        updatedIntent = row;
+      } catch (err: unknown) {
+        const code = (err as { code?: string } | null)?.code;
+        if (code === "23505") {
+          // Partial unique index on tx_hash WHERE status='matched' fired —
+          // another intent already credited this exact tx hash. The whole
+          // transaction is rolled back; the intent stays pending so the
+          // caller can surface a clean "already credited elsewhere" error.
+          return { ok: false, reason: "tx_replay" as const };
+        }
+        throw err;
+      }
+      if (!updatedIntent) {
+        // Intent was already matched/expired by a concurrent caller (likely
+        // the background poller beat us to it). Nothing more to do here.
+        return { ok: false, reason: "already_matched" as const };
+      }
+
+      await tx.insert(planPeriods).values(period);
+
+      const [u] = await tx
+        .update(users)
+        .set({ ...userUpdate, updatedAt: new Date() })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!u) {
+        // Throw to roll back the intent flip + period insert; caller logs
+        // [billing.activate] and the intent stays retryable.
+        throw new Error(`activateCryptoIntent: user ${userId} not found`);
+      }
+      return { ok: true as const, intent: updatedIntent };
+    });
+  }
+
+  async tryClaimRewardsDistribution(botConfigId: number, periodEnd: Date): Promise<boolean> {
+    // Conditional UPDATE: succeeds only if no prior run has already stamped
+    // a `reward_last_distribution_at` at or after `periodEnd`. PostgreSQL
+    // serializes the matching row at row-lock granularity, so when two
+    // callers race the loser re-reads the freshly stamped value (now >=
+    // periodEnd) under read-committed and updates 0 rows. We deliberately
+    // avoid timestamp equality (`= ${expectedLast}`) because Date <-> NOW()
+    // round-trips lose microsecond precision and can spuriously fail.
+    const result = await db.execute(sql`
+      UPDATE bot_configs
+      SET reward_last_distribution_at = NOW(),
+          reward_distribution_running_at = NOW()
+      WHERE id = ${botConfigId}
+        AND (reward_last_distribution_at IS NULL OR reward_last_distribution_at < ${periodEnd})
+      RETURNING id
+    `);
+    return (result.rows?.length ?? 0) > 0;
+  }
+
+  async clearRewardsRunning(botConfigId: number): Promise<void> {
+    await db.execute(sql`UPDATE bot_configs SET reward_distribution_running_at = NULL WHERE id = ${botConfigId}`);
   }
 
   async findMatchedIntentByTxHash(txHash: string): Promise<PlanPaymentIntent | undefined> {

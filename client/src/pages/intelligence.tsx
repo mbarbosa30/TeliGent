@@ -155,7 +155,7 @@ function RewardsPanels({ botId }: { botId: number | null }) {
                 <div key={d.id} className="flex items-center justify-between border-b last:border-b-0 py-1.5 text-xs font-mono" data-testid={`row-distribution-${d.id}`}>
                   <span>{d.periodStart ? format(new Date(d.periodStart), "MMM d") : "?"} → {d.periodEnd ? format(new Date(d.periodEnd), "MMM d") : "?"}</span>
                   <span>{d.tokenSymbol} × {d.totalRecipients}</span>
-                  <Badge variant={d.status === "sent" ? "default" : d.status === "failed" ? "destructive" : "secondary"}>{d.status}</Badge>
+                  <Badge variant={d.status === "sent" || d.status === "completed" ? "default" : d.status === "failed" ? "destructive" : d.status === "partial" ? "outline" : "secondary"}>{d.status}</Badge>
                 </div>
               ))}
             </div>

@@ -432,6 +432,7 @@ async function ensureRewardsColumns(client: any) {
     ["reward_pool_per_period", "TEXT DEFAULT '0'"],
     ["reward_min_days_active", "INTEGER NOT NULL DEFAULT 3"],
     ["reward_last_distribution_at", "TIMESTAMP"],
+    ["reward_distribution_running_at", "TIMESTAMP"],
     ["proactive_enabled", "BOOLEAN NOT NULL DEFAULT false"],
     ["proactive_mode", "TEXT NOT NULL DEFAULT 'queue'"],
     ["proactive_cadence_hours", "INTEGER NOT NULL DEFAULT 24"],

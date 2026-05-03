@@ -21,6 +21,9 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
     return { ok: false, reason: "already distributed for this period" };
   }
 
+  // Cheap precondition validation BEFORE we claim the period. If this bot
+  // is misconfigured we must not advance reward_last_distribution_at, or
+  // the operator could lose a whole period to a typo.
   const chain = (config.rewardTokenChain || "base") as RewardChain;
   const tokenAddress = config.rewardTokenAddress || "";
   const tokenSymbol = config.rewardTokenSymbol || "TOKEN";
@@ -35,6 +38,23 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
     return { ok: false, reason: "token, pool, or per-winner amount not configured" };
   }
 
+  // Atomically claim this period AFTER validation. The conditional UPDATE
+  // serializes the row so concurrent cron + manual triggers cannot both
+  // win. The dry-run path skips claiming because no payouts are written.
+  if (!opts.dryRun && !opts.force) {
+    const claimed = await storage.tryClaimRewardsDistribution(config.id, period.end);
+    if (!claimed) {
+      return { ok: false, reason: "another distribution already claimed this period" };
+    }
+  }
+
+  // Everything below this point may throw. Wrap in try/finally so the
+  // in-progress marker is always cleared, and any distribution rows we
+  // managed to create are finalized to "failed" rather than left pending.
+  const distributionIds: number[] = [];
+  let totalRecipients = 0, totalSent = 0, totalFailed = 0, totalSkipped = 0;
+
+  try {
   const byGroup = await computeContributorScoresByGroup(config.id, period.start, period.end);
   for (const [gid, list] of byGroup.entries()) {
     await persistContributorScores(config.id, period.start, period.end, list, gid);
@@ -46,9 +66,6 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
     if (p.status !== "sent" || !p.createdAt || new Date(p.createdAt) < period.start) continue;
     payoutCountByUser.set(p.telegramUserId, (payoutCountByUser.get(p.telegramUserId) || 0) + 1);
   }
-
-  const distributionIds: number[] = [];
-  let totalRecipients = 0, totalSent = 0, totalFailed = 0, totalSkipped = 0;
 
   for (const [gid, scores] of byGroup.entries()) {
     const eligibleCandidates = [];
@@ -130,35 +147,96 @@ export async function runRewardsForBot(config: BotConfig, opts: { dryRun?: boole
       };
 
       if (!wallet?.walletAddress) {
-        await storage.createRewardPayout({ ...baseRow, status: "skipped", errorMessage: "no wallet on file" });
-        skipped++;
+        try {
+          await storage.createRewardPayout({ ...baseRow, status: "skipped", errorMessage: "no wallet on file" });
+          skipped++;
+        } catch (err) {
+          // Persist failure: we count this as failed so the distribution row
+          // never shows a misleading "completed" status when a payout row
+          // could not even be recorded.
+          failed++;
+          const msg = err instanceof Error ? err.message : String(err);
+          log(`Failed to record skipped payout for bot ${config.id} group ${gid} -> ${winner.telegramUserId}: ${msg}`, "rewards");
+        }
         continue;
       }
 
+      // Network call lives outside the persistence try/catch so we can
+      // distinguish transfer failures (recorded as "failed") from row-write
+      // failures (counted but not persisted, treated as failed).
+      let txHash: string | null = null;
+      let explorerUrl: string | undefined;
+      let transferError: string | null = null;
       try {
-        const { txHash, explorerUrl } = await transferErc20({ chain, tokenAddress, recipient: wallet.walletAddress, amount: perWinnerAmount, decimals });
-        await storage.createRewardPayout({ ...baseRow, status: "sent", txHash, explorerUrl });
-        payoutCountByUser.set(winner.telegramUserId, (payoutCountByUser.get(winner.telegramUserId) || 0) + 1);
-        sent++;
-      } catch (err: any) {
-        await storage.createRewardPayout({ ...baseRow, status: "failed", errorMessage: err.message?.slice(0, 500) });
+        const r = await transferErc20({ chain, tokenAddress, recipient: wallet.walletAddress, amount: perWinnerAmount, decimals });
+        txHash = r.txHash;
+        explorerUrl = r.explorerUrl;
+      } catch (err) {
+        transferError = err instanceof Error ? err.message : String(err);
+      }
+
+      try {
+        if (transferError !== null) {
+          await storage.createRewardPayout({ ...baseRow, status: "failed", errorMessage: transferError.slice(0, 500) });
+          failed++;
+          log(`Reward transfer failed for bot ${config.id} group ${gid} -> ${winner.telegramUserId}: ${transferError}`, "rewards");
+        } else if (txHash) {
+          await storage.createRewardPayout({ ...baseRow, status: "sent", txHash, explorerUrl });
+          payoutCountByUser.set(winner.telegramUserId, (payoutCountByUser.get(winner.telegramUserId) || 0) + 1);
+          sent++;
+        } else {
+          await storage.createRewardPayout({ ...baseRow, status: "failed", errorMessage: "transfer returned no tx hash" });
+          failed++;
+        }
+      } catch (err) {
         failed++;
-        log(`Reward transfer failed for bot ${config.id} group ${gid} → ${winner.telegramUserId}: ${err.message}`, "rewards");
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`Failed to persist payout for bot ${config.id} group ${gid} -> ${winner.telegramUserId}: ${msg}`, "rewards");
       }
     }
 
-    const finalStatus = failed > 0 && sent === 0 ? "failed" : sent > 0 ? "sent" : "skipped";
+    // Determinate final state for every distribution row:
+    //   completed -> all eligible recipients paid
+    //   partial   -> some paid, some failed/skipped
+    //   failed    -> none paid and at least one transfer/write error
+    //   skipped   -> none paid, only "no wallet on file" skips
+    let finalStatus: "completed" | "partial" | "failed" | "skipped";
+    if (sent > 0 && failed === 0 && skipped === 0) finalStatus = "completed";
+    else if (sent > 0) finalStatus = "partial";
+    else if (failed > 0) finalStatus = "failed";
+    else finalStatus = "skipped";
     await storage.updateRewardDistribution(distribution.id, { status: finalStatus, completedAt: new Date(), notes: `group=${gid} sent=${sent} failed=${failed} skipped=${skipped}` });
     totalRecipients += eligibleCandidates.length;
     totalSent += sent; totalFailed += failed; totalSkipped += skipped;
   }
 
-  if (totalRecipients === 0) return { ok: false, reason: "no eligible contributors" };
-  if (opts.dryRun) return { ok: true, reason: "dry run", recipients: totalRecipients };
+    if (totalRecipients === 0) return { ok: false, reason: "no eligible contributors" };
+    if (opts.dryRun) return { ok: true, reason: "dry run", recipients: totalRecipients };
 
-  await storage.updateBotConfig(config.id, { rewardLastDistributionAt: new Date() });
-  log(`Rewards for bot ${config.id}: groups=${distributionIds.length} sent=${totalSent} failed=${totalFailed} skipped=${totalSkipped}`, "rewards");
-  return { ok: true, distributionId: distributionIds[0], recipients: totalRecipients };
+    log(`Rewards for bot ${config.id}: groups=${distributionIds.length} sent=${totalSent} failed=${totalFailed} skipped=${totalSkipped}`, "rewards");
+    return { ok: true, distributionId: distributionIds[0], recipients: totalRecipients };
+  } catch (err) {
+    // Uncaught exception inside the heavy loop. Best-effort: finalize any
+    // distributions we created to "failed" so the dashboard never shows a
+    // stuck "pending" row, and re-throw so the caller logs the cause.
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`[rewards.run] crashed bot=${config.id} err=${msg}`, "rewards");
+    for (const id of distributionIds) {
+      try {
+        await storage.updateRewardDistribution(id, { status: "failed", completedAt: new Date(), notes: `crashed: ${msg.slice(0, 200)}` });
+      } catch {
+        // swallow - already in error path
+      }
+    }
+    throw err;
+  } finally {
+    // Always clear the in-progress marker, even on crash. The period stamp
+    // was advanced atomically at the top, so a stuck running marker is the
+    // only thing that could mislead operators.
+    if (!opts.dryRun && !opts.force) {
+      try { await storage.clearRewardsRunning(config.id); } catch { /* best-effort */ }
+    }
+  }
 }
 
 export async function payReferralReward(config: BotConfig, telegramUserId: string, userName: string | null): Promise<void> {
