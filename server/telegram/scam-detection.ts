@@ -329,7 +329,7 @@ export async function executeScamAction(
       userMessage: text,
       botResponse: deleted ? "(silently deleted)" : "(warned — could not delete)",
       isReport: true,
-      metadata: { autoDetected: true, reason },
+      metadata: { autoDetected: true, reason, category: categorize(reason) },
     });
   }
 
