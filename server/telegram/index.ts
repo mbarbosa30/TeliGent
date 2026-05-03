@@ -98,20 +98,29 @@ function registerWebhookRoute(app: Express) {
   app.post("/api/telegram-webhook/:hash", (req, res) => {
     const webhookPath = `/api/telegram-webhook/${req.params.hash}`;
     const currentToken = webhookPathToToken.get(webhookPath);
+    // Hard reject: an unmapped path must never be processed. Returning 200
+    // here would let an attacker spray random hashes and have us silently
+    // accept their payloads, and could mask a stale-mapping bug.
     if (!currentToken) {
-      log(`[WEBHOOK] No token mapped for ${webhookPath}`, "telegram");
-      res.sendStatus(200);
+      log(`[WEBHOOK] Rejected: no token mapped for ${webhookPath}`, "telegram");
+      res.sendStatus(401);
       return;
     }
     const expectedSecret = getWebhookSecret(currentToken);
-    const headerSecret = req.headers["x-telegram-bot-api-secret-token"];
-    if (headerSecret && headerSecret !== expectedSecret) {
-      log(`[WEBHOOK] Auth FAILED for ${webhookPath} (secret mismatch)`, "telegram");
-      res.sendStatus(403);
+    const rawHeader = req.headers["x-telegram-bot-api-secret-token"];
+    const headerSecret = typeof rawHeader === "string" ? rawHeader : "";
+    // Reject any request without the exact secret_token Telegram echoes.
+    // We require equal lengths before timingSafeEqual (which throws on
+    // mismatched lengths) to keep the check constant-time vs. the secret.
+    if (headerSecret.length !== expectedSecret.length) {
+      log(`[WEBHOOK] Rejected: missing or malformed secret_token for ${webhookPath}`, "telegram");
+      res.sendStatus(401);
       return;
     }
-    if (!headerSecret) {
-      log(`[WEBHOOK] Rejected: no secret_token header for ${webhookPath}`, "telegram");
+    const a = Buffer.from(headerSecret);
+    const b = Buffer.from(expectedSecret);
+    if (!crypto.timingSafeEqual(a, b)) {
+      log(`[WEBHOOK] Rejected: secret_token mismatch for ${webhookPath}`, "telegram");
       res.sendStatus(401);
       return;
     }
@@ -345,6 +354,17 @@ async function startSingleBot(config: BotConfig) {
       });
     }
   } catch (err: any) {
+    // If startSingleBot fails after we wrote the path mapping (e.g. setWebHook
+    // throws), drop the mapping so the webhook route does not later accept
+    // requests for a token that has no live BotInstance behind it.
+    const stalePath = getWebhookPath(token);
+    if (webhookPathToToken.get(stalePath) === token) {
+      webhookPathToToken.delete(stalePath);
+    }
+    if (activeBots.get(token)) {
+      activeBots.delete(token);
+      unregisterBotInstance(config.id);
+    }
     log(`Failed to start bot for user ${userId}: ${err.message}\n${err.stack || ""}`, "telegram");
     throw err;
   }

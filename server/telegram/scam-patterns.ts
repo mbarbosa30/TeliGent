@@ -453,10 +453,43 @@ export function isFinancialShillHype(signals: FinancialHypeSignals): boolean {
     (signals.isForwardedMessage && (signals.hasMultiplierClaim || signals.hasPumpHypeLanguage || signals.hasFomoUrgency));
 }
 
+// Hard cap on text length scanned by the deterministic scam patterns.
+// Several patterns chain `.{0,N}` wildcards which the JS regex engine
+// matches with backtracking. Without a length cap, a sufficiently long
+// crafted message can drive worst-case match time into the multi-second
+// range and stall the bot worker. 2000 chars is well above any real
+// message and keeps every pattern under ~5ms in benchmarks.
+export const MAX_SCAM_SCAN_LENGTH = 2000;
+
+// Per-pattern wall-clock budget. If any single pattern exceeds this we
+// log a structured warning and treat the result as a non-match for that
+// pattern, so a future ReDoS regression on one regex cannot stall the
+// whole detection pipeline. The remaining patterns still run.
+const PATTERN_MS_BUDGET = 50;
+
 export function runAllPatterns(normalized: string, raw: string): Map<string, boolean> {
   const results = new Map<string, boolean>();
+  const safeNormalized = normalized.length > MAX_SCAM_SCAN_LENGTH
+    ? normalized.slice(0, MAX_SCAM_SCAN_LENGTH)
+    : normalized;
+  const safeRaw = raw.length > MAX_SCAM_SCAN_LENGTH
+    ? raw.slice(0, MAX_SCAM_SCAN_LENGTH)
+    : raw;
   for (const pattern of scamPatterns) {
-    results.set(pattern.name, pattern.detect(normalized, raw));
+    const t0 = Date.now();
+    let matched = false;
+    try {
+      matched = pattern.detect(safeNormalized, safeRaw);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[scam-patterns] ${pattern.name} threw: ${msg}`);
+      matched = false;
+    }
+    const elapsed = Date.now() - t0;
+    if (elapsed > PATTERN_MS_BUDGET) {
+      console.warn(`[scam-patterns] ${pattern.name} exceeded ${PATTERN_MS_BUDGET}ms budget (took ${elapsed}ms, input=${safeNormalized.length}/${safeRaw.length}) - possible ReDoS`);
+    }
+    results.set(pattern.name, matched);
   }
   return results;
 }
