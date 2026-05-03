@@ -570,6 +570,17 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     }
   }
 
+  // Deterministic gate for sensitive financial topics: if the user is asking
+  // about money/payouts/delays/audits/funding and we have no PINNED or
+  // OFFICIAL/ADMIN entry that could authoritatively answer, do not call the
+  // model at all. Letting it speculate from chat history alone is exactly
+  // the failure mode that produced the "we paused rewards to audit formulas,
+  // build sustainable funding" incident. Return the safe fallback directly.
+  if (sensitive.sensitive && freshKnowledge.length === 0) {
+    log(`AI response gated (sensitive topic, no PINNED/OFFICIAL coverage) for bot ${botConfigId}: categories=[${sensitive.categories.join(",")}]`, "ai-guard");
+    return buildSafeFallbackReply();
+  }
+
   // Bot memories and per-user memories are auto-mined from chat and are not
   // authoritative sources. On sensitive topics they could re-introduce the
   // very narratives we just stripped out of patterns/KB, so we drop them.

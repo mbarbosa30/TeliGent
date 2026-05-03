@@ -16,6 +16,7 @@ import {
   buildSafeFallbackReply,
   buildSensitiveTopicInstruction,
   SPOKESPERSON_HARD_RULES,
+  type SensitiveCategory,
 } from "../server/telegram/sensitive-topics";
 
 let failures = 0;
@@ -25,7 +26,7 @@ function assert(cond: boolean, msg: string): void {
 }
 
 console.log("[ai-no-team-spokesperson] sensitive classifier (positives)");
-const sensitivePositives: Array<{ msg: string; expectAny: string[] }> = [
+const sensitivePositives: Array<{ msg: string; expectAny: SensitiveCategory[] }> = [
   { msg: "when are rewards coming back?", expectAny: ["payouts", "schedule_promise", "delays_pauses"] },
   { msg: "why are payouts paused", expectAny: ["payouts", "delays_pauses"] },
   { msg: "when do we get paid for last week", expectAny: ["payouts"] },
@@ -39,7 +40,7 @@ const sensitivePositives: Array<{ msg: string; expectAny: string[] }> = [
 ];
 for (const c of sensitivePositives) {
   const r = classifySensitiveTopic(c.msg, null);
-  const hit = r.sensitive && c.expectAny.some(cat => r.categories.includes(cat as any));
+  const hit = r.sensitive && c.expectAny.some(cat => r.categories.includes(cat));
   assert(hit, `sensitive: "${c.msg}" -> [${r.categories.join(",")}]`);
 }
 
