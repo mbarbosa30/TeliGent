@@ -660,12 +660,13 @@ export class DatabaseStorage implements IStorage {
       SELECT total_recipients, sent_count, failed_count, skipped_count
       FROM reward_distributions WHERE id = ${distributionId}
     `);
-    const row = result.rows?.[0] as any;
-    if (!row) return null;
-    const total = Number(row.total_recipients) || 0;
-    const sent = Number(row.sent_count) || 0;
-    const failed = Number(row.failed_count) || 0;
-    const skipped = Number(row.skipped_count) || 0;
+    const raw = result.rows?.[0];
+    if (!raw) return null;
+    const row = raw as Record<string, unknown>;
+    const total = Number(row.total_recipients ?? 0) || 0;
+    const sent = Number(row.sent_count ?? 0) || 0;
+    const failed = Number(row.failed_count ?? 0) || 0;
+    const skipped = Number(row.skipped_count ?? 0) || 0;
     const accounted = sent + failed + skipped;
     let status: "completed" | "partial" | "failed" | "skipped";
     if (accounted < total) {
