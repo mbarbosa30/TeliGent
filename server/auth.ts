@@ -32,7 +32,11 @@ function getEmailOrigin(req: Request): string {
   const configured = (process.env.APP_URL || "").trim().replace(/\/+$/, "");
   if (configured) return configured;
   if (process.env.NODE_ENV === "production") {
-    console.warn("[auth] APP_URL is not set in production — falling back to request host for email links. Set APP_URL to a trusted canonical origin.");
+    // Refuse to use the request host in production. Trusting req.get("host")
+    // would let an attacker poison password-reset / verify links via a
+    // forged Host header. Surfacing this as a hard error forces the operator
+    // to set APP_URL to a trusted canonical origin before any email goes out.
+    throw new Error("APP_URL must be set in production to issue email links");
   }
   return `${req.protocol}://${req.get("host")}`;
 }
@@ -337,14 +341,18 @@ export function registerAuthRoutes(app: Express) {
       const emailLower = email.toLowerCase().trim();
       const [user] = await db.select().from(users).where(eq(users.email, emailLower)).limit(1);
       if (user) {
-        const token = generateToken();
-        const tokenHash = hashToken(token);
-        const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
-        await db.insert(passwordResetTokens).values({ tokenHash, userId: user.id, expiresAt });
-        const link = `${getEmailOrigin(req)}/reset-password?token=${encodeURIComponent(token)}`;
-        await sendPasswordResetEmail(user.email, link).catch((err) => {
-          console.error("[auth] reset email send failed:", err?.message || err);
-        });
+        try {
+          const token = generateToken();
+          const tokenHash = hashToken(token);
+          const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+          await db.insert(passwordResetTokens).values({ tokenHash, userId: user.id, expiresAt });
+          const link = `${getEmailOrigin(req)}/reset-password?token=${encodeURIComponent(token)}`;
+          await sendPasswordResetEmail(user.email, link).catch((err) => {
+            console.error("[auth] reset email send failed:", err?.message || err);
+          });
+        } catch (originErr: any) {
+          console.error("[auth] forgot-password origin error:", originErr?.message || originErr);
+        }
       }
       res.json({ ok: true });
     } catch (err: any) {

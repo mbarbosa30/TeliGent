@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./auth";
 import { runMigrations } from "./migrations";
 import { storage } from "./storage";
+import { csrfMiddleware } from "./csrf";
 
 const app = express();
 const httpServer = createServer(app);
@@ -37,6 +38,60 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+// Field-name denylist for response-body logging. Anything matching either
+// the explicit set or the regex below is redacted before it ever lands in
+// our server logs. This is defense in depth: route handlers should already
+// avoid returning raw secrets, but a missed handler should not be able to
+// leak credentials, PII, or wallet identifiers via the access log.
+const SENSITIVE_FIELD_NAMES = new Set<string>([
+  "email",
+  "customerId",
+  "stripeCustomerId",
+  "stripeSubscriptionId",
+  "walletAddress",
+  "address",
+  "txHash",
+  "transactionHash",
+  "sessionId",
+  "refreshToken",
+  "accessToken",
+  "bankrApiKey",
+  "apiKey",
+  "privateKey",
+  "passphrase",
+  "csrfToken",
+  "csrf_token",
+  "tokenHash",
+  "passwordHash",
+  // Profile PII: present on /api/auth/user and similar account endpoints.
+  "firstName",
+  "lastName",
+  "fullName",
+  "phone",
+  "phoneNumber",
+  "username",
+  "telegramHandle",
+  "telegramUsername",
+  "ipAddress",
+]);
+const SENSITIVE_FIELD_PATTERN = /(key|secret|token|password|passphrase)/i;
+
+function maskString(value: string): string {
+  if (value.length <= 6) return "[redacted]";
+  return value.slice(0, 2) + "***" + value.slice(-2);
+}
+
+function redactValue(key: string, value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  // Preserve the existing botToken truncation shape so existing log readers
+  // don't break.
+  if (key === "botToken") return value.slice(0, 6) + "***";
+  if (SENSITIVE_FIELD_NAMES.has(key) || SENSITIVE_FIELD_PATTERN.test(key)) {
+    return maskString(value);
+  }
+  return value;
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -53,10 +108,7 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        const safeBody = JSON.stringify(capturedJsonResponse, (key, value) => {
-          if (key === "botToken" && typeof value === "string") return value.slice(0, 6) + "***";
-          return value;
-        });
+        const safeBody = JSON.stringify(capturedJsonResponse, (key, value) => redactValue(key, value));
         logLine += ` :: ${safeBody}`;
       }
 
@@ -66,6 +118,8 @@ app.use((req, res, next) => {
 
   next();
 });
+
+app.use(csrfMiddleware);
 
 (async () => {
   await runMigrations();

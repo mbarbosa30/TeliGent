@@ -44,14 +44,40 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function readCsrfCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const all = document.cookie ? document.cookie.split(";") : [];
+  for (const raw of all) {
+    const idx = raw.indexOf("=");
+    if (idx === -1) continue;
+    const key = raw.slice(0, idx).trim();
+    if (key === "csrf_token") {
+      try {
+        return decodeURIComponent(raw.slice(idx + 1).trim());
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (data) headers["Content-Type"] = "application/json";
+  if (!SAFE_METHODS.has(method.toUpperCase())) {
+    const csrf = readCsrfCookie();
+    if (csrf) headers["x-csrf-token"] = csrf;
+  }
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
