@@ -150,12 +150,12 @@ export function learnedPatternThreshold(sensitivity: ScamSensitivity): number {
   return 3;
 }
 
-export async function aiScamCheck(text: string, senderRole: string, sensitivity: ScamSensitivity = "medium", botConfigId: number = 0): Promise<{ isScam: boolean; reason: string }> {
+export async function aiScamCheck(text: string, senderRole: string, sensitivity: ScamSensitivity = "medium", botConfigId: number = 0): Promise<{ isScam: boolean; reason: string; category: ScamCategory }> {
   if (botConfigId > 0) {
     const allowed = await tryConsumeAiBudget(botConfigId);
     if (!allowed) {
       log(`AI scam check skipped (daily budget exhausted) for bot ${botConfigId}`, "ai-budget");
-      return { isScam: false, reason: "ai_budget_exhausted" };
+      return { isScam: false, reason: "ai_budget_exhausted", category: "other" };
     }
   }
   try {
@@ -178,8 +178,8 @@ export async function aiScamCheck(text: string, senderRole: string, sensitivity:
 
 A message IS a SCAM/SPAM if it does ANY of these:
 - Poses as project leadership or makes official-sounding announcements (migrations, relaunches, contract changes, new CAs, airdrops, etc.)
-- Asks people to DM/PM/inbox/contact/message them privately for ANY reason
-- Uses "drop me a private message", "send me a message", "reach out to me", "contact me privately" or similar
+- Asks people to DM/PM/inbox/contact/message them privately AND combines that DM ask with at least one money/crypto hook (sending funds, sharing a wallet address, sharing a tx hash, claiming an airdrop or migration swap, receiving "free" crypto, paid promotion/marketing services, insider/VIP signal calls, exchange listings, or anything financial). A bare DM mention with no financial hook is NOT enough on its own — see the LEGITIMATE list below.
+- Uses "drop me a private message", "send me a message", "reach out to me", "contact me privately" combined with any of the financial hooks above
 - Asks for transaction hashes, wallet addresses, private keys, seed phrases, or screenshots of purchases
 - Promotes fake airdrops, token swaps, or contract migrations
 - Mentions "migration", "airdrop", "recover loss", "boost volume" — regular users don't announce these
@@ -235,12 +235,37 @@ EXAMPLES OF LEGITIMATE MESSAGES (do NOT flag these):
 - "Can I add @BotName to my community? What does it cost?" → NOT a scam (pricing question)
 - "I manage a community and I'm looking to add your bot for scam protection" → NOT a scam (product interest, NOT cold-pitch)
 - "Does this bot work for groups with 1000+ members?" → NOT a scam (feature question)
+- "I sent you a DM going on 8 hours now and you haven't replied" → NOT a scam (frustrated user chasing a moderator, no financial hook)
+- "Can you check your DM" / "please check your inbox" → NOT a scam (asking a moderator to read a private message)
+- "If you can DM me I will send proof" / "Do you need a prove? I'll send it to your DM" → NOT a scam when the user is offering proof of their OWN issue (missing reward, failed transaction, support question), with no offer of crypto/profit/service in return
+- "I will DM the admin about my missing payout" → NOT a scam (legitimate support escalation)
+- The rule of thumb: a bare DM mention from a community member who is asking for help, complaining, or following up with moderators is NOT a scam. Only flag DM mentions when they are paired with a clear financial hook from the SCAM list above.
 
-Respond with ONLY valid JSON: {"scam": true, "reason": "brief explanation"} or {"scam": false, "reason": "brief explanation"}`
+Respond with ONLY valid JSON in this shape:
+{"scam": true, "category": "<one of the categories>", "reason": "brief explanation"}
+or
+{"scam": false, "category": "other", "reason": "brief explanation"}
+
+The "category" field MUST be exactly one of:
+"dm_solicitation" (DM/PM ask paired with a financial hook),
+"tx_hash_phishing" (asking for tx hashes, screenshots of purchases, proof of transaction),
+"airdrop_migration" (fake migration, airdrop, contract swap, relaunch),
+"service_pitch" (unsolicited services: design, NFT, logo, marketing, community management, flattery+pitch),
+"promo_for_hire" (paid promo, raid/shill, boost, volume service),
+"pump_call" (insider/VIP call, multiplier brag, investor access, token call card, investment service),
+"giveaway_scam" (offering free crypto/tokens to people who DM/contact),
+"nsfw_spam" (porn, adult, sexual solicitation),
+"group_promo" (unsolicited Telegram group/channel/invite link promo),
+"fake_exchange" (impersonating exchange listing partnership),
+"exit_scam" (fake refund, project shutdown lure with DM/hash request),
+"wallet_buying" (buying or selling wallets with transaction history),
+"impersonation_evasion" (homoglyph/lookalike characters or impersonating bot/team),
+"financial_hype" (pump hype, FOMO, low-cap gem shill, multiplier claims),
+"other" (anything else, including all NOT-A-SCAM cases — use "other" with scam:false).`
         },
         { role: "user", content: text }
       ],
-      max_completion_tokens: 100,
+      max_completion_tokens: 160,
     }, { signal: controller.signal as any });
 
     clearTimeout(timeout);
@@ -250,15 +275,17 @@ Respond with ONLY valid JSON: {"scam": true, "reason": "brief explanation"} or {
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[0]);
-        log(`AI scam verdict: ${parsed.scam ? "SCAM" : "OK"} — ${parsed.reason || "no reason"} — msg: "${text.substring(0, 60)}"`, "telegram");
-        return { isScam: !!parsed.scam, reason: parsed.reason || "" };
+        const rawCat = typeof parsed.category === "string" ? parsed.category : "other";
+        const category: ScamCategory = isScamCategory(rawCat) ? rawCat : "other";
+        log(`AI scam verdict: ${parsed.scam ? "SCAM" : "OK"} [${category}] — ${parsed.reason || "no reason"} — msg: "${text.substring(0, 60)}"`, "telegram");
+        return { isScam: !!parsed.scam, reason: parsed.reason || "", category };
       } catch {}
     }
     log(`AI scam check returned unparseable response: ${content.substring(0, 100)}`, "telegram");
-    return { isScam: false, reason: "unparseable" };
+    return { isScam: false, reason: "unparseable", category: "other" };
   } catch (e: any) {
     log(`AI scam check failed: ${e.message}`, "telegram");
-    return { isScam: false, reason: "error" };
+    return { isScam: false, reason: "error", category: "other" };
   }
 }
 
@@ -311,24 +338,25 @@ export async function executeScamAction(
       const config = await storage.getBotConfig(botConfigId);
       if (config && config.autoBanThreshold > 0) {
         const scamCount = await storage.getScamCountForUser(botConfigId, tgUserId);
-        const distinctReasons = getDistinctScamCount(tgUserId, reason);
-        if (scamCount >= config.autoBanThreshold && distinctReasons >= 2) {
+        const signals = getDistinctScamSignals(tgUserId, reason);
+        const catList = signals.categories.join(",");
+        if (scamCount >= config.autoBanThreshold && signals.count >= 2) {
           await bot.banChatMember(msg.chat.id, Number(tgUserId));
-          log(`AUTO-BANNED user ${userName} (tgId: ${tgUserId}) after ${scamCount} scam deletions, ${distinctReasons} distinct patterns (threshold: ${config.autoBanThreshold})`, "telegram");
+          log(`AUTO-BANNED user ${userName} (tgId: ${tgUserId}) after ${scamCount} scam deletions, ${signals.count} distinct categories [${catList}] (threshold: ${config.autoBanThreshold})`, "telegram");
           if (groupRecord) {
             await storage.createActivityLog(botConfigId, userId, {
               groupId: groupRecord.id,
               type: "report",
               telegramUserId: tgUserId,
               userName,
-              userMessage: `Auto-banned after ${scamCount} scam messages (${distinctReasons} distinct patterns)`,
+              userMessage: `Auto-banned after ${scamCount} scam messages (${signals.count} distinct categories: ${catList})`,
               botResponse: "(user banned)",
               isReport: true,
-              metadata: { autoDetected: true, reason: `Auto-ban: ${scamCount} scam deletions, ${distinctReasons} distinct patterns reached threshold of ${config.autoBanThreshold}` },
+              metadata: { autoDetected: true, reason: `Auto-ban: ${scamCount} scam deletions, ${signals.count} distinct categories [${catList}] reached threshold of ${config.autoBanThreshold}`, categories: signals.categories },
             });
           }
-        } else if (scamCount >= config.autoBanThreshold && distinctReasons < 2) {
-          log(`Auto-ban deferred for ${userName} (tgId: ${tgUserId}): ${scamCount} deletions but only ${distinctReasons} distinct pattern(s) — may be false positive`, "telegram");
+        } else if (scamCount >= config.autoBanThreshold && signals.count < 2) {
+          log(`Auto-ban deferred for ${userName} (tgId: ${tgUserId}): ${scamCount} deletions but only ${signals.count} distinct category [${catList}] — may be false positive`, "telegram");
         }
       }
     } catch (e: any) {
@@ -360,23 +388,80 @@ export function isProductInterestMessage(normalized: string, config: BotConfig, 
   return !hasScamIndicators;
 }
 
-const recentScamReasons = new Map<string, { reasons: Set<string>; firstSeen: number }>();
+// Stable category enum used for the auto-ban "distinct patterns required"
+// safeguard. Free-text AI rationales paraphrase the same root behavior in
+// many ways ("Asks to send proof via DM" vs. "Requests private contact/DM"),
+// so we collapse them down to one of these tags before counting distinct
+// signals against a user. The AI classifier emits the tag explicitly via a
+// `[cat:xxx]` prefix; deterministic patterns are mapped via the substring
+// matchers in `categorize` below.
+export type ScamCategory =
+  | "dm_solicitation"
+  | "tx_hash_phishing"
+  | "airdrop_migration"
+  | "service_pitch"
+  | "promo_for_hire"
+  | "pump_call"
+  | "giveaway_scam"
+  | "nsfw_spam"
+  | "group_promo"
+  | "fake_exchange"
+  | "exit_scam"
+  | "wallet_buying"
+  | "impersonation_evasion"
+  | "financial_hype"
+  | "button_grid_spam"
+  | "learned_pattern"
+  | "other";
 
-function getDistinctScamCount(tgUserId: string, newReason: string): number {
+const ALL_SCAM_CATEGORIES: readonly ScamCategory[] = [
+  "dm_solicitation", "tx_hash_phishing", "airdrop_migration", "service_pitch",
+  "promo_for_hire", "pump_call", "giveaway_scam", "nsfw_spam", "group_promo",
+  "fake_exchange", "exit_scam", "wallet_buying", "impersonation_evasion",
+  "financial_hype", "button_grid_spam", "learned_pattern", "other",
+];
+
+function isScamCategory(value: string): value is ScamCategory {
+  return (ALL_SCAM_CATEGORIES as readonly string[]).includes(value);
+}
+
+export function categorize(reason: string): ScamCategory {
+  // AI-emitted categories carry an explicit [cat:xxx] prefix that we
+  // attach in the action layer, so we trust those first.
+  const tagMatch = reason.match(/\[cat:([a-z_]+)\]/);
+  if (tagMatch && isScamCategory(tagMatch[1])) return tagMatch[1];
+  const r = reason.toLowerCase();
+  if (/homoglyph|impersonat/.test(r)) return "impersonation_evasion";
+  if (/button.{0,5}grid|forwarded ad with multiple inline/.test(r)) return "button_grid_spam";
+  if (/migration|airdrop/.test(r)) return "airdrop_migration";
+  if (/giveaway|free crypto|free\s*(token|coin|nft)/.test(r)) return "giveaway_scam";
+  if (/nsfw|adult|porn|sexual/.test(r)) return "nsfw_spam";
+  if (/exchange listing|fake exchange/.test(r)) return "fake_exchange";
+  if (/exit scam|fake refund|refund/.test(r)) return "exit_scam";
+  if (/wallet buying|wallet selling|buying.{0,15}wallet/.test(r)) return "wallet_buying";
+  if (/learned/.test(r)) return "learned_pattern";
+  if (/financial shill|pump hype|hype spam/.test(r)) return "financial_hype";
+  if (/promo.for.hire|paid promo|raid|shill|boost|pump.{0,10}promotion|volume.{0,10}service/.test(r)) return "promo_for_hire";
+  if (/vip call|insider|testimonial|investor|investment service|token call card|pump call|call card/.test(r)) return "pump_call";
+  if (/group.{0,15}(promo|invite|link|channel)|telegram (invite|group|channel)/.test(r)) return "group_promo";
+  if (/tx hash|transaction hash|proof of (purchase|transaction)/.test(r)) return "tx_hash_phishing";
+  if (/service|pitch|cold.pitch|management|flattery|menu/.test(r)) return "service_pitch";
+  if (/dm|pm|private message|inbox|solicitation/.test(r)) return "dm_solicitation";
+  return "other";
+}
+
+const recentScamReasons = new Map<string, { categories: Set<ScamCategory>; firstSeen: number }>();
+
+function getDistinctScamSignals(tgUserId: string, newReason: string): { count: number; categories: ScamCategory[] } {
   const key = tgUserId;
   const now = Date.now();
   let entry = recentScamReasons.get(key);
   if (!entry || now - entry.firstSeen > 30 * 60 * 1000) {
-    entry = { reasons: new Set(), firstSeen: now };
+    entry = { categories: new Set<ScamCategory>(), firstSeen: now };
     recentScamReasons.set(key, entry);
   }
-  const category = newReason
-    .replace(/\s*\(.*\)$/, "")
-    .replace(/^AI:\s*/, "")
-    .replace(/^AI \(impersonator\):\s*/, "")
-    .substring(0, 60);
-  entry.reasons.add(category);
-  return entry.reasons.size;
+  entry.categories.add(categorize(newReason));
+  return { count: entry.categories.size, categories: Array.from(entry.categories) };
 }
 
 setInterval(() => {
@@ -485,7 +570,23 @@ export async function detectAndHandleScam(
   if (hit("migrationAirdropScam")) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("migrationAirdropScam"));
   }
-  if (hit("privateMessageSolicitation") || (hit("dmSolicitation") && hit("txHashRequest"))) {
+  // Bare "DM/PM/private message me" phrasing is too benign on its own to
+  // auto-action — frustrated users chasing moderators legitimately use the
+  // same wording (see the MiniPlay false-positive incident). Require a
+  // corroborating financial / phishing signal alongside the DM ask. The
+  // first `privateMessageSolicitation` regex branch (bare DM) was the FP
+  // source; the second branch (DM + tx/hash/screenshot/purchase) still
+  // fires here because it co-matches `txHashRequest` or one of the other
+  // financial signals on the same message.
+  const dmAsk = hit("privateMessageSolicitation") || hit("dmSolicitation");
+  const dmFinancialHook =
+    hit("txHashRequest") ||
+    hit("migrationAirdropScam") ||
+    hit("walletBuyingSelling") ||
+    hit("cryptoGiveawayScam") ||
+    hit("scamOffer") ||
+    hasFinancialShillHypeResult;
+  if (dmAsk && dmFinancialHook) {
     return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, getPatternReason("privateMessageSolicitation"));
   }
   if (hit("flatteryPitch") || hit("cryptoServiceKeywords") || hit("unsolicitedServiceOffer")) {
@@ -586,7 +687,7 @@ export async function detectAndHandleScam(
   const aiContext = isImpersonator
     ? `[SUSPICIOUS: This user's display name "${userName}" closely matches the bot/group name. Non-admins impersonating official accounts is a common scam tactic. Be extra vigilant.]\n\n${normalized}`
     : normalized;
-  const { isScam, reason } = await aiScamCheck(aiContext, "regular_user", sensitivity, botConfigId);
+  const { isScam, reason, category } = await aiScamCheck(aiContext, "regular_user", sensitivity, botConfigId);
   if (!isScam) {
     const hasSoftSignals = hit("softCollaborationInvite") || hit("dmSolicitation") || hit("fakeExchangeListing") || hit("channelManagementPitch") || hasFinancialShillHypeResult || hit("investmentServicePitch");
     if (sensitivity !== "low" && (reason === "unparseable" || reason === "error") && hasSoftSignals) {
@@ -612,7 +713,9 @@ export async function detectAndHandleScam(
     return false;
   }
 
-  const aiReason = isImpersonator ? `AI (impersonator): ${reason}` : `AI: ${reason}`;
+  const aiReason = isImpersonator
+    ? `AI (impersonator) [cat:${category}]: ${reason}`
+    : `AI [cat:${category}]: ${reason}`;
   return await executeScamAction(bot, msg, text, userName, userId, botConfigId, groupRecord, aiReason);
 }
 

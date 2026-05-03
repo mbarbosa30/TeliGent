@@ -125,6 +125,16 @@ async function main() {
     "thanks for the answer, that solved my issue",
     "I'm new here, looking forward to learning more",
     "the website looks good, congrats on the launch",
+    // MiniPlay false-positive fixtures (Hellen / Igwe). Both users were
+    // auto-banned because the AI flagged a benign DM mention. The
+    // deterministic patterns must NOT match these benign variants either.
+    // (The "DM me" variant intentionally still matches dmSolicitation; the
+    // category-collapse safeguard in scam-detection.ts is what now prevents
+    // an auto-ban from repeated DM-solicitation hits alone.)
+    "I sent you a DM going on 8 hours now and you haven't replied",
+    "Can you check your DM",
+    "Do you need a prove? I'll send it to your DM",
+    "I will DM the admin about my missing payout",
   ];
   for (const msg of negatives) {
     const r = runAllPatterns(msg.toLowerCase(), msg);

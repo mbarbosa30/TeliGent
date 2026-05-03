@@ -2226,6 +2226,66 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  // Admin: bulk unban one or more telegram users across all groups of a bot.
+  // Use this for false-positive auto-bans (e.g. AI flagged a benign DM mention)
+  // when the affected log rows have already been triaged out of band and we
+  // just need to lift the ban. This does NOT mark anything as a learned
+  // false-positive (no allowlist write), and only attempts unban with
+  // only_if_banned=true so it is safe to retry.
+  app.post("/api/admin/bots/:botId/scam-flagged/unban-by-tg-user", isAdminAuthenticated, async (req, res) => {
+    try {
+      const botId = parseInt(req.params.botId as string);
+      if (!Number.isFinite(botId)) return res.status(400).json({ error: "Invalid botId" });
+      const rawIds = Array.isArray(req.body?.telegramUserIds) ? req.body.telegramUserIds : [];
+      const tgUserIds: string[] = rawIds
+        .map((v: unknown) => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : ""))
+        .filter((s: string) => /^\d+$/.test(s));
+      if (tgUserIds.length === 0) return res.status(400).json({ error: "telegramUserIds must be a non-empty array of numeric Telegram user IDs" });
+      const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 240) : "";
+
+      const config = await storage.getBotConfig(botId);
+      if (!config) return res.status(404).json({ error: "Bot not found" });
+      const groups = await storage.getGroups(botId);
+      const { getActiveBotInstance } = await import("./telegram/instance-registry");
+      const instance = getActiveBotInstance(botId);
+
+      type UnbanResult = { telegramUserId: string; groupId: number; ok: boolean; error?: string };
+      const results: UnbanResult[] = [];
+      for (const tgId of tgUserIds) {
+        for (const g of groups) {
+          let ok = false;
+          let errMsg: string | undefined;
+          try {
+            if (instance) {
+              await instance.bot.unbanChatMember(g.telegramChatId, Number(tgId), { only_if_banned: true });
+              ok = true;
+            } else {
+              errMsg = "bot instance not active";
+            }
+          } catch (e: any) {
+            errMsg = e?.message || String(e);
+          }
+          if (ok) {
+            await storage.createActivityLog(botId, config.userId, {
+              groupId: g.id,
+              type: "report",
+              telegramUserId: tgId,
+              userName: null,
+              userMessage: `Admin unban: ${note || "false-positive correction"}`,
+              botResponse: "(user unbanned by admin)",
+              isReport: true,
+              metadata: { autoDetected: false, adminUnban: true, note: note || null },
+            });
+          }
+          results.push({ telegramUserId: tgId, groupId: g.id, ok, error: errMsg });
+        }
+      }
+      res.json({ success: true, botId, attempted: results.length, succeeded: results.filter((r) => r.ok).length, results });
+    } catch (err: any) {
+      res.status(err?.status || 500).json({ error: err?.message || String(err) });
+    }
+  });
+
   app.use(paywallErrorMiddleware);
 
   await startBotEngine(app);
