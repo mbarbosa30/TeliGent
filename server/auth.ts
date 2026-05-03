@@ -341,17 +341,24 @@ export function registerAuthRoutes(app: Express) {
       const emailLower = email.toLowerCase().trim();
       const [user] = await db.select().from(users).where(eq(users.email, emailLower)).limit(1);
       if (user) {
+        // Resolve the email origin first. If it fails (APP_URL missing in
+        // production), do not insert a reset token at all so we don't pile
+        // up unsendable, soon-to-expire credentials in the table.
+        let origin: string | null = null;
         try {
+          origin = getEmailOrigin(req);
+        } catch (originErr: any) {
+          console.error("[auth] forgot-password origin error:", originErr?.message || originErr);
+        }
+        if (origin) {
           const token = generateToken();
           const tokenHash = hashToken(token);
           const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
           await db.insert(passwordResetTokens).values({ tokenHash, userId: user.id, expiresAt });
-          const link = `${getEmailOrigin(req)}/reset-password?token=${encodeURIComponent(token)}`;
+          const link = `${origin}/reset-password?token=${encodeURIComponent(token)}`;
           await sendPasswordResetEmail(user.email, link).catch((err) => {
             console.error("[auth] reset email send failed:", err?.message || err);
           });
-        } catch (originErr: any) {
-          console.error("[auth] forgot-password origin error:", originErr?.message || originErr);
         }
       }
       res.json({ ok: true });
