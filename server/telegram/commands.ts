@@ -13,6 +13,7 @@ import { tryConsumeAiBudget } from "../ai-budget";
 import { getLimitsForBotAsync } from "../limits";
 import {
   classifySensitiveTopic,
+  entryCoversSensitiveTopic,
   filterForbiddenPhrases,
   buildSafeFallbackReply,
   buildSensitiveTopicInstruction,
@@ -518,9 +519,14 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
 
   const nowMs = Date.now();
   // For sensitive topics, only PINNED or OFFICIAL/ADMIN entries are
-  // authoritative enough to cite. Auto-learned chat-mined entries get dropped.
+  // authoritative enough to cite, AND they must topically cover the question
+  // (a generic pinned welcome/rules entry must not rescue a payout question).
+  // Auto-learned chat-mined entries get dropped.
   const freshKnowledge = knowledgeEntries.filter(e => {
-    if (sensitive.sensitive && !e.pinned && !e.isOfficial) return false;
+    if (sensitive.sensitive) {
+      if (!e.pinned && !e.isOfficial) return false;
+      if (!entryCoversSensitiveTopic(e, sensitive.categories)) return false;
+    }
     if (e.pinned) return true;
     if (!e.expiresAt) return true;
     return new Date(e.expiresAt).getTime() > nowMs;

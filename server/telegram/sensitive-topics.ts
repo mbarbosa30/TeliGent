@@ -34,6 +34,35 @@ export interface SensitiveMatch {
   categories: SensitiveCategory[];
 }
 
+// Per-category vocabulary used by entryCoversSensitiveTopic to decide
+// whether a PINNED/OFFICIAL knowledge entry actually addresses the topic
+// the user asked about. A generic "welcome and rules" pinned entry must
+// not be treated as authoritative coverage for a payout question.
+const COVERAGE_VOCAB: Record<SensitiveCategory, RegExp> = {
+  payouts: /\b(payout|payouts|reward|rewards|airdrop|airdrops|distribut\w*|claim|claims|emission|emissions|paid|pay\b|paying|earnings)/i,
+  delays_pauses: /\b(paus\w*|delay\w*|halt\w*|froze\w*|frozen|stop\w*|suspend\w*|resum\w*|outage|down)/i,
+  audits_formulas: /\b(audit\w*|formula\w*|tokenomic\w*|emission\w*|review\w*|recalibrat\w*)/i,
+  treasury_funding: /\b(treasury|funding|runway|liquidity|reserve\w*|sustainab\w*|burn\s*rate|budget|grants?)/i,
+  refunds: /\b(refund\w*|reimburs\w*|compensat\w*|make\s+whole|chargeback)/i,
+  schedule_promise: /\b(schedule\w*|cadence|launch|release|next\s+(week|month|drop)|tomorrow|tonight|q[1-4]\b|roadmap|eta)/i,
+};
+
+/**
+ * Returns true if the knowledge entry plausibly addresses at least one of
+ * the sensitive categories detected on the user's question. Used as a
+ * topical coverage check: an unrelated PINNED entry (e.g. "welcome and
+ * rules") must NOT be treated as authoritative coverage for a payout or
+ * audit question, otherwise the model will get called with no real data
+ * and revert to spokesperson improvisation.
+ */
+export function entryCoversSensitiveTopic(
+  entry: { title: string; category: string; content: string },
+  categories: SensitiveCategory[],
+): boolean {
+  const haystack = `${entry.title} ${entry.category} ${entry.content}`;
+  return categories.some(cat => COVERAGE_VOCAB[cat].test(haystack));
+}
+
 interface ClassifierRule {
   category: SensitiveCategory;
   test: (lower: string) => boolean;

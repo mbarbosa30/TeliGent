@@ -60,6 +60,25 @@ function makePinnedEntry(): KnowledgeEntry {
   } as unknown as KnowledgeEntry;
 }
 
+function makeUnrelatedPinnedEntry(): KnowledgeEntry {
+  // Generic welcome/rules pinned entry. PINNED + OFFICIAL but says nothing
+  // about payouts, audits, or funding. Must NOT count as coverage for a
+  // sensitive financial question.
+  return {
+    id: 2,
+    botConfigId: TEST_BOT_ID,
+    title: "Welcome and group rules",
+    category: "general",
+    content: "Be kind, no spam, no shilling. Introduce yourself in the intro thread.",
+    sourceUrl: null,
+    pinned: true,
+    isOfficial: true,
+    expiresAt: null,
+    eventDate: null,
+    createdAt: new Date(),
+  } as unknown as KnowledgeEntry;
+}
+
 let createCalls = 0;
 let lastModelDraft = "";
 
@@ -118,6 +137,22 @@ async function run(): Promise<void> {
   );
   assert(createCalls === 0, `OpenAI never called (was ${createCalls})`);
   assert(replyA === buildSafeFallbackReply(), `returned safe fallback: "${replyA}"`);
+
+  console.log("\n[ai-no-team-spokesperson e2e] A2: sensitive + only UNRELATED PINNED entry -> safe fallback, no AI call");
+  kbForTest = [makeUnrelatedPinnedEntry()];
+  createCalls = 0;
+  lastModelDraft = "this should never be used";
+  const replyA2 = await generateAIResponse(
+    TEST_BOT_ID,
+    "when do payouts come back",
+    "alice",
+    baseConfig,
+    "Test Group",
+    "testbot",
+    null, false, [], null, null, false,
+  );
+  assert(createCalls === 0, `OpenAI never called when only unrelated pinned entry exists (was ${createCalls})`);
+  assert(replyA2 === buildSafeFallbackReply(), `unrelated pinned entry does not bypass gate: "${replyA2}"`);
 
   console.log("\n[ai-no-team-spokesperson e2e] B: sensitive + PINNED + model returns incident phrase -> [[SKIP]]");
   kbForTest = [makePinnedEntry()];
