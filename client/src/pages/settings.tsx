@@ -1344,14 +1344,28 @@ function getCategoryClasses(cat: string): string {
   return CATEGORY_BADGE_CLASSES[cat] ?? "bg-muted text-muted-foreground border-border";
 }
 
-// Extract the primary category from a log row's metadata.
-// Deletion rows have metadata.category (string); auto-ban rows have
-// metadata.categories (string[]). Falls back to parsing the reason text.
+// Returns the primary display category for a row (used for badge rendering
+// and as the leading label). Deletion rows have metadata.category (string);
+// auto-ban rows have metadata.categories (string[]). Returns null for
+// pre-Task-#80 rows that carry no category metadata.
 function getRowCategory(metadata: Record<string, unknown>): string | null {
   if (typeof metadata.category === "string" && metadata.category !== "other") return metadata.category;
   if (Array.isArray(metadata.categories) && metadata.categories.length > 0) return String(metadata.categories[0]);
   if (typeof metadata.category === "string") return metadata.category;
   return null;
+}
+
+// Returns ALL categories for a row so filter matching covers secondary
+// categories in auto-ban rows (metadata.categories[1..n]) as well.
+function getRowAllCategories(metadata: Record<string, unknown>): string[] {
+  const all = new Set<string>();
+  if (typeof metadata.category === "string") all.add(metadata.category);
+  if (Array.isArray(metadata.categories)) {
+    for (const c of metadata.categories) {
+      if (typeof c === "string") all.add(c);
+    }
+  }
+  return Array.from(all);
 }
 
 function CategoryBadge({ category }: { category: string }) {
@@ -1393,17 +1407,15 @@ function RecentlyFlaggedList({ botId }: { botId: number }) {
     },
   });
 
-  // Collect the set of categories present in this data for the filter dropdown.
+  // Collect the full set of categories across all rows (including secondary
+  // categories in auto-ban rows) so every category is filterable.
   const presentCategories = Array.from(
-    new Set((data ?? []).map((item) => getRowCategory(item.metadata)).filter(Boolean) as string[])
+    new Set((data ?? []).flatMap((item) => getRowAllCategories(item.metadata)))
   ).sort();
 
   const filtered = categoryFilter === "all"
     ? (data ?? [])
-    : (data ?? []).filter((item) => {
-        const cat = getRowCategory(item.metadata);
-        return cat === categoryFilter;
-      });
+    : (data ?? []).filter((item) => getRowAllCategories(item.metadata).includes(categoryFilter));
 
   return (
     <div className="space-y-2">
