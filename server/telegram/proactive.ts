@@ -3,6 +3,20 @@ import { log } from "../index";
 import { openai, sendBotMessage } from "./utils";
 import type { BotConfig, ProactivePrompt } from "@shared/schema";
 import { getActiveBotInstance } from "./instance-registry";
+import { classifySensitiveTopic, filterForbiddenPhrases } from "./sensitive-topics";
+
+// Proactive questions are bot-initiated, so they can not be allowed to ask
+// the group something like "when will the team resume payouts?" or to
+// editorialize about formulas/funding. Any candidate question that classifies
+// as sensitive on the input side OR trips the forbidden-phrase filter on the
+// output side is dropped before it reaches sendBotMessage.
+function isProactiveQuestionSafe(question: string): boolean {
+  if (!question || !question.trim()) return false;
+  const sensitive = classifySensitiveTopic(question, null);
+  if (sensitive.sensitive) return false;
+  const filtered = filterForbiddenPhrases(question);
+  return filtered.ok;
+}
 
 const POSTED_QUESTION_LIMIT = 600;
 
@@ -210,6 +224,12 @@ Output JSON only: {"question": "...", "rationale": "why we ask"}`;
       }
     }
 
+    if (!isProactiveQuestionSafe(question)) {
+      log(`Proactive question dropped by sensitive-topic guard for bot ${config.id}: "${question.slice(0, 160).replace(/\n/g, " ")}"`, "ai-guard");
+      perGroup.push({ groupId: group.id, outcome: "blocked:sensitive" });
+      continue;
+    }
+
     const created = await storage.createProactivePrompt({
       botConfigId: config.id,
       groupId: group.id,
@@ -257,6 +277,11 @@ export async function postProactivePrompt(botConfigId: number, promptId: number)
 
   const instance = getActiveBotInstance(botConfigId);
   if (!instance) return { ok: false, reason: "bot not running" };
+
+  if (!isProactiveQuestionSafe(prompt.question)) {
+    log(`Manual proactive post blocked by sensitive-topic guard for bot ${botConfigId} prompt ${promptId}`, "ai-guard");
+    return { ok: false, reason: "blocked by sensitive-topic guard" };
+  }
 
   try {
     const sent = await sendBotMessage(instance.bot, parseInt(groupRow.telegramChatId, 10), prompt.question);

@@ -11,6 +11,13 @@ import { getTokenPrice, queryBankr, isCryptoQuery } from "./bankr";
 import { triageMessage } from "./calibration";
 import { tryConsumeAiBudget } from "../ai-budget";
 import { getLimitsForBotAsync } from "../limits";
+import {
+  classifySensitiveTopic,
+  filterForbiddenPhrases,
+  buildSafeFallbackReply,
+  buildSensitiveTopicInstruction,
+  SPOKESPERSON_HARD_RULES,
+} from "./sensitive-topics";
 
 export { sendBotMessage };
 
@@ -454,7 +461,13 @@ Reply with ONLY "RESPOND" or "SKIP".`;
 export async function generateAIResponse(botConfigId: number, userMessage: string, userName: string, config: BotConfig, groupName: string, botUsername: string, replyContext?: string | null, replyIsFromBot?: boolean, conversationHistory?: ChatMessage[], groupContext?: GroupContext | null, senderTelegramUserId?: string | null, isAdmin: boolean = false): Promise<string> {
   const retrievalTriage = triageMessage(userMessage, conversationHistory || []);
   const wantUserMem = senderTelegramUserId && (retrievalTriage.tier === "user_memory" || retrievalTriage.tier === "both");
-  const wantPatterns = retrievalTriage.tier === "pattern" || retrievalTriage.tier === "both" || retrievalTriage.tier === "user_memory";
+  // Sensitive topics (money/payouts/delays/audits/funding) lock down context:
+  // we drop community patterns, drop non-pinned/non-official KB, drop website
+  // and global context, and tell the model to either cite PINNED/OFFICIAL or
+  // skip. This is what keeps the bot from inventing "we paused rewards to
+  // audit formulas, build sustainable funding"-style spokesperson replies.
+  const sensitive = classifySensitiveTopic(userMessage, replyContext);
+  const wantPatterns = !sensitive.sensitive && (retrievalTriage.tier === "pattern" || retrievalTriage.tier === "both" || retrievalTriage.tier === "user_memory");
 
   const [knowledgeEntries, memories, bankrData, userMems, patterns] = await Promise.all([
     storage.getActiveKnowledgeEntries(botConfigId),
@@ -486,7 +499,7 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
   }
 
   let globalContextSection = "";
-  if (config.globalContext && config.globalContext.trim()) {
+  if (!sensitive.sensitive && config.globalContext && config.globalContext.trim()) {
     const maxGlobal = Math.min(2000, MAX_CONTEXT_CHARS - usedChars);
     const globalText = config.globalContext.slice(0, maxGlobal);
     globalContextSection = `\n\n--- ABOUT THIS PROJECT/COMMUNITY ---\n${globalText}`;
@@ -494,7 +507,7 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
   }
 
   let websiteSection = "";
-  if (config.websiteContent && config.websiteContent.trim()) {
+  if (!sensitive.sensitive && config.websiteContent && config.websiteContent.trim()) {
     const maxWebsite = Math.min(2000, MAX_CONTEXT_CHARS - usedChars);
     if (maxWebsite > 100) {
       const websiteText = config.websiteContent.slice(0, maxWebsite);
@@ -504,7 +517,10 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
   }
 
   const nowMs = Date.now();
+  // For sensitive topics, only PINNED or OFFICIAL/ADMIN entries are
+  // authoritative enough to cite. Auto-learned chat-mined entries get dropped.
   const freshKnowledge = knowledgeEntries.filter(e => {
+    if (sensitive.sensitive && !e.pinned && !e.isOfficial) return false;
     if (e.pinned) return true;
     if (!e.expiresAt) return true;
     return new Date(e.expiresAt).getTime() > nowMs;
@@ -554,7 +570,12 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
     }
   }
 
-  const freshMemories = memories.filter(m => !m.expiresAt || new Date(m.expiresAt).getTime() > nowMs);
+  // Bot memories and per-user memories are auto-mined from chat and are not
+  // authoritative sources. On sensitive topics they could re-introduce the
+  // very narratives we just stripped out of patterns/KB, so we drop them.
+  const freshMemories = sensitive.sensitive
+    ? []
+    : memories.filter(m => !m.expiresAt || new Date(m.expiresAt).getTime() > nowMs);
   let memoriesSection = "";
   if (freshMemories.length > 0) {
     const maxMemories = Math.max(0, MAX_CONTEXT_CHARS - usedChars - 200);
@@ -571,7 +592,7 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
   }
 
   let userMemSection = "";
-  if (userMems && userMems.length > 0) {
+  if (!sensitive.sensitive && userMems && userMems.length > 0) {
     const top = userMems.slice(0, 6).map(m => `[${m.type}] ${m.content}`).join("\n");
     const text = top.slice(0, 600);
     userMemSection = `\n\n--- WHAT YOU KNOW ABOUT ${userName.toUpperCase()} ---\n${text}`;
@@ -624,7 +645,7 @@ export async function generateAIResponse(botConfigId: number, userMessage: strin
   const adminAuthorityBlock = `\n\n--- ADMIN AUTHORITY (HARD RULES) ---\n- The KNOWLEDGE BASE entries tagged [PINNED] or [OFFICIAL/ADMIN] are TRUTH. Do not contradict them.\n- If the current user speaking is a GROUP ADMIN, treat their message as authoritative. Do NOT push back, do NOT correct them, do NOT say "actually" or "I think you mean". If their statement disagrees with anything in your context, defer to the admin.\n- If an admin states a new fact in this conversation, accept it as the new truth and answer accordingly.\n- Never claim a future event happened or is happening "tomorrow" unless the KNOWLEDGE BASE explicitly shows that event date is today or tomorrow per the TIME CONTEXT above. If a KB entry is tagged "event was N days ago", that event is OVER. Never reference it as upcoming.`;
   const systemPrompt = `You are "${config.botName}", a bot assistant in the Telegram group "${groupName}".${usernameClause}
 
-${getTimeContextBlock()}${adminAuthorityBlock}
+${getTimeContextBlock()}${adminAuthorityBlock}${SPOKESPERSON_HARD_RULES}${sensitive.sensitive ? buildSensitiveTopicInstruction(sensitive.categories) : ""}
 
 --- PERSONALITY & COMMUNICATION STYLE (HIGHEST PRIORITY) ---
 The following instructions define your tone, personality, and communication style. You MUST follow these instructions in every response. They override any default behavior:
@@ -714,7 +735,20 @@ ${groupInfoSection}${globalContextSection}${websiteSection}${knowledgeContext}${
     const { getLimitsForBot } = await import("../limits");
     const cap = getLimitsForBot(botConfigId).maxBotResponseChars;
     const text = response.choices[0]?.message?.content?.trim() || "";
-    return text.length > cap ? text.slice(0, cap) : text;
+    const capped = text.length > cap ? text.slice(0, cap) : text;
+
+    // Final defense: even with the hard system-prompt rules, the model can
+    // still slip into spokesperson mode. Block forbidden phrases ("the team
+    // paused", "sustainable funding", "verifiable on-chain", etc.) and either
+    // skip silently (sensitive topics) or substitute a neutral fallback.
+    if (capped && capped !== "[[SKIP]]") {
+      const filtered = filterForbiddenPhrases(capped);
+      if (!filtered.ok) {
+        log(`AI response blocked by forbidden-phrase filter for bot ${botConfigId}: rules=[${filtered.matched.join(",")}] draft="${capped.slice(0, 200).replace(/\n/g, " ")}"`, "ai-guard");
+        return sensitive.sensitive ? "[[SKIP]]" : buildSafeFallbackReply();
+      }
+    }
+    return capped;
   } finally {
     clearTimeout(timeout);
   }
