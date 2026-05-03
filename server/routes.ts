@@ -2305,7 +2305,7 @@ export async function registerRoutes(
       const { getActiveBotInstance } = await import("./telegram/instance-registry");
       const instance = getActiveBotInstance(botId);
 
-      const ownerUserId = (req.user as any)?.id ?? config.userId;
+      const ownerUserId = req.session?.userId ?? config.userId;
 
       type UnbanResult = { telegramUserId: string; groupId: number; ok: boolean; error?: string };
       const results: UnbanResult[] = [];

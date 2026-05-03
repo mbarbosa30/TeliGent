@@ -8,6 +8,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Activity, MessageSquare, Shield, Search, UserPlus, LogOut, Bot, ChevronLeft, ChevronRight, UserX } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useBot } from "@/hooks/use-bot";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -163,17 +174,37 @@ export default function ActivityPage() {
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             {canUnban && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs gap-1"
-                                disabled={isUnbanning}
-                                onClick={() => unbanMutation.mutate({ botId: selectedBotId, telegramUserId: log.telegramUserId! })}
-                                data-testid={`button-unban-user-${log.id}`}
-                              >
-                                <UserX className="h-3 w-3" />
-                                {isUnbanning ? "Unbanning…" : "Unban user"}
-                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs gap-1"
+                                    disabled={isUnbanning}
+                                    data-testid={`button-unban-user-${log.id}`}
+                                  >
+                                    <UserX className="h-3 w-3" />
+                                    {isUnbanning ? "Unbanning…" : "Unban user"}
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent data-testid={`dialog-unban-${log.id}`}>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Unban {log.userName || "this user"}?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will lift the auto-ban for <strong>{log.userName || log.telegramUserId}</strong> across all groups managed by this bot. The user will be able to send messages again. This cannot be undone automatically.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel data-testid={`button-cancel-unban-${log.id}`}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => unbanMutation.mutate({ botId: selectedBotId, telegramUserId: log.telegramUserId! })}
+                                      data-testid={`button-confirm-unban-${log.id}`}
+                                    >
+                                      Yes, unban user
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             )}
                             <span className="text-xs text-muted-foreground font-mono">
                               {format(new Date(log.createdAt), "MMM d, HH:mm")}
