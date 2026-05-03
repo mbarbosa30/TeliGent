@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Activity, MessageSquare, Shield, Search, UserPlus, LogOut, Bot, ChevronLeft, ChevronRight } from "lucide-react";
+import { Activity, MessageSquare, Shield, Search, UserPlus, LogOut, Bot, ChevronLeft, ChevronRight, UserX } from "lucide-react";
 import { useBot } from "@/hooks/use-bot";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { ActivityLog } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -23,17 +25,55 @@ const typeIcons: Record<string, any> = {
   command: Bot,
 };
 
+function isAutoBanRow(log: ActivityLog): boolean {
+  const meta = (log.metadata || {}) as Record<string, unknown>;
+  return (
+    log.isReport === true &&
+    !!log.telegramUserId &&
+    log.botResponse === "(user banned)" &&
+    meta.autoDetected === true &&
+    !meta.adminUnban &&
+    !meta.ownerUnban
+  );
+}
+
 export default function ActivityPage() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [page, setPage] = useState(0);
   const { selectedBotId } = useBot();
+  const { toast } = useToast();
 
   useEffect(() => { setPage(0); }, [selectedBotId]);
 
   const { data: logs = [], isLoading } = useQuery<ActivityLog[]>({
     queryKey: ["/api/bots", selectedBotId, `activity?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`],
     enabled: !!selectedBotId,
+  });
+
+  type UnbanVariables = { botId: number; telegramUserId: string };
+  type UnbanResponse = { success: boolean; botId: number; attempted: number; succeeded: number; results: { telegramUserId: string; groupId: number; ok: boolean; error?: string }[] };
+
+  const unbanMutation = useMutation<UnbanResponse, Error, UnbanVariables>({
+    mutationFn: async ({ botId, telegramUserId }: UnbanVariables): Promise<UnbanResponse> => {
+      const res = await apiRequest("POST", `/api/bots/${botId}/scam-flagged/unban-by-tg-user`, {
+        telegramUserIds: [telegramUserId],
+        note: "false-positive correction by bot owner",
+      });
+      return res.json() as Promise<UnbanResponse>;
+    },
+    onSuccess: (data: UnbanResponse) => {
+      const { succeeded, attempted } = data;
+      if (succeeded > 0) {
+        toast({ title: "User unbanned", description: `Successfully lifted ban across ${succeeded} group${succeeded !== 1 ? "s" : ""}.` });
+      } else {
+        toast({ title: "Unban attempted", description: attempted === 0 ? "No active groups found for this bot." : "Ban could not be lifted — the user may not be banned.", variant: "destructive" });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/bots", selectedBotId] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Unban failed", description: err?.message || "An unexpected error occurred.", variant: "destructive" });
+    },
   });
 
   const filtered = logs.filter((log) => {
@@ -104,11 +144,13 @@ export default function ActivityPage() {
           <div className="space-y-2">
             {filtered.map((log) => {
               const Icon = typeIcons[log.type] || Activity;
+              const canUnban = isAutoBanRow(log);
+              const isUnbanning = unbanMutation.isPending && unbanMutation.variables?.telegramUserId === log.telegramUserId;
               return (
                 <Card key={log.id} data-testid={`activity-log-${log.id}`}>
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
-                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center ${log.isReport ? "bg-destructive/10" : "bg-muted"}`}>
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${log.isReport ? "bg-destructive/10" : "bg-muted"}`}>
                         <Icon className={`h-4 w-4 ${log.isReport ? "text-destructive" : ""}`} />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -119,9 +161,24 @@ export default function ActivityPage() {
                               {log.isReport ? "Report" : log.type}
                             </Badge>
                           </div>
-                          <span className="text-xs text-muted-foreground shrink-0 font-mono">
-                            {format(new Date(log.createdAt), "MMM d, HH:mm")}
-                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {canUnban && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1"
+                                disabled={isUnbanning}
+                                onClick={() => unbanMutation.mutate({ botId: selectedBotId, telegramUserId: log.telegramUserId! })}
+                                data-testid={`button-unban-user-${log.id}`}
+                              >
+                                <UserX className="h-3 w-3" />
+                                {isUnbanning ? "Unbanning…" : "Unban user"}
+                              </Button>
+                            )}
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {format(new Date(log.createdAt), "MMM d, HH:mm")}
+                            </span>
+                          </div>
                         </div>
                         {log.userMessage && (
                           <p className="text-sm text-muted-foreground mt-1">{log.userMessage}</p>
