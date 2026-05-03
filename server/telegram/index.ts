@@ -108,18 +108,28 @@ function registerWebhookRoute(app: Express) {
     }
     const expectedSecret = getWebhookSecret(currentToken);
     const rawHeader = req.headers["x-telegram-bot-api-secret-token"];
+    // Multi-value headers (string[]) and non-string shapes are always
+    // rejected. The legitimate Telegram caller sends a single ASCII
+    // hex string identical to the one we registered via setWebHook.
     const headerSecret = typeof rawHeader === "string" ? rawHeader : "";
-    // Reject any request without the exact secret_token Telegram echoes.
-    // We require equal lengths before timingSafeEqual (which throws on
-    // mismatched lengths) to keep the check constant-time vs. the secret.
-    if (headerSecret.length !== expectedSecret.length) {
+    // Telegram restricts the secret to 1..256 chars matching [A-Za-z0-9_-];
+    // our generated secret is always 32 lowercase hex chars. Anything
+    // outside that shape cannot be the correct secret, so we 401 early.
+    // This also ensures Buffer.from(headerSecret) has the same byte
+    // length as the string length, so timingSafeEqual cannot throw on a
+    // crafted multi-byte UTF-8 header.
+    if (!/^[A-Za-z0-9_-]{1,256}$/.test(headerSecret)) {
       log(`[WEBHOOK] Rejected: missing or malformed secret_token for ${webhookPath}`, "telegram");
       res.sendStatus(401);
       return;
     }
-    const a = Buffer.from(headerSecret);
-    const b = Buffer.from(expectedSecret);
-    if (!crypto.timingSafeEqual(a, b)) {
+    const a = Buffer.from(headerSecret, "utf8");
+    const b = Buffer.from(expectedSecret, "utf8");
+    // Byte-length parity is required before timingSafeEqual, which throws
+    // on length mismatch. We already gated character shape above, but we
+    // still compare byte lengths defensively so any future change to the
+    // expected-secret format cannot turn a wrong header into a 500.
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       log(`[WEBHOOK] Rejected: secret_token mismatch for ${webhookPath}`, "telegram");
       res.sendStatus(401);
       return;
