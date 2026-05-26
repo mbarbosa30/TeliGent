@@ -18,8 +18,8 @@ type Period = "monthly" | "annual";
 type Rail = "stripe" | "usdc" | "teli";
 
 const PLAN_FEATURES: Record<Plan, string[]> = {
-  free: ["1 bot", "50 KB entries", "200 AI calls / day", "2 groups per bot", "Rewards loop"],
-  pro: ["3 bots", "250 KB entries", "1,500 AI calls / day", "10 groups per bot", "Embeddable widget", "Bankr crypto data", "Master Agent API", "ERC-8004 registry"],
+  free: ["1 bot", "15 KB entries", "50 AI calls / day", "1 group per bot", "Scam detection"],
+  pro: ["3 bots", "250 KB entries", "1,500 AI calls / day", "10 groups per bot", "Rewards loop", "Embeddable widget", "Bankr crypto data", "Master Agent API", "ERC-8004 registry"],
   business: ["10 bots", "1,000 KB entries", "8,000 AI calls / day", "50 groups per bot", "Everything in Pro", "Priority limits"],
 };
 
@@ -294,13 +294,31 @@ export default function BillingPage() {
 }
 
 function UsageStat({ label, current, max, suffix = "", testId }: { label: string; current: number; max: number; suffix?: string; testId: string }) {
+  const pct = max > 0 ? Math.min(100, Math.round((current / max) * 100)) : 0;
+  const isWarning = pct >= 70 && pct < 90;
+  const isCritical = pct >= 90;
+  const barColor = isCritical ? "bg-destructive" : isWarning ? "bg-amber-500" : "bg-foreground";
   return (
-    <div className="border p-3" data-testid={testId}>
-      <div className="text-xs uppercase text-muted-foreground tracking-wider">{label}</div>
-      <div className="font-mono text-lg mt-1">
-        {current}
-        <span className="text-muted-foreground text-sm">/{max}{suffix}</span>
+    <div className="border p-3 space-y-2" data-testid={testId}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs uppercase text-muted-foreground tracking-wider">{label}</div>
+        <div className="font-mono text-sm">
+          {current}<span className="text-muted-foreground">/{max}{suffix}</span>
+        </div>
       </div>
+      <div className="h-1.5 w-full bg-muted overflow-hidden">
+        <div
+          className={`h-full transition-all ${barColor}`}
+          style={{ width: `${pct}%` }}
+          data-testid={`${testId}-bar`}
+        />
+      </div>
+      {isCritical && (
+        <p className="text-xs text-destructive" data-testid={`${testId}-warning`}>Limit nearly reached — upgrade to continue</p>
+      )}
+      {isWarning && (
+        <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`${testId}-warning`}>Approaching limit</p>
+      )}
     </div>
   );
 }

@@ -24,7 +24,7 @@ const FEATURE_REQUIRED_PLAN: Record<FeatureKey, PlanTier> = {
   allowAgentApi: "pro",
   allowErc8004: "pro",
   allowFeedbackDigest: "pro",
-  allowRewards: "free",
+  allowRewards: "pro",
 };
 
 function nextQuotaTier(currentPlan: PlanTier, key: QuotaKey): PlanTier {

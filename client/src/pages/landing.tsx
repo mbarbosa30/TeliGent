@@ -492,7 +492,7 @@ const FAQ_ITEMS = [
   },
   {
     question: "How much does TeliGent cost?",
-    answer: "Free covers 1 bot, Pro is $19/mo, Business is $79/mo. Pay by card or in USDC or $TELI on Base for 25% off."
+    answer: "Free covers 1 bot with 50 daily AI calls. Pro is $19/mo (3 bots, rewards, widget, and more). Business is $79/mo. Pay by card or in USDC or $TELI on Base for 25% off."
   },
   {
     question: "How do I set up TeliGent for my Telegram group?",
@@ -515,7 +515,7 @@ const PRICING_PLANS = [
     annual: 0,
     teliMonthly: 0,
     description: "Try TeliGent on your community.",
-    features: ["1 bot", "50 KB entries", "200 AI calls / day", "2 groups per bot", "Rewards loop", "Scam detection"],
+    features: ["1 bot", "15 KB entries", "50 AI calls / day", "1 group", "Scam detection"],
     cta: "Start free",
     highlight: false,
   },
@@ -525,7 +525,7 @@ const PRICING_PLANS = [
     annual: 190,
     teliMonthly: 14,
     description: "For active communities and crypto teams.",
-    features: ["3 bots", "250 KB entries", "1,500 AI calls / day", "10 groups per bot", "Embed widget", "Bankr crypto data", "Master Agent API", "ERC-8004 registry"],
+    features: ["3 bots", "250 KB entries", "1,500 AI calls / day", "10 groups per bot", "Rewards loop", "Embed widget", "Bankr crypto data", "Master Agent API", "ERC-8004 registry"],
     cta: "Go Pro",
     highlight: true,
   },
@@ -713,15 +713,15 @@ function PricingSection() {
             </thead>
             <tbody className="[&>tr]:border-b [&>tr:last-child]:border-b-0">
               <tr><td className="px-4 py-3">Bots</td><td className="text-center px-4 py-3 font-mono">1</td><td className="text-center px-4 py-3 font-mono">3</td><td className="text-center px-4 py-3 font-mono">10</td></tr>
-              <tr><td className="px-4 py-3">Knowledge base entries / bot</td><td className="text-center px-4 py-3 font-mono">50</td><td className="text-center px-4 py-3 font-mono">250</td><td className="text-center px-4 py-3 font-mono">1,000</td></tr>
-              <tr><td className="px-4 py-3">AI calls / bot / day</td><td className="text-center px-4 py-3 font-mono">200</td><td className="text-center px-4 py-3 font-mono">1,500</td><td className="text-center px-4 py-3 font-mono">8,000</td></tr>
-              <tr><td className="px-4 py-3">Telegram groups / bot</td><td className="text-center px-4 py-3 font-mono">2</td><td className="text-center px-4 py-3 font-mono">10</td><td className="text-center px-4 py-3 font-mono">50</td></tr>
+              <tr><td className="px-4 py-3">Knowledge base entries / bot</td><td className="text-center px-4 py-3 font-mono">15</td><td className="text-center px-4 py-3 font-mono">250</td><td className="text-center px-4 py-3 font-mono">1,000</td></tr>
+              <tr><td className="px-4 py-3">AI calls / bot / day</td><td className="text-center px-4 py-3 font-mono">50</td><td className="text-center px-4 py-3 font-mono">1,500</td><td className="text-center px-4 py-3 font-mono">8,000</td></tr>
+              <tr><td className="px-4 py-3">Telegram groups / bot</td><td className="text-center px-4 py-3 font-mono">1</td><td className="text-center px-4 py-3 font-mono">10</td><td className="text-center px-4 py-3 font-mono">50</td></tr>
               <tr><td className="px-4 py-3">Embeddable chat widget</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
               <tr><td className="px-4 py-3">Bankr crypto intelligence</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
               <tr><td className="px-4 py-3">Agent-to-agent API</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
               <tr><td className="px-4 py-3">ERC-8004 on-chain identity</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
               <tr><td className="px-4 py-3">AI feedback digest</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
-              <tr><td className="px-4 py-3">Rewards + leaderboards</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
+              <tr><td className="px-4 py-3">Rewards + leaderboards</td><td className="text-center px-4 py-3 text-muted-foreground">No</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
               <tr><td className="px-4 py-3">$TELI perks (25% off, +20% rewards, 2x agent rate)</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td><td className="text-center px-4 py-3">Yes</td></tr>
             </tbody>
           </table>

@@ -1,11 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, Users, BookOpen, Activity, MessageSquare, Shield, TrendingUp, Clock, AlertTriangle, Webhook } from "lucide-react";
+import { Bot, Users, BookOpen, Activity, MessageSquare, Shield, Clock, AlertTriangle, Webhook, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 import { useBot } from "@/hooks/use-bot";
+import { useLimits } from "@/hooks/use-limits";
 import type { BotConfig, Group, ActivityLog, KnowledgeBaseEntry } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -111,6 +113,69 @@ function StatCard({ title, value, icon: Icon, description, loading }: {
   );
 }
 
+function UsageNudge() {
+  const { data: limits, isLoading } = useLimits();
+  if (isLoading || !limits || limits.plan !== "free") return null;
+
+  const aiUsed = limits.usage.aiCallsTodayMax;
+  const aiMax = limits.usage.aiCallsLimitPerBot;
+  const kbUsed = limits.usage.kb;
+  const kbMax = limits.usage.kbLimitPerBot;
+  const aiPct = aiMax > 0 ? Math.min(100, Math.round((aiUsed / aiMax) * 100)) : 0;
+  const kbPct = kbMax > 0 ? Math.min(100, Math.round((kbUsed / kbMax) * 100)) : 0;
+  const showNudge = aiPct >= 40 || kbPct >= 40;
+  if (!showNudge) return null;
+
+  return (
+    <Card className="border-foreground/30" data-testid="banner-usage-nudge">
+      <CardContent className="pt-4 pb-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="space-y-3 flex-1 min-w-0">
+            <p className="text-sm font-medium flex items-center gap-2">
+              <Sparkles className="h-4 w-4 shrink-0" />
+              You're using your free quota
+            </p>
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>AI calls today</span>
+                  <span className="font-mono">{aiUsed}/{aiMax}</span>
+                </div>
+                <div className="h-1.5 w-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${aiPct >= 90 ? "bg-destructive" : aiPct >= 70 ? "bg-amber-500" : "bg-foreground"}`}
+                    style={{ width: `${aiPct}%` }}
+                    data-testid="nudge-ai-bar"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Knowledge base</span>
+                  <span className="font-mono">{kbUsed}/{kbMax}</span>
+                </div>
+                <div className="h-1.5 w-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${kbPct >= 90 ? "bg-destructive" : kbPct >= 70 ? "bg-amber-500" : "bg-foreground"}`}
+                    style={{ width: `${kbPct}%` }}
+                    data-testid="nudge-kb-bar"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <Link href="/billing">
+            <Button size="sm" className="shrink-0" data-testid="button-nudge-upgrade">
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+              Upgrade to Pro
+            </Button>
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { selectedBotId, selectedBot } = useBot();
 
@@ -156,6 +221,8 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">Monitor your bot's activity and performance</p>
         </div>
+
+        <UsageNudge />
 
         {!configLoading && config && !config.botToken?.trim() && (
           <Card className="border-foreground/30" data-testid="banner-setup-token">
