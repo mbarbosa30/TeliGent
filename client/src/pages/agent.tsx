@@ -15,24 +15,6 @@ export default function AgentPage() {
     queryKey: ["/api/agent/dashboard"],
   });
 
-  const { data: helixaStats } = useQuery<{
-    totalAgents: number | null;
-    totalCredScore: number | null;
-    mintPrice: string | null;
-    mintPriceUsdc: string | null;
-    frameworksCount: number | null;
-    frameworks: string[] | null;
-    chain: string;
-    chainId: number | null;
-    contract: string | null;
-    registry: string;
-    soulboundCount: number | null;
-  }>({
-    queryKey: ["/api/helixa/network-stats"],
-    staleTime: 5 * 60 * 1000,
-    retry: false,
-  });
-
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopied(label);
@@ -390,83 +372,6 @@ export default function AgentPage() {
             <div className="pt-2 border-t">
               <p className="text-xs text-muted-foreground">
                 ERC-8004 is an ERC-721 based standard for trustless agent identity, reputation, and validation. The registration file describes capabilities, endpoints, and trust models. Mint as an NFT to anchor this identity on-chain.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Globe className="h-4 w-4" />
-              Helixa Network (Base)
-            </CardTitle>
-            <CardDescription>Live snapshot of the Helixa agent registry on Base, cross-registered to ERC-8004</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!helixaStats ? (
-              <p className="text-sm text-muted-foreground" data-testid="text-helixa-unavailable">
-                Helixa network stats are temporarily unavailable.
-              </p>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Chain</span>
-                    <Badge variant="outline">{helixaStats.chain.toUpperCase()}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Total agents</span>
-                    <span className="text-sm font-mono font-medium" data-testid="text-helixa-total-agents">
-                      {helixaStats.totalAgents !== null ? helixaStats.totalAgents.toLocaleString() : "—"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Total cred score</span>
-                    <span className="text-sm font-mono" data-testid="text-helixa-total-cred">
-                      {helixaStats.totalCredScore !== null ? helixaStats.totalCredScore.toLocaleString() : "—"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Mint price</span>
-                    <span className="text-sm font-mono" data-testid="text-helixa-mint-price">
-                      {helixaStats.mintPriceUsdc !== null
-                        ? `${helixaStats.mintPriceUsdc} USDC`
-                        : helixaStats.mintPrice !== null
-                        ? `${helixaStats.mintPrice} USDC`
-                        : "—"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Frameworks</span>
-                    <span className="text-sm font-mono" data-testid="text-helixa-frameworks-count">
-                      {helixaStats.frameworksCount !== null ? helixaStats.frameworksCount : "—"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Registry</span>
-                    <span className="text-xs font-mono truncate max-w-[180px]" data-testid="text-helixa-registry">
-                      {helixaStats.registry}
-                    </span>
-                  </div>
-                </div>
-                {helixaStats.frameworks && helixaStats.frameworks.length > 0 && (
-                  <div className="pt-2 border-t space-y-2">
-                    <p className="text-xs text-muted-foreground">Supported frameworks</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {helixaStats.frameworks.map((fw) => (
-                        <Badge key={fw} variant="outline" className="text-xs font-mono" data-testid={`badge-helixa-fw-${fw}`}>
-                          {fw}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            <div className="pt-2 border-t">
-              <p className="text-xs text-muted-foreground">
-                Helixa mints onchain agent identities on Base and auto-registers them on the canonical ERC-8004 Identity Registry, making each agent discoverable to any 8004-compatible app.
               </p>
             </div>
           </CardContent>

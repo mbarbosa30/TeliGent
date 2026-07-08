@@ -1,0 +1,1 @@
+- [Removing a feature integration cleanly](feature-removal-checklist.md) — search beyond the feature's own module/table for orphaned columns/fields it added to *other* shared tables.

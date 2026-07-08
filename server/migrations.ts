@@ -18,7 +18,7 @@ export async function runMigrations() {
     await ensureWidgetTables(client);
     await ensureAgentServiceLogsTable(client);
     await ensureCeloColumns(client);
-    await ensureHelixaColumns(client);
+    await dropHelixaColumns(client);
     await ensureBankrColumns(client);
     await ensureRewardsColumns(client);
     await ensureRewardsTables(client);
@@ -327,50 +327,38 @@ async function ensureCeloColumns(client: any) {
   }
 }
 
-async function ensureHelixaColumns(client: any) {
-  if (!(await columnExists(client, "bot_configs", "helixa_agent_id"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_agent_id TEXT`);
-    log("Added helixa_agent_id to bot_configs");
+// One-time cleanup: the Helixa onchain identity integration was fully
+// removed from the product. Drop the columns it added to bot_configs.
+// IF EXISTS makes this safe to run on every boot even after the columns
+// are gone.
+async function dropHelixaColumns(client: any) {
+  if (await columnExists(client, "bot_configs", "helixa_agent_id")) {
+    await client.query(`
+      ALTER TABLE bot_configs
+        DROP COLUMN IF EXISTS helixa_agent_id,
+        DROP COLUMN IF EXISTS helixa_cred_score,
+        DROP COLUMN IF EXISTS helixa_cred_tier,
+        DROP COLUMN IF EXISTS helixa_profile_url,
+        DROP COLUMN IF EXISTS helixa_synced_at,
+        DROP COLUMN IF EXISTS helixa_minted_at,
+        DROP COLUMN IF EXISTS helixa_tx_hash,
+        DROP COLUMN IF EXISTS helixa_base_token_id,
+        DROP COLUMN IF EXISTS helixa_link_token_at,
+        DROP COLUMN IF EXISTS helixa_x_verified_at,
+        DROP COLUMN IF EXISTS helixa_github_verified_at
+    `);
+    log("Dropped helixa_* columns from bot_configs (Helixa integration removed)");
   }
-  if (!(await columnExists(client, "bot_configs", "helixa_cred_score"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_cred_score INTEGER`);
-    log("Added helixa_cred_score to bot_configs");
-  }
-  if (!(await columnExists(client, "bot_configs", "helixa_cred_tier"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_cred_tier TEXT`);
-    log("Added helixa_cred_tier to bot_configs");
-  }
-  if (!(await columnExists(client, "bot_configs", "helixa_profile_url"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_profile_url TEXT`);
-    log("Added helixa_profile_url to bot_configs");
-  }
-  if (!(await columnExists(client, "bot_configs", "helixa_synced_at"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_synced_at TIMESTAMP`);
-    log("Added helixa_synced_at to bot_configs");
-  }
-  if (!(await columnExists(client, "bot_configs", "helixa_minted_at"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_minted_at TIMESTAMP`);
-    log("Added helixa_minted_at to bot_configs");
-  }
-  if (!(await columnExists(client, "bot_configs", "helixa_tx_hash"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_tx_hash TEXT`);
-    log("Added helixa_tx_hash to bot_configs");
-  }
-  if (!(await columnExists(client, "bot_configs", "helixa_base_token_id"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_base_token_id TEXT`);
-    log("Added helixa_base_token_id to bot_configs");
-  }
-  if (!(await columnExists(client, "bot_configs", "helixa_link_token_at"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_link_token_at TIMESTAMP`);
-    log("Added helixa_link_token_at to bot_configs");
-  }
-  if (!(await columnExists(client, "bot_configs", "helixa_x_verified_at"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_x_verified_at TIMESTAMP`);
-    log("Added helixa_x_verified_at to bot_configs");
-  }
-  if (!(await columnExists(client, "bot_configs", "helixa_github_verified_at"))) {
-    await client.query(`ALTER TABLE bot_configs ADD COLUMN helixa_github_verified_at TIMESTAMP`);
-    log("Added helixa_github_verified_at to bot_configs");
+  // x_handle / github_handle on users only ever existed to feed Helixa's
+  // post-mint /verify/x and /verify/github calls. Nothing else reads or
+  // writes them, so they are dropped alongside the rest of the integration.
+  if (await columnExists(client, "users", "x_handle")) {
+    await client.query(`
+      ALTER TABLE users
+        DROP COLUMN IF EXISTS x_handle,
+        DROP COLUMN IF EXISTS github_handle
+    `);
+    log("Dropped x_handle/github_handle from users (Helixa integration removed)");
   }
 }
 
@@ -710,11 +698,6 @@ async function ensureBillingSchema(client: any) {
     ["teli_paid", "BOOLEAN NOT NULL DEFAULT false"],
     ["stripe_customer_id", "VARCHAR"],
     ["stripe_subscription_id", "VARCHAR"],
-    // Optional social handles surfaced to Helixa's free /verify/x and
-    // /verify/github endpoints right after a successful per-bot mint. Both
-    // are nullable; verification only fires when present.
-    ["x_handle", "VARCHAR(64)"],
-    ["github_handle", "VARCHAR(64)"],
   ];
   for (const [name, def] of userCols) {
     if (!(await columnExists(client, "users", name))) {

@@ -24,7 +24,6 @@ A checklist of operator-controlled settings to flip before going live. Many of t
 | `REWARDS_SCHEDULER_MIN` | `15` | Scheduler tick interval (also flushes AI usage to Postgres). |
 | `CELO_WALLET_PRIVATE_KEY` | unset | ERC-8004 bot registration and ERC-20 reward payouts on Celo / Base are disabled (endpoints respond with a clear "wallet not configured" error). |
 | `BASE_WALLET_PRIVATE_KEY` | unset | Falls back to `CELO_WALLET_PRIVATE_KEY` for Base ERC-20 payouts. If both are missing, Base payouts are disabled. |
-| `HELIXA_BASE_WALLET_PRIVATE_KEY` | unset | Per-bot Helixa minting on Base is disabled. `POST /api/bots/:botId/helixa/register` returns 503 "Helixa minting is not configured" and the Settings card shows the wallet as "Not configured". Use a dedicated key (separate from `CELO_*` / `BASE_*`) — this wallet pays the $1 USDC mint fee on every bot mint and signs the SIWA bearer used against api.helixa.xyz. Fund with at least 1 USDC per planned mint plus a small ETH balance for gas; the boot log warns at <5 USDC and refuses new mints at <1 USDC. |
 | `BANKR_API_KEY` | unset | `/price` command and crypto enrichment in AI replies fall back to "Bankr not configured". |
 | `LOCUS_API_KEY` | unset | Agent-to-agent paid services skip Locus payment checks; Master Agent wallet panel reports "not configured". |
 | `OPENSERV_API_KEY` | unset | OpenServ marketplace endpoints respond with "not configured"; the rest of the app keeps working. |

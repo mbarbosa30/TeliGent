@@ -9,20 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
   Users, Bot, Activity, Shield, MessageSquare, Search,
   Globe, Clock, AlertTriangle, Lock, LogOut, CreditCard, Save,
-  Link as LinkIcon, ExternalLink, Loader2, Wallet,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -60,25 +48,6 @@ interface AdminBot {
   isActive: boolean;
   userEmail?: string;
   createdAt: string;
-  helixaAgentId: string | null;
-  helixaMintedAt: string | null;
-  helixaTxHash: string | null;
-  helixaBaseTokenId: string | null;
-  helixaLinkTokenAt: string | null;
-  helixaXVerifiedAt: string | null;
-  helixaGithubVerifiedAt: string | null;
-  helixaCredScore: number | null;
-  helixaCredTier: string | null;
-  helixaProfileUrl: string | null;
-  helixaExplorerUrl: string | null;
-}
-
-interface HelixaWalletStatus {
-  configured: boolean;
-  address: string | null;
-  usdc: string | null;
-  eth: string | null;
-  status: "unconfigured" | "low" | "healthy" | "depleted";
 }
 
 interface AdminActivityLog {
@@ -314,7 +283,7 @@ function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="bots" className="mt-4 space-y-4">
-            <BotsHelixaPanel
+            <BotsPanel
               bots={filteredBots}
               loading={botsLoading}
             />
@@ -668,17 +637,9 @@ function ActivityList({ logs, loading }: { logs: AdminActivityLog[]; loading: bo
   );
 }
 
-function BotsHelixaPanel({ bots, loading }: { bots: AdminBot[]; loading: boolean }) {
-  // Wallet query lives at the panel level so it runs once per admin page
-  // visit, not once per bot row. Pass the result down into the header and
-  // each row, so all rendering uses the same wallet snapshot.
-  const walletQuery = useQuery<HelixaWalletStatus>({
-    queryKey: ["/api/admin/helixa/wallet"],
-    refetchInterval: 60000,
-  });
+function BotsPanel({ bots, loading }: { bots: AdminBot[]; loading: boolean }) {
   return (
     <div className="space-y-4">
-      <HelixaWalletHeader data={walletQuery.data} isLoading={walletQuery.isLoading} />
       {loading ? (
         <div className="space-y-2">
           {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
@@ -687,15 +648,14 @@ function BotsHelixaPanel({ bots, loading }: { bots: AdminBot[]; loading: boolean
         <p className="text-sm text-muted-foreground text-center py-8">No bots found.</p>
       ) : (
         <div className="space-y-1">
-          <div className="grid grid-cols-[1.2fr_1fr_auto_1.4fr_auto] gap-4 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
+          <div className="grid grid-cols-[1.2fr_1fr_auto_auto] gap-4 px-3 py-2 text-xs uppercase tracking-wider text-muted-foreground border-b">
             <span>Bot Name</span>
             <span>Owner</span>
             <span>Status</span>
-            <span>Helixa</span>
             <span>Created</span>
           </div>
           {bots.map((b) => (
-            <BotRow key={b.id} bot={b} wallet={walletQuery.data} walletErrored={walletQuery.isError} />
+            <BotRow key={b.id} bot={b} />
           ))}
         </div>
       )}
@@ -703,145 +663,10 @@ function BotsHelixaPanel({ bots, loading }: { bots: AdminBot[]; loading: boolean
   );
 }
 
-function HelixaWalletHeader({
-  data,
-  isLoading,
-}: {
-  data: HelixaWalletStatus | undefined;
-  isLoading: boolean;
-}) {
-  if (isLoading) {
-    return <Skeleton className="h-16 w-full" />;
-  }
-  if (!data) return null;
-  const dotColor =
-    data.status === "healthy"
-      ? "bg-green-500"
-      : data.status === "low"
-      ? "bg-amber-500"
-      : data.status === "depleted"
-      ? "bg-red-500"
-      : "bg-muted-foreground";
-  const label =
-    data.status === "healthy"
-      ? "Ready"
-      : data.status === "low"
-      ? "Low"
-      : data.status === "depleted"
-      ? "Depleted"
-      : "Not configured";
-  return (
-    <Card>
-      <CardContent className="flex items-center justify-between gap-4 p-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <Wallet className="h-4 w-4 text-muted-foreground shrink-0" />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Helixa mint wallet</span>
-              <span className={`inline-block h-2 w-2 rounded-full ${dotColor}`} />
-              <span className="text-xs text-muted-foreground" data-testid="text-helixa-wallet-status">
-                {label}
-              </span>
-            </div>
-            {data.address ? (
-              <p className="text-xs font-mono text-muted-foreground truncate" data-testid="text-helixa-wallet-address">
-                {data.address}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Set HELIXA_BASE_WALLET_PRIVATE_KEY to enable minting.
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-4 text-right shrink-0">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">USDC</p>
-            <p className="text-sm font-mono" data-testid="text-helixa-wallet-usdc">{data.usdc ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">ETH</p>
-            <p className="text-sm font-mono" data-testid="text-helixa-wallet-eth">{data.eth ?? "—"}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-interface MintResponse {
-  success: boolean;
-  alreadyMinted: boolean;
-  agentId: string;
-  txHash: string | null;
-  baseTokenId: string | null;
-  profileUrl: string;
-  explorerUrl: string | null;
-}
-
-function BotRow({
-  bot,
-  wallet,
-  walletErrored,
-}: {
-  bot: AdminBot;
-  wallet: HelixaWalletStatus | undefined;
-  walletErrored: boolean;
-}) {
-  const { toast } = useToast();
-  const mintMutation = useMutation<MintResponse, Error, void>({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/admin/bots/${bot.id}/helixa/mint`);
-      return await res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/bots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/helixa/wallet"] });
-      const txShort = data.txHash ? `${data.txHash.slice(0, 10)}…` : "n/a";
-      toast({
-        title: data.alreadyMinted ? "Already minted" : "Mint complete",
-        description: `Agent ${data.agentId} | tx ${txShort}`,
-      });
-    },
-    onError: (err) => {
-      toast({ title: "Mint failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const forceRemintMutation = useMutation<MintResponse, Error, void>({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/admin/bots/${bot.id}/helixa/force-remint`);
-      return await res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/bots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/helixa/wallet"] });
-      const txShort = data.txHash ? `${data.txHash.slice(0, 10)}…` : "n/a";
-      toast({
-        title: "Force re-mint complete",
-        description: `Agent ${data.agentId} | tx ${txShort}`,
-      });
-    },
-    onError: (err) => {
-      toast({ title: "Force re-mint failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const minted = !!bot.helixaAgentId;
-  // Server allows mint when wallet has >= 1 USDC (status "healthy" or "low").
-  // Block the button when we KNOW the wallet is depleted or unconfigured,
-  // but fail-open when the wallet query errored or hasn't returned yet —
-  // the server is the source of truth and will return a useful error if
-  // the mint truly cannot proceed.
-  const knownBlocked =
-    !!wallet && (wallet.status === "depleted" || wallet.status === "unconfigured");
-  const walletReady = !knownBlocked || walletErrored;
-  const canMint = !minted && walletReady && !mintMutation.isPending;
-  const canRemint = minted && walletReady && !forceRemintMutation.isPending;
-
+function BotRow({ bot }: { bot: AdminBot }) {
   return (
     <div
-      className="grid grid-cols-[1.2fr_1fr_auto_1.4fr_auto] gap-4 px-3 py-3 border-b border-border/50 items-center"
+      className="grid grid-cols-[1.2fr_1fr_auto_auto] gap-4 px-3 py-3 border-b border-border/50 items-center"
       data-testid={`row-bot-${bot.id}`}
     >
       <div className="flex items-center gap-2 min-w-0">
@@ -858,223 +683,6 @@ function BotRow({
           <Badge variant="outline" className="text-xs">No Token</Badge>
         )}
       </span>
-      <div className="min-w-0">
-        {minted ? (
-          <div className="flex flex-col gap-1 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <Badge variant="outline" className="text-xs shrink-0">
-                Minted
-              </Badge>
-              {bot.helixaProfileUrl ? (
-                <a
-                  href={bot.helixaProfileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-mono truncate text-foreground hover:underline inline-flex items-center gap-1 min-w-0"
-                  data-testid={`link-helixa-agent-${bot.id}`}
-                  title={bot.helixaAgentId ?? ""}
-                >
-                  <LinkIcon className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{bot.helixaAgentId}</span>
-                </a>
-              ) : (
-                <span
-                  className="text-xs font-mono truncate text-muted-foreground"
-                  data-testid={`text-helixa-agent-${bot.id}`}
-                  title={bot.helixaAgentId ?? ""}
-                >
-                  {bot.helixaAgentId}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {bot.helixaExplorerUrl && (
-                <a
-                  href={bot.helixaExplorerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                  data-testid={`link-helixa-tx-${bot.id}`}
-                >
-                  <ExternalLink className="h-3 w-3" /> tx
-                </a>
-              )}
-              {bot.helixaLinkTokenAt && (
-                <Badge variant="secondary" className="text-[10px]">$TELI linked</Badge>
-              )}
-              {bot.helixaXVerifiedAt && (
-                <Badge variant="secondary" className="text-[10px]">X verified</Badge>
-              )}
-              {bot.helixaGithubVerifiedAt && (
-                <Badge variant="secondary" className="text-[10px]">GitHub verified</Badge>
-              )}
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-[10px]"
-                    disabled={!canRemint}
-                    data-testid={`button-force-remint-helixa-${bot.id}`}
-                  >
-                    {forceRemintMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-3 w-3 animate-spin mr-1" /> Re-minting
-                      </>
-                    ) : (
-                      "Force re-mint"
-                    )}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent data-testid={`dialog-force-remint-helixa-${bot.id}`}>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Force re-mint Helixa identity?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will clear the existing Helixa identity and spend ~1 USDC from the platform wallet to create a new permanent on-chain identity on Base. This cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <div className="space-y-2 rounded-md border p-3 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Bot</span>
-                      <span className="font-mono text-right truncate" data-testid={`text-force-remint-confirm-bot-${bot.id}`}>
-                        {bot.botName}
-                      </span>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Owner</span>
-                      <span className="font-mono text-right truncate" data-testid={`text-force-remint-confirm-owner-${bot.id}`}>
-                        {bot.userEmail || "Unknown"}
-                      </span>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Current agent</span>
-                      <span className="font-mono text-right truncate" data-testid={`text-force-remint-confirm-current-agent-${bot.id}`} title={bot.helixaAgentId ?? ""}>
-                        {bot.helixaAgentId ?? "—"}
-                      </span>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Cost</span>
-                      <span className="font-mono text-right">~1 USDC</span>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Wallet USDC</span>
-                      <span className="font-mono text-right" data-testid={`text-force-remint-confirm-usdc-${bot.id}`}>
-                        {wallet?.usdc ?? "—"}
-                      </span>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Wallet status</span>
-                      <span className="font-mono text-right capitalize" data-testid={`text-force-remint-confirm-status-${bot.id}`}>
-                        {wallet?.status ?? "unknown"}
-                      </span>
-                    </div>
-                  </div>
-                  {wallet && wallet.status !== "healthy" && (
-                    <p
-                      className="text-xs text-amber-600 dark:text-amber-500"
-                      data-testid={`text-force-remint-confirm-warning-${bot.id}`}
-                    >
-                      Wallet is not healthy — confirmation is disabled until balance is topped up.
-                    </p>
-                  )}
-                  <AlertDialogFooter>
-                    <AlertDialogCancel data-testid={`button-force-remint-cancel-${bot.id}`}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      disabled={wallet?.status !== "healthy" || forceRemintMutation.isPending}
-                      onClick={() => forceRemintMutation.mutate()}
-                      data-testid={`button-force-remint-confirm-${bot.id}`}
-                    >
-                      Spend 1 USDC & re-mint
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!canMint}
-                  data-testid={`button-mint-helixa-${bot.id}`}
-                >
-                  {mintMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-3 w-3 animate-spin mr-1" /> Minting
-                    </>
-                  ) : (
-                    "Mint on Helixa"
-                  )}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent data-testid={`dialog-mint-helixa-${bot.id}`}>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Mint Helixa identity?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will spend 1 USDC from the platform wallet and create a permanent on-chain identity on Base. This cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <div className="space-y-2 rounded-md border p-3 text-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">Bot</span>
-                    <span className="font-mono text-right truncate" data-testid={`text-mint-confirm-bot-${bot.id}`}>
-                      {bot.botName}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">Owner</span>
-                    <span className="font-mono text-right truncate" data-testid={`text-mint-confirm-owner-${bot.id}`}>
-                      {bot.userEmail || "Unknown"}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">Cost</span>
-                    <span className="font-mono text-right">~1 USDC</span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">Wallet USDC</span>
-                    <span className="font-mono text-right" data-testid={`text-mint-confirm-usdc-${bot.id}`}>
-                      {wallet?.usdc ?? "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-muted-foreground">Wallet status</span>
-                    <span className="font-mono text-right capitalize" data-testid={`text-mint-confirm-status-${bot.id}`}>
-                      {wallet?.status ?? "unknown"}
-                    </span>
-                  </div>
-                </div>
-                {wallet && wallet.status !== "healthy" && (
-                  <p
-                    className="text-xs text-amber-600 dark:text-amber-500"
-                    data-testid={`text-mint-confirm-warning-${bot.id}`}
-                  >
-                    Wallet is not healthy — confirmation is disabled until balance is topped up.
-                  </p>
-                )}
-                <AlertDialogFooter>
-                  <AlertDialogCancel data-testid={`button-mint-cancel-${bot.id}`}>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    disabled={wallet?.status !== "healthy" || mintMutation.isPending}
-                    onClick={() => mintMutation.mutate()}
-                    data-testid={`button-mint-confirm-${bot.id}`}
-                  >
-                    Spend 1 USDC & mint
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-            {!walletReady && wallet && (
-              <span className="text-xs text-muted-foreground" data-testid={`text-helixa-wallet-block-${bot.id}`}>
-                {wallet.status === "depleted" ? "Wallet depleted" : "Wallet not configured"}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
       <span className="text-xs font-mono text-muted-foreground">
         {format(new Date(bot.createdAt), "MMM d, yyyy")}
       </span>
